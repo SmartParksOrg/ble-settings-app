@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Settings HEX Composer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #90AE9B;
+    }
+
+    .controls {
+      margin-bottom: 20px;
+    }
+
+    .setting {
+      opacity: 0.6;
+      padding: 10px;
+      word-wrap: break-word;
+      border: 1px solid #fff;
+      border-radius: 10px;
+      background-color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+    
+    .setting.checked {
+      opacity: 1;
+    }
+
+    .setting h4 {
+      padding: 0;
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .setting .input-container input,
+    .setting .input-container select,
+    .setting .input-container textarea {
+      width: 90%;
+      display: block;
+    }
+
+    .settings-container {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    }
+
+    input.invalid {
+      border: 2px solid red;
+    }
+
+    #container {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    }
+
+    .section {
+      padding: 10px;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
+    }
+
+    #settings-section {
+      margin-bottom: 100px;
+    }
+
+    #settings-section h3 {
+      text-transform: capitalize;
+    }
+
+    .section h4 {
+      color: #52735E;
+      margin: 0 0 10px;
+    }
+
+    #errors {
+      margin-bottom: 10px;
+    }
+
+    #errors span {
+      color: rgb(132, 0, 0);
+      font-weight: bold;
+    }
+
+    /* Floating bar at the bottom */
+    #floating-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background-color: #52735E;
+      color: white;
+      padding: 10px;
+      text-align: center;
+      font-family: monospace;
+    }
+
+    .checkbox-container {
+      display: flex;
+      align-items: center;
+      margin-bottom: 5px;
+    }
+
+    .checkbox-container label {
+      margin-left: 5px;
+    }
+
+    #hex-output {
+      width: 70%;
+      padding: 5px;
+      font-family: monospace;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #fff;
+      color: #000;
+    }
+
+    #copy-button {
+      background-color: #fff;
+      color: #000;
+      border: 1px solid #52735E;
+      cursor: pointer;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+
+    #copy-button:hover {
+      background-color: #f2f2f2;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Settings HEX Composer</h1>
+
+  <div class="controls">
+    <label for="settings-dropdown">Choose a settings file:</label>
+    <select id="settings-dropdown" onchange="loadSelectedFile()">
+      <option value="./settings/settings-v6.9.0.json">settings-v6.9.0.json</option>
+      <option value="./settings/settings-v6.8.1.json">settings-v6.8.1.json</option>
+      <option value="./settings/settings-v4.4.2.json">settings-v4.4.2.json</option>
+    </select>
+  </div>
+
+  <div id="errors"></div>
+  <div id="container"></div>
+
+  <h2>Settings</h2>
+  <div id="settings-section"></div>
+
+  <div id="floating-bar">
+    <select id="payload-type" onchange="updateEncodedMessage()">
+      <option value="lorawan">LoRaWAN (port 3)</option>
+      <option value="rockblock">RockBlock</option>
+      <option value="ble">BLE custom command</option>
+    </select>
+    <input type="text" id="hex-output" readonly value="(no settings selected)" />
+    <button id="copy-button" onclick="copyToClipboard()">📋</button>
+  </div>
+
+  <script>
+    let settingsData = null;
+    let settingsMap = new Map(); // maps id (int) to [key, meta]
+
+    async function loadSelectedFile() {
+      const selectedFile = document.getElementById('settings-dropdown').value;
+      await loadSettings(selectedFile);
+      displaySettings();
+      updateEncodedMessage(); // Update the message once settings are displayed
+    }
+
+    function toHex(byte) {
+      return byte.toString(16).toUpperCase().padStart(2, '0');
+    }
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(toHex).join('');
+    }
+    
+    function stringToUint8Array(hexString) {
+      if (!hexString || typeof hexString !== 'string') {
+        return new Uint8Array();
+      }
+
+      // Remove any non-hex characters if necessary (optional step)
+      hexString = hexString.replace(/[^0-9A-Fa-f]/g, '');
+
+      // Ensure even length
+      if (hexString.length % 2 !== 0) {
+        throw new Error('Invalid hex string: length must be even.');
+      }
+
+      const length = hexString.length / 2;
+      const result = new Uint8Array(length);
+
+      for (let i = 0; i < length; i++) {
+        const byteStr = hexString.substr(i * 2, 2);
+        result[i] = parseInt(byteStr, 16);
+      }
+
+      return result;
+    }
+
+    async function loadSettings(selectedFile) {
+      try {
+        const response = await fetch(selectedFile);
+        settingsData = await response.json();
+
+        settingsMap = new Map();
+        registerValues(settingsData.settings);
+        registerValues(settingsData.values);
+
+      } catch (error) {
+        showError(`Error loading settings: ${error.message}`);
+      }
+    }
+
+    function registerValues(data) {
+      for (const [key, value] of Object.entries(data)) {
+        settingsMap.set(parseInt(value.id, 16), [key, value]);
+      }
+    }
+
+    function groupAndSortSettings(settings) {
+      const grouped = {};
+      const other = {};
+
+      for (const key in settings) {
+        const prefix = key.split('_')[0];
+
+        if (!grouped[prefix]) {
+          grouped[prefix] = {};
+        }
+
+        grouped[prefix][key] = settings[key];
+      }
+
+      for (const prefix in grouped) {
+        if (Object.keys(grouped[prefix]).length === 1) {
+          const [singleKey] = Object.keys(grouped[prefix]);
+          other[singleKey] = grouped[prefix][singleKey];
+          delete grouped[prefix];
+        }
+      }
+
+      if (Object.keys(other).length > 0) {
+        grouped["_other"] = other;
+      }
+
+      const sortedGroups = Object.keys(grouped).sort().reduce((acc, group) => {
+        acc[group] = Object.keys(grouped[group]).sort().reduce((groupAcc, key) => {
+          groupAcc[key] = grouped[group][key];
+          return groupAcc;
+        }, {});
+        return acc;
+      }, {});
+
+      return sortedGroups;
+    }
+
+    function displaySettings() {
+      const settingsSection = document.getElementById('settings-section');
+      settingsSection.innerHTML = '';
+
+      const groupedSettings = groupAndSortSettings(settingsData.settings);
+
+      for (const [groupName, group] of Object.entries(groupedSettings)) {
+        const settingsContainer = document.createElement('div');
+        settingsContainer.className = 'settings-container';
+
+        const groupHeading = document.createElement('h3');
+        groupHeading.textContent = groupName.replace(/_/g, "");
+        settingsSection.appendChild(groupHeading);
+
+        for (const [key, setting] of Object.entries(group)) {
+          const row = document.createElement('div');
+          row.className = 'setting';
+          row.setAttribute('id', `setting-${setting.id}`);
+
+          let html = `
+            <div class="checkbox-container">
+              <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this)"/>
+              <label for="checkbox-${setting.id}"><h4>${key} (${setting.id})</h4></label>
+            </div>
+            <div class="input-container">
+          `;
+
+          if (setting.conversion === 'bool') {
+            html += `<select id="new-value-${setting.id}" onchange="updateEncodedMessage()">`;
+            if (setting.default) {
+              html += `<option value="true" selected>true</option><option value="false">false</option>`;
+            } else {
+              html += `<option value="true">true</option><option value="false" selected>false</option>`;
+            }
+            html += `</select>`;
+          } else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" value="${setting.default}" onchange="updateEncodedMessage()"/>`;
+          } else if (setting.conversion === 'byte_array') {
+            html += `<textarea id="new-value-${setting.id}" rows="4" onchange="updateEncodedMessage()">${bytesToHex(stringToUint8Array(setting.default))}</textarea>`;
+          } else {
+            html += `<input type="text" id="new-value-${setting.id}" value="${setting.default}" onchange="updateEncodedMessage()"/>`;
+          }
+
+          html += `</div>`;
+
+          row.innerHTML = html;
+          settingsContainer.appendChild(row);
+        }
+
+        settingsSection.appendChild(settingsContainer);
+      }
+    }
+
+    function getSettingInfoById(settingId) {
+      const id = parseInt(settingId, 16);
+      if (!settingsMap.has(id)) {
+        throw new Error(`No setting found for ID: ${settingId}`);
+      }
+      return settingsMap.get(id);
+    }
+
+    function showError(message) {
+      const errorsDiv = document.getElementById('errors');
+      errorsDiv.innerHTML = `<span>${message}</span>`;
+    }
+
+    function validateInput(newValue, setting) {
+      // Basic validation logic
+      if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const parsedValue = setting.conversion === 'float' ? parseFloat(newValue) : parseInt(newValue, 10);
+        if (isNaN(parsedValue) || parsedValue < setting.min || parsedValue > setting.max) {
+          showError(`Invalid value for ${setting.id}: Must be between ${setting.min} and ${setting.max}`);
+          return false;
+        }
+      } else if (setting.conversion === 'bool') {
+        if (newValue.toLowerCase() !== 'true' && newValue.toLowerCase() !== 'false') {
+          showError(`Invalid value for ${setting.id}: Must be 'true' or 'false'`);
+          return false;
+        }
+      } else if (setting.conversion === 'byte_array') {
+        const pattern = /^\{(0x[0-9A-Fa-f]{2}(\s*,\s*0x[0-9A-Fa-f]{2})*)\}$/;
+        try {
+          stringToUint8Array(newValue);
+        } catch (error) {
+          showError(`Invalid byte array format for ${setting.id}. Expected something like 00FF`);
+          return false;
+        }
+      }
+
+      // Clear any previous errors if validation is successful
+      document.getElementById('errors').innerHTML = '';
+      return true;
+    }
+
+    function updateCheckBox(element) {
+      if (element.checked) {
+        element.parentElement.parentElement.classList.add('checked');
+      } else {
+        element.parentElement.parentElement.classList.remove('checked');
+      }
+
+      updateEncodedMessage();
+    }
+
+    function updateEncodedMessage() {
+      // Gather all checked settings and encode them
+      const hexOutput = document.getElementById('hex-output');
+      const payloadType = document.getElementById('payload-type');
+
+      const encodedBytes = [];
+      // Let's create a combined message: for each checked setting, we encode as [0x03, setting_id, length, valueBytes...]
+      // This is just an example format. You can adapt as needed.
+
+      // Iterate over all settings
+      for (const [key, val] of settingsMap) {
+        const setting = val[1];
+        const checkbox = document.getElementById(`checkbox-${setting.id}`);
+        const inputElement = document.getElementById(`new-value-${setting.id}`);
+        if (checkbox && checkbox.checked) {
+          const newValue = inputElement.value.trim();
+          if (!validateInput(newValue, setting)) {
+            hexOutput.value = 'Error: Invalid input';
+            return;
+          }
+
+          let valueBytes;
+
+          if (setting.conversion === 'uint32') {
+            const intValue = parseInt(newValue, 10);
+            valueBytes = new Uint8Array(new Uint32Array([intValue]).buffer);
+          } else if (setting.conversion === 'uint16') {
+            const intValue = parseInt(newValue, 10);
+            valueBytes = new Uint8Array(new Uint16Array([intValue]).buffer);
+          } else if (setting.conversion === 'uint8' || setting.conversion === 'int8') {
+            valueBytes = new Uint8Array([parseInt(newValue, 10)]);
+          } else if (setting.conversion === 'int32') {
+            const intValue = parseInt(newValue, 10);
+            valueBytes = new Uint8Array(new Int32Array([intValue]).buffer);
+          } else if (setting.conversion === 'float') {
+            valueBytes = new Uint8Array(new Float32Array([parseFloat(newValue)]).buffer);
+          } else if (setting.conversion === 'bool') {
+            valueBytes = new Uint8Array([newValue.toLowerCase() === 'true' ? 1 : 0]);
+          } else if (setting.conversion === 'byte_array') {
+            valueBytes = stringToUint8Array(newValue);
+          } else if (setting.conversion === 'string') {
+            valueBytes = new TextEncoder().encode(newValue);
+          } else {
+            hexOutput.value = `Unknown conversion type for ${val[0]}: ${setting.conversion}`;
+            return;
+          }
+
+          const length = valueBytes.length;
+          const idInt = parseInt(setting.id, 16);
+
+          // Push the encoded setting message
+          encodedBytes.push(idInt, length, ...valueBytes);
+        }
+      }
+
+      if (encodedBytes.length === 0) {
+        hexOutput.value = '(no settings selected)';
+      } else {
+        if (payloadType.value === 'lorawan') {
+          hexOutput.value = bytesToHex(encodedBytes);
+        } else if (payloadType.value === 'rockblock') {
+          // Add RockBlock header
+          encodedBytes.unshift(0x03);
+          hexOutput.value = bytesToHex(encodedBytes);
+        } else if (payloadType.value === 'ble') {
+          // Add BLE header
+          encodedBytes.unshift(0x03);
+          hexOutput.value = Array.from(encodedBytes).map(b => `0x${toHex(b)}`).join(' ');
+        }
+      }
+    }
+
+    function copyToClipboard() {
+      const hexOutput = document.getElementById('hex-output');
+      navigator.clipboard.writeText(hexOutput.value).then(() => {
+        // Optionally, you could provide a visual feedback like changing button text or color briefly.
+      }).catch(err => {
+        console.error('Could not copy text: ', err);
+      });
+    }
+
+    loadSelectedFile();
+  </script>
+</body>
+
+</html>
