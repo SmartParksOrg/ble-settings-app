@@ -53,7 +53,7 @@
       grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     }
 
-    input.invalid {
+    #hex-output.invalid {
       border: 2px solid red;
     }
 
@@ -83,15 +83,6 @@
       margin: 0 0 10px;
     }
 
-    #errors {
-      margin-bottom: 10px;
-    }
-
-    #errors span {
-      color: rgb(132, 0, 0);
-      font-weight: bold;
-    }
-
     /* Floating bar at the bottom */
     #floating-bar {
       position: fixed;
@@ -113,6 +104,7 @@
 
     .checkbox-container label {
       margin-left: 5px;
+      cursor: pointer;
     }
 
     #hex-output {
@@ -153,7 +145,6 @@
     </select>
   </div>
 
-  <div id="errors"></div>
   <div id="container"></div>
 
   <h2>Settings</h2>
@@ -188,21 +179,33 @@
       return Array.from(bytes).map(toHex).join('');
     }
     
-    function stringToUint8Array(hexString) {
+    function stripBytes(s) {
+      return s.replace(/0x/g, '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+    }
+
+    function stringToUint8Array(hexString, expectedLength) {
       if (!hexString || typeof hexString !== 'string') {
         return new Uint8Array();
       }
 
-      // Remove any non-hex characters if necessary (optional step)
-      hexString = hexString.replace(/[^0-9A-Fa-f]/g, '');
+      hexString = hexString.trim();
 
+      // Check if hex string has invalid characters, return error if it does
+      if (!/^[0-9A-Fa-f\s]*$/.test(hexString)) {
+        throw new Error('contains non-hex characters.');
+      }
+      
       // Ensure even length
-      if (hexString.length % 2 !== 0) {
-        throw new Error('Invalid hex string: length must be even.');
+      if (expectedLength % 2 !== 0) {
+        throw new Error('length must be even.');
       }
 
       const length = hexString.length / 2;
       const result = new Uint8Array(length);
+
+      if (length !== expectedLength) {
+        throw new Error('length must be ' + expectedLength);
+      }
 
       for (let i = 0; i < length; i++) {
         const byteStr = hexString.substr(i * 2, 2);
@@ -222,7 +225,8 @@
         registerValues(settingsData.values);
 
       } catch (error) {
-        showError(`Error loading settings: ${error.message}`);
+
+        throw new Errow(`Error loading settings: ${error.message}`);
       }
     }
 
@@ -305,11 +309,11 @@
             }
             html += `</select>`;
           } else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" value="${setting.default}" onchange="updateEncodedMessage()"/>`;
+            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" value="${setting.default}" oninput="updateEncodedMessage()"/>`;
           } else if (setting.conversion === 'byte_array') {
-            html += `<textarea id="new-value-${setting.id}" rows="4" onchange="updateEncodedMessage()">${bytesToHex(stringToUint8Array(setting.default))}</textarea>`;
+            html += `<textarea id="new-value-${setting.id}" rows="4" oninput="updateEncodedMessage()">${stripBytes(setting.default)}</textarea>`;
           } else {
-            html += `<input type="text" id="new-value-${setting.id}" value="${setting.default}" onchange="updateEncodedMessage()"/>`;
+            html += `<input type="text" id="new-value-${setting.id}" value="${setting.default}" oninput="updateEncodedMessage()"/>`;
           }
 
           html += `</div>`;
@@ -330,37 +334,25 @@
       return settingsMap.get(id);
     }
 
-    function showError(message) {
-      const errorsDiv = document.getElementById('errors');
-      errorsDiv.innerHTML = `<span>${message}</span>`;
-    }
-
     function validateInput(newValue, setting) {
       // Basic validation logic
       if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
         const parsedValue = setting.conversion === 'float' ? parseFloat(newValue) : parseInt(newValue, 10);
         if (isNaN(parsedValue) || parsedValue < setting.min || parsedValue > setting.max) {
-          showError(`Invalid value for ${setting.id}: Must be between ${setting.min} and ${setting.max}`);
-          return false;
+          throw new Error(`Invalid value for ${setting.id}: Must be between ${setting.min} and ${setting.max}`);
         }
       } else if (setting.conversion === 'bool') {
         if (newValue.toLowerCase() !== 'true' && newValue.toLowerCase() !== 'false') {
-          showError(`Invalid value for ${setting.id}: Must be 'true' or 'false'`);
-          return false;
+          throw new Error(`Invalid value for ${setting.id}: Must be 'true' or 'false'`);
         }
       } else if (setting.conversion === 'byte_array') {
         const pattern = /^\{(0x[0-9A-Fa-f]{2}(\s*,\s*0x[0-9A-Fa-f]{2})*)\}$/;
         try {
-          stringToUint8Array(newValue);
+          stringToUint8Array(newValue, setting.length);
         } catch (error) {
-          showError(`Invalid byte array format for ${setting.id}. Expected something like 00FF`);
-          return false;
+          throw new Error(`Invalid byte array format for ${setting.id}. ${error.message}`);
         }
       }
-
-      // Clear any previous errors if validation is successful
-      document.getElementById('errors').innerHTML = '';
-      return true;
     }
 
     function updateCheckBox(element) {
@@ -383,14 +375,19 @@
       // This is just an example format. You can adapt as needed.
 
       // Iterate over all settings
+      hexOutput.classList.remove('invalid');
+
       for (const [key, val] of settingsMap) {
         const setting = val[1];
         const checkbox = document.getElementById(`checkbox-${setting.id}`);
         const inputElement = document.getElementById(`new-value-${setting.id}`);
         if (checkbox && checkbox.checked) {
           const newValue = inputElement.value.trim();
-          if (!validateInput(newValue, setting)) {
-            hexOutput.value = 'Error: Invalid input';
+          try {
+            validateInput(newValue, setting);
+          } catch (error) {
+            hexOutput.value = `Error: ${error.message}`;
+            hexOutput.classList.add('invalid');
             return;
           }
 
@@ -412,7 +409,7 @@
           } else if (setting.conversion === 'bool') {
             valueBytes = new Uint8Array([newValue.toLowerCase() === 'true' ? 1 : 0]);
           } else if (setting.conversion === 'byte_array') {
-            valueBytes = stringToUint8Array(newValue);
+            valueBytes = stringToUint8Array(newValue, setting.length);
           } else if (setting.conversion === 'string') {
             valueBytes = new TextEncoder().encode(newValue);
           } else {
@@ -446,6 +443,7 @@
     }
 
     function copyToClipboard() {
+      updateEncodedMessage();
       const hexOutput = document.getElementById('hex-output');
       navigator.clipboard.writeText(hexOutput.value).then(() => {
         // Optionally, you could provide a visual feedback like changing button text or color briefly.
