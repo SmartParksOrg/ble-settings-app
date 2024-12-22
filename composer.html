@@ -16,6 +16,10 @@
       margin-bottom: 20px;
     }
 
+    input, select, textarea {
+      box-sizing: border-box;
+    }
+
     .setting {
       opacity: 0.6;
       padding: 10px;
@@ -25,7 +29,6 @@
       background-color: #fff;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
       box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
       position: relative;
     }
@@ -40,11 +43,20 @@
       font-size: 16px;
     }
 
+    .setting h4 small {
+      font-weight: normal;
+    }
+
     .setting .input-container input,
     .setting .input-container select,
     .setting .input-container textarea {
-      width: 90%;
+      width: 100%;
       display: block;
+      margin-top: 5px;
+    }
+
+    .setting .input-container .checkbox-container input {
+      width: auto;
     }
 
     .settings-container {
@@ -130,6 +142,16 @@
     #copy-button:hover {
       background-color: #f2f2f2;
     }
+
+    /* Scrollable container for port checkboxes (for lr_send_flag, etc.) */
+    .checkbox-scroll {
+      max-height: 150px;
+      overflow-y: auto;
+      border: 1px solid #ccc;
+      padding: 5px;
+      border-radius: 5px;
+      background: #fafafa;
+    }
   </style>
 </head>
 
@@ -161,58 +183,25 @@
   </div>
 
   <script>
-    let settingsData = null;
-    let settingsMap = new Map(); // maps id (int) to [key, meta]
+    const intervalPatterns = [
+      /_interval_?\d?$/,        // matches _interval, _interval1, _interval2, etc.
+      /rf_scan_duration$/     // matches strings ending with rf_scan_duration
+    ];
 
+    // ---------------------------------------------
+    // Global data
+    // ---------------------------------------------
+    let settingsData = null;
+    let settingsMap = new Map(); // maps int ID -> [key, meta]
+
+    // ---------------------------------------------
+    // Load and Display Settings
+    // ---------------------------------------------
     async function loadSelectedFile() {
       const selectedFile = document.getElementById('settings-dropdown').value;
       await loadSettings(selectedFile);
       displaySettings();
-      updateEncodedMessage(); // Update the message once settings are displayed
-    }
-
-    function toHex(byte) {
-      return byte.toString(16).toUpperCase().padStart(2, '0');
-    }
-
-    function bytesToHex(bytes) {
-      return Array.from(bytes).map(toHex).join('');
-    }
-    
-    function stripBytes(s) {
-      return s.replace(/0x/g, '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
-    }
-
-    function stringToUint8Array(hexString, expectedLength) {
-      if (!hexString || typeof hexString !== 'string') {
-        return new Uint8Array();
-      }
-
-      hexString = hexString.trim();
-
-      // Check if hex string has invalid characters, return error if it does
-      if (!/^[0-9A-Fa-f\s]*$/.test(hexString)) {
-        throw new Error('contains non-hex characters.');
-      }
-      
-      // Ensure even length
-      if (expectedLength % 2 !== 0) {
-        throw new Error('length must be even.');
-      }
-
-      const length = hexString.length / 2;
-      const result = new Uint8Array(length);
-
-      if (length !== expectedLength) {
-        throw new Error('length must be ' + expectedLength);
-      }
-
-      for (let i = 0; i < length; i++) {
-        const byteStr = hexString.substr(i * 2, 2);
-        result[i] = parseInt(byteStr, 16);
-      }
-
-      return result;
+      updateEncodedMessage(); // Update once shown
     }
 
     async function loadSettings(selectedFile) {
@@ -225,13 +214,14 @@
         registerValues(settingsData.values);
 
       } catch (error) {
-
         throw new Errow(`Error loading settings: ${error.message}`);
       }
     }
 
     function registerValues(data) {
       for (const [key, value] of Object.entries(data)) {
+        // key is the string name of the setting
+        // value includes: id, default, min, max, conversion, etc.
         settingsMap.set(parseInt(value.id, 16), [key, value]);
       }
     }
@@ -242,14 +232,13 @@
 
       for (const key in settings) {
         const prefix = key.split('_')[0];
-
         if (!grouped[prefix]) {
           grouped[prefix] = {};
         }
-
         grouped[prefix][key] = settings[key];
       }
 
+      // Move singletons into "_other"
       for (const prefix in grouped) {
         if (Object.keys(grouped[prefix]).length === 1) {
           const [singleKey] = Object.keys(grouped[prefix]);
@@ -257,11 +246,11 @@
           delete grouped[prefix];
         }
       }
-
       if (Object.keys(other).length > 0) {
         grouped["_other"] = other;
       }
 
+      // Sort groups
       const sortedGroups = Object.keys(grouped).sort().reduce((acc, group) => {
         acc[group] = Object.keys(grouped[group]).sort().reduce((groupAcc, key) => {
           groupAcc[key] = grouped[group][key];
@@ -288,19 +277,32 @@
         settingsSection.appendChild(groupHeading);
 
         for (const [key, setting] of Object.entries(group)) {
+          // Create the top-level container
           const row = document.createElement('div');
           row.className = 'setting';
           row.setAttribute('id', `setting-${setting.id}`);
 
+          // Build the "include" checkbox + label
           let html = `
             <div class="checkbox-container">
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this)"/>
-              <label for="checkbox-${setting.id}"><h4>${key} (${setting.id})</h4></label>
+              <label for="checkbox-${setting.id}"><h4>${key} <small>(${setting.id})</small></h4></label>
             </div>
             <div class="input-container">
           `;
 
-          if (setting.conversion === 'bool') {
+          // 1) If it's one of the three bitmask settings -> render port checkboxes
+          if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
+            html += renderPortCheckboxes(setting);
+          }
+
+          // 2) If the key ends with "_interval" -> render numeric + time-unit select (with auto-guess)
+          else if (intervalPatterns.some(rx => rx.test(key)) && setting.conversion === 'uint32') {
+            html += renderIntervalSetting(key, setting);
+          }
+
+          // 3) If it's a normal bool
+          else if (setting.conversion === 'bool') {
             html += `<select id="new-value-${setting.id}" onchange="updateEncodedMessage()">`;
             if (setting.default) {
               html += `<option value="true" selected>true</option><option value="false">false</option>`;
@@ -308,15 +310,37 @@
               html += `<option value="true">true</option><option value="false" selected>false</option>`;
             }
             html += `</select>`;
-          } else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" value="${setting.default}" oninput="updateEncodedMessage()"/>`;
-          } else if (setting.conversion === 'byte_array') {
+          }
+
+          // 4) If it's a normal numeric input
+          else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+            html += `<input
+              type="number"
+              id="new-value-${setting.id}"
+              min="${setting.min}"
+              max="${setting.max}"
+              step="${setting.conversion === 'float' ? '0.01' : '1'}"
+              value="${setting.default}"
+              oninput="updateEncodedMessage()"
+            />`;
+          }
+
+          // 5) If it's a byte_array
+          else if (setting.conversion === 'byte_array') {
             html += `<textarea id="new-value-${setting.id}" rows="4" oninput="updateEncodedMessage()">${stripBytes(setting.default)}</textarea>`;
-          } else {
+          }
+
+          // 6) If it's a string
+          else if (setting.conversion === 'string') {
             html += `<input type="text" id="new-value-${setting.id}" value="${setting.default}" oninput="updateEncodedMessage()"/>`;
           }
 
-          html += `</div>`;
+          // 7) Otherwise unknown/custom, default to text
+          else {
+            html += `<input type="text" id="new-value-${setting.id}" value="${setting.default}" oninput="updateEncodedMessage()"/>`;
+          }
+
+          html += `</div>`; // close input-container
 
           row.innerHTML = html;
           settingsContainer.appendChild(row);
@@ -326,27 +350,214 @@
       }
     }
 
-    function getSettingInfoById(settingId) {
-      const id = parseInt(settingId, 16);
-      if (!settingsMap.has(id)) {
-        throw new Error(`No setting found for ID: ${settingId}`);
+    // ---------------------------------------------
+    // 1) BITMASK CHECKBOX SETTINGS
+    // ---------------------------------------------
+    function isBitmaskSetting(key) {
+      return (
+        key === 'lr_send_flag' ||
+        key === 'flash_store_flag' ||
+        key === 'sat_send_flag'
+      );
+    }
+
+    function renderPortCheckboxes(setting) {
+      const defaultVal = parseInt(setting.default || 0, 10);
+      let html = `
+        <!-- hidden field to store the final bitmask -->
+        <input type="hidden" id="new-value-${setting.id}" value="${defaultVal}" />
+        <div class="checkbox-scroll">
+      `;
+      for (const [portName, portNum] of Object.entries(settingsData.ports)) {
+        const bitIsSet = (defaultVal & (1 << portNum)) !== 0;
+        const checkboxId = `${portName}-${setting.id}`;
+        html += `
+          <div class="checkbox-container">
+            <input type="checkbox"
+              id="${checkboxId}"
+              onchange="updateBitmaskForSetting('${setting.id}')"
+              ${bitIsSet ? 'checked' : ''}
+            />
+            <label for="${checkboxId}">${portName.replace(/^port_/, "")}</label>
+          </div>
+        `;
       }
-      return settingsMap.get(id);
+      html += `</div>`;
+      return html;
+    }
+
+    function updateBitmaskForSetting(settingId) {
+      const hiddenField = document.getElementById(`new-value-${settingId}`);
+      let bitmask = 0;
+      for (const [portName, portNum] of Object.entries(settingsData.ports)) {
+        const cbId = `${portName}-${settingId}`;
+        const cb = document.getElementById(cbId);
+        if (cb && cb.checked) {
+          bitmask |= (1 << portNum);
+        }
+      }
+      hiddenField.value = bitmask.toString();
+      updateEncodedMessage();
+    }
+
+    // ---------------------------------------------
+    // 2) INTERVAL SETTINGS (ends with "_interval")
+    //    We'll store the real value in SECONDS in a hidden input
+    //    Then show numeric + time units
+    //    With "auto-guess" for the best default unit
+    // ---------------------------------------------
+    function renderIntervalSetting(key, setting) {
+      const defaultSeconds = parseInt(setting.default || 0, 10);
+
+      // Guess a default unit based on the numeric value:
+      // >=86400 => days, >=3600 => hours, >=60 => minutes, else seconds
+      const guessedUnit = guessTimeUnit(defaultSeconds);
+      // Convert the default seconds into that guessed unit
+      const displayValueInGuessedUnit = Math.round(convertSecondsToUnit(defaultSeconds, guessedUnit));
+
+      return `
+        <!-- hidden actual seconds value -->
+        <input type="hidden" id="new-value-${setting.id}" value="${defaultSeconds}" />
+        
+        <!-- The numeric input displayed to user -->
+        <input type="number"
+          id="interval-num-${setting.id}"
+          oninput="updateIntervalValue('${setting.id}')"
+          value="${displayValueInGuessedUnit}" />
+
+        <!-- The time unit select, with guessedUnit pre-selected -->
+        <select id="interval-unit-${setting.id}"
+          onchange="updateIntervalUnit('${setting.id}')">
+          <option value="1"${guessedUnit === '1' ? ' selected' : ''}>second(s)</option>
+          <option value="60"${guessedUnit === '60' ? ' selected' : ''}>minute(s)</option>
+          <option value="3600"${guessedUnit === '3600' ? ' selected' : ''}>hour(s)</option>
+          <option value="86400"${guessedUnit === '86400' ? ' selected' : ''}>day(s)</option>
+        </select>
+      `;
+    }
+
+    function guessTimeUnit(seconds) {
+      if (seconds >= 86400 && (seconds % 86400 === 0)) {
+        return '86400';
+      } else if (seconds >= 3600 && (seconds % 3600 === 0)) {
+        return '3600';
+      } else if (seconds >= 60 && (seconds % 60 === 0)) {
+        return '60';
+      }
+      return '1';
+    }
+
+    // Called when user changes the numeric input for an interval
+    function updateIntervalValue(settingId) {
+      const numericInput = document.getElementById(`interval-num-${settingId}`);
+      const unitSelect = document.getElementById(`interval-unit-${settingId}`);
+      const hiddenField = document.getElementById(`new-value-${settingId}`);
+
+      let displayVal = parseFloat(numericInput.value) || 0;
+      if (displayVal < 0) displayVal = 0; // clamp if needed
+
+      // Convert displayVal from the selected unit -> seconds
+      const totalSeconds = convertUnitToSeconds(displayVal, unitSelect.value);
+
+      // Store in hidden
+      hiddenField.value = Math.round(totalSeconds).toString();
+
+      updateEncodedMessage();
+    }
+
+    // Called when user changes the time unit
+    function updateIntervalUnit(settingId) {
+      const numericInput = document.getElementById(`interval-num-${settingId}`);
+      const unitSelect = document.getElementById(`interval-unit-${settingId}`);
+      const hiddenField = document.getElementById(`new-value-${settingId}`);
+
+      // Current total seconds in hidden
+      let currentSeconds = parseInt(hiddenField.value, 10) || 0;
+
+      // Convert to new unit
+      const displayVal = Math.ceil(convertSecondsToUnit(currentSeconds, unitSelect.value));
+
+      numericInput.value = displayVal;
+
+      // Convert displayVal from the selected unit -> seconds
+      const totalSeconds = convertUnitToSeconds(displayVal, unitSelect.value);
+
+      // Store in hidden
+      hiddenField.value = Math.round(totalSeconds).toString();
+
+      // We keep storing in hidden as seconds
+      updateEncodedMessage();
+    }
+
+    function convertUnitToSeconds(value, unit) {
+      console.log("convertUnitToSeconds", value, unit);
+      return value * parseInt(unit, 10);
+    }
+
+    function convertSecondsToUnit(valueInSeconds, unit) {
+      console.log("convertSecondsToUnit", valueInSeconds, unit);
+      return valueInSeconds / parseInt(unit);
+    }
+
+    // ---------------------------------------------
+    // Shared logic
+    // ---------------------------------------------
+    function updateCheckBox(element) {
+      if (element.checked) {
+        element.parentElement.parentElement.classList.add('checked');
+      } else {
+        element.parentElement.parentElement.classList.remove('checked');
+      }
+      updateEncodedMessage();
+    }
+
+    function toHex(byte) {
+      return byte.toString(16).toUpperCase().padStart(2, '0');
+    }
+
+    function bytesToHex(bytes) {
+      return Array.from(bytes).map(toHex).join('');
+    }
+
+    function stripBytes(s) {
+      return s.replace(/0x/g, '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
+    }
+
+    function stringToUint8Array(hexString, expectedLength) {
+      if (!hexString || typeof hexString !== 'string') {
+        return new Uint8Array();
+      }
+      hexString = hexString.trim();
+      if (!/^[0-9A-Fa-f\s]*$/.test(hexString)) {
+        throw new Error('contains non-hex characters.');
+      }
+      const requiredHexLength = expectedLength * 2;
+      if (hexString.length !== requiredHexLength) {
+        throw new Error(`length must be ${requiredHexLength} hex chars for ${expectedLength} bytes`);
+      }
+      const result = new Uint8Array(expectedLength);
+      for (let i = 0; i < expectedLength; i++) {
+        const byteStr = hexString.substr(i * 2, 2);
+        result[i] = parseInt(byteStr, 16);
+      }
+      return result;
     }
 
     function validateInput(newValue, setting) {
-      // Basic validation logic
       if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-        const parsedValue = setting.conversion === 'float' ? parseFloat(newValue) : parseInt(newValue, 10);
+        const parsedValue = (setting.conversion === 'float')
+          ? parseFloat(newValue)
+          : parseInt(newValue, 10);
         if (isNaN(parsedValue) || parsedValue < setting.min || parsedValue > setting.max) {
           throw new Error(`Invalid value for ${setting.id}: Must be between ${setting.min} and ${setting.max}`);
         }
       } else if (setting.conversion === 'bool') {
-        if (newValue.toLowerCase() !== 'true' && newValue.toLowerCase() !== 'false') {
+        const valLower = newValue.toLowerCase();
+        if (valLower !== 'true' && valLower !== 'false') {
           throw new Error(`Invalid value for ${setting.id}: Must be 'true' or 'false'`);
         }
       } else if (setting.conversion === 'byte_array') {
-        const pattern = /^\{(0x[0-9A-Fa-f]{2}(\s*,\s*0x[0-9A-Fa-f]{2})*)\}$/;
+        // must match length
         try {
           stringToUint8Array(newValue, setting.length);
         } catch (error) {
@@ -355,105 +566,108 @@
       }
     }
 
-    function updateCheckBox(element) {
-      if (element.checked) {
-        element.parentElement.parentElement.classList.add('checked');
-      } else {
-        element.parentElement.parentElement.classList.remove('checked');
-      }
-
-      updateEncodedMessage();
-    }
-
+    // ---------------------------------------------
+    // Build final payload
+    // ---------------------------------------------
     function updateEncodedMessage() {
-      // Gather all checked settings and encode them
       const hexOutput = document.getElementById('hex-output');
       const payloadType = document.getElementById('payload-type');
 
       const encodedBytes = [];
-      // Let's create a combined message: for each checked setting, we encode as [0x03, setting_id, length, valueBytes...]
-      // This is just an example format. You can adapt as needed.
-
-      // Iterate over all settings
       hexOutput.classList.remove('invalid');
 
-      for (const [key, val] of settingsMap) {
-        const setting = val[1];
-        const checkbox = document.getElementById(`checkbox-${setting.id}`);
-        const inputElement = document.getElementById(`new-value-${setting.id}`);
-        if (checkbox && checkbox.checked) {
-          const newValue = inputElement.value.trim();
-          try {
-            validateInput(newValue, setting);
-          } catch (error) {
-            hexOutput.value = `Error: ${error.message}`;
-            hexOutput.classList.add('invalid');
-            return;
-          }
+      // Iterate each known setting
+      for (const [intId, val] of settingsMap) {
+        const [settingKey, settingObj] = val;
 
-          let valueBytes;
-
-          if (setting.conversion === 'uint32') {
-            const intValue = parseInt(newValue, 10);
-            valueBytes = new Uint8Array(new Uint32Array([intValue]).buffer);
-          } else if (setting.conversion === 'uint16') {
-            const intValue = parseInt(newValue, 10);
-            valueBytes = new Uint8Array(new Uint16Array([intValue]).buffer);
-          } else if (setting.conversion === 'uint8' || setting.conversion === 'int8') {
-            valueBytes = new Uint8Array([parseInt(newValue, 10)]);
-          } else if (setting.conversion === 'int32') {
-            const intValue = parseInt(newValue, 10);
-            valueBytes = new Uint8Array(new Int32Array([intValue]).buffer);
-          } else if (setting.conversion === 'float') {
-            valueBytes = new Uint8Array(new Float32Array([parseFloat(newValue)]).buffer);
-          } else if (setting.conversion === 'bool') {
-            valueBytes = new Uint8Array([newValue.toLowerCase() === 'true' ? 1 : 0]);
-          } else if (setting.conversion === 'byte_array') {
-            valueBytes = stringToUint8Array(newValue, setting.length);
-          } else if (setting.conversion === 'string') {
-            valueBytes = new TextEncoder().encode(newValue);
-          } else {
-            hexOutput.value = `Unknown conversion type for ${val[0]}: ${setting.conversion}`;
-            return;
-          }
-
-          const length = valueBytes.length;
-          const idInt = parseInt(setting.id, 16);
-
-          // Push the encoded setting message
-          encodedBytes.push(idInt, length, ...valueBytes);
+        // The top-level "include" checkbox
+        const checkbox = document.getElementById(`checkbox-${settingObj.id}`);
+        if (!checkbox || !checkbox.checked) {
+          continue; // user didn't select it
         }
+
+        // Get the user value from whichever input
+        const inputElement = document.getElementById(`new-value-${settingObj.id}`);
+        if (!inputElement) {
+          continue;
+        }
+        const newValue = inputElement.value.trim();
+
+        // Validate
+        try {
+          validateInput(newValue, settingObj);
+        } catch (error) {
+          hexOutput.value = `Error: ${error.message}`;
+          hexOutput.classList.add('invalid');
+          return;
+        }
+
+        // Convert to bytes
+        let valueBytes;
+        if (settingObj.conversion === 'uint32') {
+          const intValue = parseInt(newValue, 10);
+          valueBytes = new Uint8Array(new Uint32Array([intValue]).buffer);
+        } else if (settingObj.conversion === 'uint16') {
+          const intValue = parseInt(newValue, 10);
+          valueBytes = new Uint8Array(new Uint16Array([intValue]).buffer);
+        } else if (settingObj.conversion === 'uint8' || settingObj.conversion === 'int8') {
+          valueBytes = new Uint8Array([parseInt(newValue, 10)]);
+        } else if (settingObj.conversion === 'int32') {
+          const intValue = parseInt(newValue, 10);
+          valueBytes = new Uint8Array(new Int32Array([intValue]).buffer);
+        } else if (settingObj.conversion === 'float') {
+          valueBytes = new Uint8Array(new Float32Array([parseFloat(newValue)]).buffer);
+        } else if (settingObj.conversion === 'bool') {
+          valueBytes = new Uint8Array([newValue.toLowerCase() === 'true' ? 1 : 0]);
+        } else if (settingObj.conversion === 'byte_array') {
+          valueBytes = stringToUint8Array(newValue, settingObj.length);
+        } else if (settingObj.conversion === 'string') {
+          valueBytes = new TextEncoder().encode(newValue);
+        } else {
+          // unknown or custom
+          continue;
+        }
+
+        // Example format: [settingId, length, valueBytes...]
+        const length = valueBytes.length;
+        const idInt = parseInt(settingObj.id, 16);
+
+        encodedBytes.push(idInt, length, ...valueBytes);
       }
 
+      // If nothing is selected
       if (encodedBytes.length === 0) {
         hexOutput.value = '(no settings selected)';
-      } else {
-        if (payloadType.value === 'lorawan') {
-          hexOutput.value = bytesToHex(encodedBytes);
-        } else if (payloadType.value === 'rockblock') {
-          // Add RockBlock header
-          encodedBytes.unshift(0x03);
-          hexOutput.value = bytesToHex(encodedBytes);
-        } else if (payloadType.value === 'ble') {
-          // Add BLE header
-          encodedBytes.unshift(0x03);
-          hexOutput.value = Array.from(encodedBytes).map(b => `0x${toHex(b)}`).join(' ');
-        }
+        return;
+      }
+
+      // Depending on payloadType
+      if (payloadType.value === 'lorawan') {
+        hexOutput.value = bytesToHex(encodedBytes);
+      } else if (payloadType.value === 'rockblock') {
+        // Example: prepend 0x03 for rockblock
+        encodedBytes.unshift(0x03);
+        hexOutput.value = bytesToHex(encodedBytes);
+      } else if (payloadType.value === 'ble') {
+        // Example: prepend 0x03 for BLE
+        encodedBytes.unshift(0x03);
+        hexOutput.value = encodedBytes.map(b => '0x' + toHex(b)).join(' ');
       }
     }
 
+    // Copy to clipboard
     function copyToClipboard() {
       updateEncodedMessage();
       const hexOutput = document.getElementById('hex-output');
       navigator.clipboard.writeText(hexOutput.value).then(() => {
-        // Optionally, you could provide a visual feedback like changing button text or color briefly.
+        // optionally provide feedback
       }).catch(err => {
         console.error('Could not copy text: ', err);
       });
     }
 
+    // Load first file on page load
     loadSelectedFile();
   </script>
 </body>
-
 </html>
