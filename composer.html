@@ -6,9 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Settings HEX Composer</title>
   <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+    }
+
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
+      width: 100%;
       background-color: #90AE9B;
     }
 
@@ -32,6 +37,11 @@
       box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
       position: relative;
     }
+
+    h1, h3, .controls, .setting {
+      margin-left: 10px;
+      margin-right: 10px;
+    }
     
     .setting.checked {
       opacity: 1;
@@ -41,6 +51,7 @@
       padding: 0;
       margin: 0;
       font-size: 16px;
+      word-break: break-all;
     }
 
     .setting h4 small {
@@ -169,7 +180,6 @@
 
   <div id="container"></div>
 
-  <h2>Settings</h2>
   <div id="settings-section"></div>
 
   <div id="floating-bar">
