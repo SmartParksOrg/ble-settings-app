@@ -5,188 +5,35 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenCollar Edge BLE Web Connect</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
-      background-color: #90AE9B;
-      /* Light green background */
-    }
-
-    .log {
-      background-color: #f9f9f9;
-      border: 1px solid #ccc;
-      padding: 10px;
-      height: 200px;
-      overflow-y: scroll;
-      white-space: pre-wrap;
-      display: none;
-      /* Hidden by default */
-    }
-
-    .log-entry {
-      margin-bottom: 5px;
-    }
-
-    .controls {
-      margin-bottom: 20px;
-    }
-
-    .setting {
-      padding: 10px;
-      word-wrap: break-word;
-      border: 1px solid #fff;
-      border-radius: 10px;
-      background-color: #fff;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
-    }
-
-    .setting.value-not-default {
-      background-color: #a0bfc3;
-    }
-
-    .setting button {
-      margin-top: 5px;
-    }
-
-    .setting h4 {
-      padding: 0;
-      margin: 0 0 5px;
-      font-size: 16px;
-    }
-
-    .setting input,
-    .setting select,
-    .setting textarea {
-      width: 90%;
-      display: block;
-    }
-
-    .settings-container {
-      display: grid;
-      gap: 10px;
-      grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
-    }
-
-    #settings-progress {
-      display: none;
-      border: 1px solid #52735E;
-      height: 20px;
-      margin-bottom: 10px;
-    }
-
-    #settings-progress div {
-      background-color: #52735E;
-      height: 100%;
-    }
-
-    input.invalid {
-      border: 2px solid red;
-    }
-
-    button {
-      background-color: #52735E;
-      /* Dark green buttons */
-      border: 1px solid #52735E;
-      color: white;
-      padding: 10px 20px;
-      border: none;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background-color: #426052;
-      /* Slightly darker on hover */
-    }
-
-    button.secondary {
-      background-color: #fff;
-      /* Dark grey buttons */
-      color: #000;
-      border: 1px solid #52735E;
-    }
-
-    button.secondary:hover {
-      background-color: #f2f2f2;
-      /* Slightly darker on hover */
-    }
-
-    button:disabled {
-      background-color: #606060;
-      color: white;
-      cursor: default;
-    }
-
-    #container {
-      display: grid;
-      gap: 10px;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    }
-
-    .section {
-      padding: 10px;
-      background-color: white;
-      border-radius: 10px;
-      box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
-    }
-
-    #settings-section h3 {
-      text-transform: capitalize;
-    }
-
-    .section h4 {
-      color: #52735E;
-      margin: 0 0 10px;
-    }
-
-    .data-item {
-      display: flex;
-      justify-content: space-between;
-      padding: 5px 0;
-      border-bottom: 1px solid #ddd;
-    }
-
-    .data-item:last-child {
-      border-bottom: none;
-    }
-
-    #errors {
-      margin-bottom: 10px;
-    }
-
-    #errors span {
-      color: rgb(132, 0, 0);
-      font-weight: bold;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css" />
+  <script src="functions.js"></script>
 </head>
 
 <body>
-  <h1>OpenCollar Edge BLE Web Connect</h1>
+  <div id="header-section">
+    <h1>OpenCollar Edge BLE Web Connect</h1>
 
-  <div class="controls">
-    <button id="connect-button">Connect to Device</button>
-    <button id="disconnect-button" disabled>Disconnect</button>
-    <div id="settings-selection" style="display:none;">
-      <label for="settings-dropdown">Choose a settings file:</label>
-      <select id="settings-dropdown"></select>
-      <button id="load-settings-button">Load setting.json</button> <!-- Load button -->
+    <div class="controls">
+      <button id="connect-button">Connect to Device</button>
+      <button id="disconnect-button" disabled>Disconnect</button>
+      <div id="settings-selection" style="display:none;">
+        <label for="settings-dropdown">Choose a settings file:</label>
+        <select id="settings-dropdown"></select>
+        <button id="load-settings-button">Load setting.json</button> <!-- Load button -->
+      </div>
+      <div id="errors"></div>
+      <div id="container">
+      </div>
     </div>
-    <div id="errors"></div>
-    <div id="container">
+
+    <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
+
+    <div class="log" id="log"></div>
+
+    <h2>Settings</h2>
+    <div id="settings-progress">
+      <div></div>
     </div>
-  </div>
-
-  <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
-
-  <div class="log" id="log"></div>
-
-  <h2>Settings</h2>
-  <div id="settings-progress">
-    <div></div>
   </div>
   <div id="settings-section"></div>
 
@@ -195,11 +42,12 @@
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
 
+    function onInputChanged() {
+    }
+
     let device, server, txCharacteristic, rxCharacteristic;
-    let settingsData = null;
     let readPromiseResolve = null;
     let readPromiseReject = null;
-    let bleReadableValues = new Map();
 
     // Toggle log visibility
     document.getElementById('toggle-log').addEventListener('click', function () {
@@ -213,10 +61,19 @@
       }
     });
 
-    document.getElementById('load-settings-button').addEventListener('click', function () {
+    document.getElementById('load-settings-button').addEventListener('click', async function () {
       const selectedFile = document.getElementById('settings-dropdown').value;
       log(`Loading settings from ${selectedFile}...`);
-      loadSettings(selectedFile); // Load the selected JSON file
+
+      try {
+        await loadSettings(selectedFile);
+        log(`Settings from ${selectedFile} loaded successfully.`);
+        displaySettings();
+        await fetchAllSettings();
+      } catch (error) {
+        console.error(error);
+        log(`Error loading settings: ${error.message}`, true);
+      }
     });
 
     async function loadAvailableSettings() {
@@ -243,48 +100,8 @@
       }
     }
 
-    function toHex(byte) {
-      return `0x${byte.toString(16).toUpperCase().padStart(2, '0')}`;
-    }
-
-    function bytesToHex(bytes) {
-      return `{${Array.from(bytes).map(toHex).join(', ')}}`;
-    }
-
-    function stringToUint8Array(hexString) {
-      // Check if the input is null, undefined, or not a string
-      if (!hexString || typeof hexString !== 'string') {
-        return new Uint8Array();
-      }
-
-      return new Uint8Array(hexString
-        .replace(/{|}/g, '')  // remove curly braces
-        .split(',')           // split by commas
-        .map(part => parseInt(part.trim().replace(/0x/i, ''))) // remove "0x" prefix and trim spaces, convert to int
-        .map(hex => parseInt(hex, 16))); // convert hex to integer
-    }
-
     function sleep(ms) {
       return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    function getBleReadableValue(id) {
-      if (typeof id === 'string' || id instanceof String) {
-        id = parseInt(id, 16);
-      }
-
-      if (!bleReadableValues.has(id)) {
-        throw new Error(`Value with ID ${toHex(id)} not found`);
-      }
-
-      return bleReadableValues.get(id);
-    }
-
-    function registerBleReadableValues(data) {
-      // Store settings with 'id' as key in the map
-      for (const [key, value] of Object.entries(data)) {
-        bleReadableValues.set(parseInt(value.id, 16), [key, value]);
-      }
     }
 
     function decodeHwFwType(t) {
@@ -456,69 +273,6 @@
       `;
     }
 
-    async function loadSettings(selectedFile) {
-      try {
-        const response = await fetch(selectedFile); // Load the selected JSON file
-        settingsData = await response.json();
-        bleReadableValues = new Map();
-
-        registerBleReadableValues(settingsData.settings);
-        registerBleReadableValues(settingsData.values);
-
-        log(`Settings from ${selectedFile} loaded successfully.`);
-
-        displaySettings();
-
-        await fetchAllSettings();
-      } catch (error) {
-        console.error(error);
-        log(`Error loading settings: ${error.message}`, true);
-      }
-    }
-
-    // Function to group settings by the prefix, move single-item groups to "other", and sort
-    function groupAndSortSettings(settings) {
-      const grouped = {};
-      const other = {};
-
-      // Group settings by prefix
-      for (const key in settings) {
-        const prefix = key.split('_')[0];
-
-        if (!grouped[prefix]) {
-          grouped[prefix] = {};
-        }
-
-        grouped[prefix][key] = settings[key];
-      }
-
-      // Move single-item groups to "other"
-      for (const prefix in grouped) {
-        if (Object.keys(grouped[prefix]).length === 1) {
-          const [key] = Object.keys(grouped[prefix]);
-          other[key] = grouped[prefix][key];
-          delete grouped[prefix];
-        }
-      }
-
-      // Add the "other" group if needed
-      if (Object.keys(other).length > 0) {
-        grouped["_other"] = other;
-      }
-
-      // Sort the groups alphabetically
-      const sortedGroups = Object.keys(grouped).sort().reduce((acc, group) => {
-        // Sort the keys within each group alphabetically
-        acc[group] = Object.keys(grouped[group]).sort().reduce((groupAcc, key) => {
-          groupAcc[key] = grouped[group][key];
-          return groupAcc;
-        }, {});
-        return acc;
-      }, {});
-
-      return sortedGroups;
-    }
-
     function displaySettings() {
       const settingsSection = document.getElementById('settings-section');
       settingsSection.innerHTML = '';
@@ -532,36 +286,18 @@
 
         for (const [key, setting] of Object.entries(group)) {
           const row = document.createElement('div');
-          row.className = 'setting';
+          row.className = 'setting disabled';
           row.setAttribute('id', `setting-${setting.id}`);
-          html = `
-          <h4>${key} (${setting.id})</h4>
-        `;
+          row.innerHTML = `
+          <h4>${key} (${setting.id})</h4> 
+          
+          ${renderInput(key, setting)}
 
-          if (setting.conversion === 'bool') {
-            html += `
-              <select id="new-value-${setting.id}" disabled>
-                <option value="true">true</option>
-                <option value="false">false</option>
-              </select>
-          `;
-          } else if (setting.conversion === 'uint32' || setting.conversion === 'uint16' || setting.conversion === 'uint8' || setting.conversion === 'int32' || setting.conversion === 'int8') {
-            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" disabled/>`;
-          } else if (setting.conversion === 'float') {
-            html += `<input type="number" id="new-value-${setting.id}" min="${setting.min}" max="${setting.max}" step="0.01" disabled/>`;
-          } else if (setting.conversion === 'byte_array') {
-            html += `<textarea id="new-value-${setting.id}" rows="4" disabled/></textarea>`;
-          } else {
-            html += `<input type="text" id="new-value-${setting.id}" disabled/>`;
-          }
-
-          html += `
           <div>
-            <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')" disabled>Update</button>
-            <button id="reset-button-${setting.id}" onclick="resetSetting('${setting.id}')" class="secondary" title="Default value: ${setting.default}" disabled>Set default</button>
+            <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
+            <button id="reset-button-${setting.id}" onclick="resetSetting('${setting.id}')" class="secondary" title="Default value: ${setting.default}">Set default</button>
           </div>
         `;
-          row.innerHTML = html;
           settingsContainer.appendChild(row);
         }
         settingsSection.appendChild(settingsContainer);
@@ -648,33 +384,9 @@
       const length = data[2];
       const valueBytes = data.slice(3, 3 + length);
 
-      const [key, valueMeta] = getBleReadableValue(valueId);
+      const [key, valueMeta] = getById(valueId);
 
-      let value;
-
-      // Handling different data types
-      if (valueMeta.conversion === 'uint32') {
-        value = new DataView(new Uint8Array(valueBytes).buffer).getUint32(0, true);
-      } else if (valueMeta.conversion === 'uint16') {
-        value = new DataView(new Uint8Array(valueBytes).buffer).getUint16(0, true);
-      } else if (valueMeta.conversion === 'uint8') {
-        value = valueBytes[0];
-      } else if (valueMeta.conversion === 'int32') {
-        value = new DataView(new Uint8Array(valueBytes).buffer).getInt32(0, true);
-      } else if (valueMeta.conversion === 'int8') {
-        value = new DataView(new Uint8Array(valueBytes).buffer).getInt8(0);
-      } else if (valueMeta.conversion === 'bool') {
-        value = valueBytes[0] !== 0;
-      } else if (valueMeta.conversion === 'float') {
-        value = new DataView(new Uint8Array(valueBytes).buffer).getFloat32(0, true);
-      } else if (valueMeta.conversion === 'byte_array') {
-        value = bytesToHex(valueBytes);
-      } else if (valueMeta.conversion === 'string') {
-        value = new TextDecoder().decode(new Uint8Array(valueBytes));
-      } else {
-        log(`Unknown conversion type for ${key}: ${valueMeta.conversion}`, true);
-        return "???";
-      }
+      let value = bytesToSetting(valueMeta, valueBytes);
 
       log(`Decoded setting response: ${key} = ${value}`);
       return value;
@@ -691,33 +403,21 @@
     }
 
     function isValueNotDefault(settingId, value) {
-      const [key, valueMeta] = getBleReadableValue(settingId);
+      const [key, valueMeta] = getById(settingId);
       if (valueMeta.conversion === 'byte_array') {
-        return !arraysEqual(stringToUint8Array(value), stringToUint8Array(valueMeta.default));
+        return !arraysEqual(stringToUint8Array(value, valueMeta.length), stringToUint8Array(stripBytes(valueMeta.default), valueMeta.length));
       }
       return value !== valueMeta.default;
     }
 
-    function updateSettingDisplay(settingId, value, isUpdated = false) {
-      const [key, valueMeta] = getBleReadableValue(settingId);
+    function updateSettingDisplay(settingId, value) {
+      const [key, valueMeta] = getById(settingId);
 
-      const inputElement = document.getElementById(`new-value-${settingId}`);
-      const updateButton = document.getElementById(`update-button-${settingId}`);
-      const resetButton = document.getElementById(`reset-button-${settingId}`);
-
-      inputElement.value = value;
-      inputElement.disabled = false;
-      updateButton.disabled = false;
-      resetButton.disabled = false;
+      setInputValue(settingId, value);
 
       const rowElement = document.getElementById(`setting-${settingId}`);
       if (rowElement) {
-        if (isUpdated) {
-          rowElement.classList.add('value-updated');
-        } else {
-          rowElement.classList.remove('value-updated');
-        }
-
+        rowElement.classList.remove('disabled');
         if (isValueNotDefault(settingId, value)) {
           rowElement.classList.add('value-not-default');
         } else {
@@ -785,53 +485,20 @@
     }
 
     async function resetSetting(settingId) {
-      const inputElement = document.getElementById(`new-value-${settingId}`);
-      const [settingKey, setting] = getBleReadableValue(settingId);
-      inputElement.value = setting.default;
+      const [settingKey, setting] = getById(settingId);
+      setInputValue(settingId, setting.default);
     }
 
     async function updateSetting(settingId) {
-      const inputElement = document.getElementById(`new-value-${settingId}`);
-      const updateButton = document.getElementById(`update-button-${settingId}`);
-      const resetButton = document.getElementById(`reset-button-${settingId}`);
+      const [settingKey, setting] = getById(settingId);
 
-      const newValue = inputElement.value.trim();
-
-      if (!newValue) {
-        log(`No new value provided for setting ID: ${settingId}`, true);
-        return;
-      }
-
-      const [settingKey, setting] = getBleReadableValue(settingId);
-
-      // Validate input
-      if (!validateInput(newValue, setting)) return;
+      const newValue = getInputValue(setting.id);
 
       let valueBytes;
-
-      if (setting.conversion === 'uint32') {
-        const intValue = parseInt(newValue, 10);
-        valueBytes = new Uint8Array(new Uint32Array([intValue]).buffer);
-      } else if (setting.conversion === 'uint16') {
-        const intValue = parseInt(newValue, 10);
-        valueBytes = new Uint8Array(new Uint16Array([intValue]).buffer);
-      } else if (setting.conversion === 'uint8') {
-        valueBytes = new Uint8Array([parseInt(newValue, 10)]);
-      } else if (setting.conversion === 'int32') {
-        const intValue = parseInt(newValue, 10);
-        valueBytes = new Uint8Array(new Int32Array([intValue]).buffer);
-      } else if (setting.conversion === 'int8') {
-        valueBytes = new Uint8Array([parseInt(newValue, 10)]);
-      } else if (setting.conversion === 'float') {
-        valueBytes = new Uint8Array(new Float32Array([parseFloat(newValue)]).buffer);
-      } else if (setting.conversion === 'bool') {
-        valueBytes = new Uint8Array([newValue.toLowerCase() === 'true' ? 1 : 0]);
-      } else if (setting.conversion === 'byte_array') {
-        valueBytes = stringToUint8Array(newValue);
-      } else if (setting.conversion === 'string') {
-        valueBytes = new TextEncoder().encode(newValue);
-      } else {
-        log(`Unknown conversion type for ${settingKey}: ${setting.conversion}`, true);
+      try {
+        valueBytes = settingToBytes(setting, newValue);
+      } catch (error) {
+        log(error.message, true);
         return;
       }
 
@@ -839,53 +506,20 @@
       const command = [0x03, parseInt(settingId, 16), length, ...valueBytes];
       const commandBuffer = new Uint8Array(command).buffer;
 
-
       log(`Sending update for ${settingKey} (ID: ${settingId}) with value: ${newValue}`);
 
+      const rowElement = document.getElementById(`setting-${settingId}`);
       try {
-        updateButton.disabled = true;
-        inputElement.disabled = true;
-        resetButton.disabled = true;
+        rowElement.classList.add('disabled');
         await rxCharacteristic.writeValue(commandBuffer);
         log(`Value updated successfully for ${settingKey} (ID: ${settingId})`);
         await sleep(1000);
-        updateSettingDisplay(settingId, await requestBleValue(settingId, CMD_SINGLE_SETTING), true);
+        updateSettingDisplay(settingId, await requestBleValue(settingId, CMD_SINGLE_SETTING));
       } catch (error) {
         log(`Error sending update for ${settingKey}: ${error.message}`, true);
       } finally {
-        updateButton.disabled = false;
-        inputElement.disabled = false;
-        resetButton.disabled = false;
+        rowElement.classList.remove('disabled');
       }
-    }
-
-    function validateInput(newValue, setting) {
-      const inputElement = document.getElementById(`new-value-${setting.id}`);
-
-      if (setting.conversion === 'uint32' || setting.conversion === 'uint16' || setting.conversion === 'uint8' || setting.conversion === 'int32') {
-        const parsedValue = parseInt(newValue, 10);
-        if (isNaN(parsedValue) || parsedValue < setting.min || parsedValue > setting.max) {
-          log(`Invalid value for ${setting.id}: Must be between ${setting.min} and ${setting.max}`, true);
-          inputElement.classList.add('invalid');
-          return false;
-        }
-      } else if (setting.conversion === 'bool') {
-        if (newValue.toLowerCase() !== 'true' && newValue.toLowerCase() !== 'false') {
-          log(`Invalid value for ${setting.id}: Must be 'true' or 'false'`, true);
-          inputElement.classList.add('invalid');
-          return false;
-        }
-      } else if (setting.conversion === 'byte_array') {
-        const byteArray = newValue.replace(/[{}]/g, '').split(',');
-        if (byteArray.length !== setting.length || byteArray.some(byte => isNaN(parseInt(byte, 16)))) {
-          log(`Invalid byte array for ${setting.id}. Expected length: ${setting.length}`, true);
-          inputElement.classList.add('invalid');
-          return false;
-        }
-      }
-
-      inputElement.classList.remove('invalid');
-      return true;
     }
   </script>
 </body>

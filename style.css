@@ -1,0 +1,259 @@
+body,
+html {
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    width: 100%;
+    background-color: #90AE9B;
+}
+
+.log {
+    background-color: #f9f9f9;
+    border: 1px solid #ccc;
+    padding: 10px;
+    height: 200px;
+    overflow-y: scroll;
+    white-space: pre-wrap;
+    display: none;
+    /* Hidden by default */
+}
+
+.log-entry {
+    margin-bottom: 5px;
+}
+
+.controls {
+    margin-bottom: 20px;
+}
+
+input,
+select,
+textarea {
+    box-sizing: border-box;
+}
+
+#header-section, #settings-section {
+    padding: 10px;
+}
+
+.setting {
+    opacity: 1;
+    padding: 10px;
+    word-wrap: break-word;
+    border: 1px solid #fff;
+    border-radius: 10px;
+    background-color: #fff;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
+    position: relative;
+}
+
+.input-error {
+    color: red;
+    font-size: 90%;
+    font-weight: bold;
+    padding-top: 3px;
+}
+
+.setting.value-not-default {
+    background-color: #a0bfc3;
+}
+
+.setting.disabled {
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.setting button {
+    margin-top: 5px;
+}
+
+.setting.transparent {
+    opacity: 0.6;
+}
+
+.setting h4 {
+    padding: 0;
+    margin: 0;
+    font-size: 16px;
+    word-break: break-all;
+}
+
+.setting h4 small {
+    font-weight: normal;
+}
+
+.setting .input-container input,
+.setting .input-container select,
+.setting .input-container textarea {
+    width: 100%;
+    display: block;
+    margin-top: 5px;
+}
+
+.setting .input-container .checkbox-container input {
+    width: auto;
+}
+
+.settings-container {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+}
+
+#settings-progress {
+    display: none;
+    border: 1px solid #52735E;
+    height: 20px;
+    margin-bottom: 10px;
+}
+
+#settings-progress div {
+    background-color: #52735E;
+    height: 100%;
+}
+
+button {
+    background-color: #52735E;
+    /* Dark green buttons */
+    border: 1px solid #52735E;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #426052;
+    /* Slightly darker on hover */
+}
+
+button.secondary {
+    background-color: #fff;
+    /* Dark grey buttons */
+    color: #000;
+    border: 1px solid #52735E;
+}
+
+button.secondary:hover {
+    background-color: #f2f2f2;
+    /* Slightly darker on hover */
+}
+
+button:disabled {
+    background-color: #606060;
+    color: white;
+    cursor: default;
+}
+
+#hex-output.invalid {
+    border: 2px solid red;
+}
+
+#container {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+
+.section {
+    padding: 10px;
+    background-color: white;
+    border-radius: 10px;
+    box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
+}
+
+#settings-section {
+    margin-bottom: 100px;
+}
+
+#settings-section h3 {
+    text-transform: capitalize;
+}
+
+.section h4 {
+    color: #52735E;
+    margin: 0 0 10px;
+}
+
+/* Floating bar at the bottom */
+#floating-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background-color: #52735E;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    font-family: monospace;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.checkbox-container label {
+    margin-left: 5px;
+    cursor: pointer;
+}
+
+#hex-output {
+    width: 70%;
+    padding: 5px;
+    font-family: monospace;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    background: #fff;
+    color: #000;
+}
+
+#copy-button {
+    background-color: #fff;
+    color: #000;
+    border: 1px solid #52735E;
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+#copy-button:hover {
+    background-color: #f2f2f2;
+}
+
+/* Scrollable container for port checkboxes (for lr_send_flag, etc.) */
+.checkbox-scroll {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #ccc;
+    padding: 5px;
+    border-radius: 5px;
+    background: #fafafa;
+}
+
+.data-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 5px 0;
+    border-bottom: 1px solid #ddd;
+}
+
+.data-item:last-child {
+    border-bottom: none;
+}
+
+#errors {
+    margin-bottom: 10px;
+}
+
+#errors span {
+    color: rgb(132, 0, 0);
+    font-weight: bold;
+}
