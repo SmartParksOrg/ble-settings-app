@@ -76,24 +76,9 @@
       }
     });
 
-    async function loadAvailableSettings() {
+    function loadAvailableSettings() {
       try {
-        // Static list of settings files
-        const files = [
-          "settings-v6.9.0.json",
-          "settings-v6.8.1.json",
-          "settings-v4.4.2.json"
-        ];
-        const dropdown = document.getElementById('settings-dropdown');
-        dropdown.innerHTML = ''; // Clear previous options
-
-        files.forEach(file => {
-          const option = document.createElement('option');
-          option.value = `./settings/${file}`;
-          option.textContent = file;
-          dropdown.appendChild(option);
-        });
-
+        populateSettingsIntoPage();
         document.getElementById('settings-selection').style.display = 'block'; // Show the dropdown and load button
       } catch (error) {
         log(`Error fetching settings files: ${error.message}`, true);
@@ -334,7 +319,7 @@
         log(`Connected to device: ${device.name}`);
 
         // Load available settings files (instead of loading automatically)
-        await loadAvailableSettings();
+        loadAvailableSettings();
         await displayStatusMessage();
       } catch (error) {
         log(`Error: ${error.message}`, true);

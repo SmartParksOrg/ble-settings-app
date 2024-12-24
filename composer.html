@@ -15,11 +15,7 @@
 
   <div class="controls">
     <label for="settings-dropdown">Choose a settings file:</label>
-    <select id="settings-dropdown" onchange="loadSelectedFile()">
-      <option value="./settings/settings-v6.9.0.json">settings-v6.9.0.json</option>
-      <option value="./settings/settings-v6.8.1.json">settings-v6.8.1.json</option>
-      <option value="./settings/settings-v4.4.2.json">settings-v4.4.2.json</option>
-    </select>
+    <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
   </div>
   </div>
 
@@ -161,6 +157,8 @@
         console.error('Could not copy text: ', err);
       });
     }
+
+    populateSettingsIntoPage();
 
     // Load first file on page load
     loadSelectedFile();

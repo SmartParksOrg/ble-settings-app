@@ -10,6 +10,26 @@ const bitmapSettings = ['lr_send_flag', 'flash_store_flag', 'sat_send_flag'];
 
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
 
+// Static list of settings files
+const files = [
+    "settings-v6.10.0.json",
+    "settings-v6.9.0.json",
+    "settings-v6.8.1.json",
+    "settings-v4.4.2.json"
+];
+
+function populateSettingsIntoPage() {
+    const dropdown = document.getElementById('settings-dropdown');
+    dropdown.innerHTML = ''; // Clear previous options
+
+    files.forEach(file => {
+        const option = document.createElement('option');
+        option.value = `./settings/${file}`;
+        option.textContent = file;
+        dropdown.appendChild(option);
+    });
+}
+
 async function loadSettings(selectedFile) {
     settingsData = null;
     settingsMap = new Map();
