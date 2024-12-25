@@ -121,7 +121,7 @@ function renderPortCheckboxes(setting, value) {
             continue;
         }
 
-        const bitIsSet = (defaultVal & (1 << portNum)) !== 0;
+        const bitIsSet = (defaultVal & (1 << (portNum - 1))) !== 0;
         const checkboxId = `${portName}-${setting.id}`;
         html += `
             <div class="checkbox-container">
@@ -292,10 +292,10 @@ function updateBitmaskForSetting(settingId) {
         const cbId = `${portName}-${settingId}`;
         const cb = document.getElementById(cbId);
         if (cb && cb.checked) {
-            bitmask |= (1 << portNum);
+            bitmask |= (1 << (portNum - 1));
         }
     }
-    hiddenField.value = bitmask.toString();
+    hiddenField.value = (bitmask >>> 0).toString();
     __onInputChanged(settingId);
 }
 
