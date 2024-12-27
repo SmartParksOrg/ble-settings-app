@@ -29,11 +29,6 @@
     <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
 
     <div class="log" id="log"></div>
-
-    <h2>Settings</h2>
-    <div id="settings-progress">
-      <div></div>
-    </div>
   </div>
   <div id="settings-section"></div>
 
@@ -41,13 +36,12 @@
     const CMD_SINGLE_SETTING = 0xA8;
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
-
-    function onInputChanged() {
-    }
+    const CMD_SEND_ALL_SETTINGS = 0xA7;
 
     let device, server, txCharacteristic, rxCharacteristic;
     let readPromiseResolve = null;
     let readPromiseReject = null;
+    let readAllSettings = null;
 
     // Toggle log visibility
     document.getElementById('toggle-log').addEventListener('click', function () {
@@ -55,6 +49,7 @@
       if (logElement.style.display !== 'block') {
         logElement.style.display = 'block';
         this.textContent = 'Hide Log';
+        logElement.scrollTop = logElement.scrollHeight;
       } else {
         logElement.style.display = 'none';
         this.textContent = 'Show Log';
@@ -256,6 +251,8 @@
           <div class="data-item"><span>Acceleration:</span><span>${statusMessage.acc_x.toFixed(2)}, ${statusMessage.acc_y.toFixed(2)}, ${statusMessage.acc_z.toFixed(2)}</span></div>
         </div>
       `;
+
+      return statusMessage;
     }
 
     function displaySettings() {
@@ -299,6 +296,19 @@
       logElement.scrollTop = logElement.scrollHeight;
     }
 
+    function autoSelectAndLoadSettings(statusMessage) {
+      const settingsDropdown = document.getElementById('settings-dropdown');
+      const fwVersion = `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
+
+      for (let i = 0; i < settingsDropdown.options.length; i++) {
+        if (settingsDropdown.options[i].text.includes(fwVersion)) {
+          settingsDropdown.selectedIndex = i;
+          document.getElementById('load-settings-button').click();
+          break;
+        }
+      }
+    }
+
     document.getElementById('connect-button').addEventListener('click', async function () {
       try {
         device = await navigator.bluetooth.requestDevice({
@@ -320,7 +330,7 @@
 
         // Load available settings files (instead of loading automatically)
         loadAvailableSettings();
-        await displayStatusMessage();
+        autoSelectAndLoadSettings(await displayStatusMessage());
       } catch (error) {
         log(`Error: ${error.message}`, true);
       }
@@ -341,7 +351,7 @@
 
     async function handleNotifications(event) {
       if (!readPromiseResolve || !readPromiseReject) {
-        log('Promise not found', true);
+        throw new Error('Promise not found');
       }
 
       const value = event.target.value;
@@ -351,7 +361,18 @@
 
       const port = data[0];
       try {
-        if (port === 3 || port === 30) {
+        if (readAllSettings != null) {
+          if (data.length > 4 && data[0] == 0x1F && data[1] == 0xF3 && data[2] == 0x02 && data[3] == 0xA7) {
+            readPromiseResolve({ ...readAllSettings });
+            readAllSettings = null;
+          } else {
+            if (port === 3) {
+              decodeAllSettings(data.slice(1));
+            } else {
+              throw new Error('No decoder available for port when reading all settings: ' + port);
+            }
+          }
+        } else if (port === 3 || port === 30) {
           readPromiseResolve(decodeBleValueResponse(data));
         } else if (port === 4) {
           readPromiseResolve(decodeStatusMessage(data.slice(1)));
@@ -361,6 +382,18 @@
       } catch (error) {
         log(`Error decoding response: ${error.message}`, true);
         readPromiseReject(error);
+      }
+    }
+
+    function decodeAllSettings(bytes) {
+      for (let i = 0; i < bytes.length;) {
+        const id = bytes[i++];
+        const len = bytes[i++];
+        const msg = bytes.slice(i, i + len);
+
+        const [key, valueMeta] = getById(id);
+        readAllSettings[key] = bytesToSetting(valueMeta, msg);
+        i += len;
       }
     }
 
@@ -423,6 +456,11 @@
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
     }
 
+    async function requestAllSettings() {
+      readAllSettings = {};
+      return executeBleCommand([0x20, CMD_SEND_ALL_SETTINGS, 0x00])
+    }
+
     async function executeBleCommand(command) {
       if (readPromiseResolve && readPromiseReject) {
         log('Previous request still pending', true);
@@ -455,18 +493,15 @@
     }
 
     async function fetchAllSettings() {
-      const progressContainer = document.getElementById('settings-progress')
-      progressContainer.style.display = 'block';
-      const progressBar = document.querySelector('#settings-progress div');
       const statusTableBody = document.querySelector('#status-table tbody');
       const entries = Object.entries(settingsData.settings);
-      let index = 0;
+      const allSettings = await requestAllSettings();
+
       for (const [key, setting] of entries) {
-        progressBar.style.width = `${(index / entries.length) * 100}%`;
-        updateSettingDisplay(setting.id, await requestBleValue(setting.id, CMD_SINGLE_SETTING));
-        index++;
+        if (key in allSettings) {
+          updateSettingDisplay(setting.id, allSettings[key]);
+        }
       }
-      progressContainer.style.display = 'none';
     }
 
     async function resetSetting(settingId) {

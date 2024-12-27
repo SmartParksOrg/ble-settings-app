@@ -64,8 +64,11 @@ textarea {
 }
 
 .setting.disabled {
-    pointer-events: none;
+    cursor: wait;
     opacity: 0.6;
+}
+.setting.disabled * {
+    pointer-events: none;
 }
 
 .setting button {
@@ -105,18 +108,6 @@ textarea {
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
 }
 
-#settings-progress {
-    display: none;
-    border: 1px solid #52735E;
-    height: 20px;
-    margin-bottom: 10px;
-}
-
-#settings-progress div {
-    background-color: #52735E;
-    height: 100%;
-}
-
 button {
     background-color: #52735E;
     /* Dark green buttons */
@@ -142,12 +133,6 @@ button.secondary {
 button.secondary:hover {
     background-color: #f2f2f2;
     /* Slightly darker on hover */
-}
-
-button:disabled {
-    background-color: #606060;
-    color: white;
-    cursor: default;
 }
 
 #hex-output.invalid {
