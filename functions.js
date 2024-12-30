@@ -81,6 +81,10 @@ function registerValues(data) {
     }
 }
 
+function getByKey(key) {
+    return settingsData.settings[key];
+}
+
 function getById(id) {
     if (typeof id === 'string' || id instanceof String) {
         id = parseInt(id, 16);
@@ -412,10 +416,10 @@ function settingToBytes(setting, value) {
     } else if (setting.conversion === 'float') {
         return new Uint8Array(new Float32Array([parseFloat(value)]).buffer);
     } else if (setting.conversion === 'bool') {
-        return new Uint8Array([value.toLowerCase() === 'true' ? 1 : 0]);
+        return new Uint8Array([value.toString().toLowerCase() === 'true' ? 1 : 0]);
     } else if (setting.conversion === 'byte_array') {
         return stringToUint8Array(value, setting.length);
-    } else if (settingObj.conversion === 'string') {
+    } else if (setting.conversion === 'string') {
         return new TextEncoder().encode(value);
     } else {
         throw new Error(`Unknown conversion type: ${setting.conversion}`);
@@ -437,5 +441,9 @@ function validateInput(setting, value) {
         }
     } else if (setting.conversion === 'byte_array') {
         stringToUint8Array(value, setting.length);
+    } else if (setting.conversion === 'string') {
+        if (value.length > setting.length) {
+            throw new Error(`Max length is ${setting.length} characters`);
+        }
     }
 }

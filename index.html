@@ -20,6 +20,11 @@
         <label for="settings-dropdown">Choose a settings file:</label>
         <select id="settings-dropdown"></select>
         <button id="load-settings-button">Load setting.json</button> <!-- Load button -->
+
+        <br>
+        <button id="export-button" onclick="exportToJson()">Export</button>
+        <button id="import-button" onclick="importFromJson()">Import</button>
+        <input type="file" id="import-file" />
       </div>
       <div id="errors"></div>
       <div id="container">
@@ -29,6 +34,11 @@
     <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
 
     <div class="log" id="log"></div>
+
+    <div id="settings-progress">
+      <div></div>
+    </div>
+    <h2>Settings</h2>
   </div>
   <div id="settings-section"></div>
 
@@ -37,6 +47,8 @@
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
     const CMD_SEND_ALL_SETTINGS = 0xA7;
+    
+    const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
 
     let device, server, txCharacteristic, rxCharacteristic;
     let readPromiseResolve = null;
@@ -70,6 +82,85 @@
         log(`Error loading settings: ${error.message}`, true);
       }
     });
+
+    function exportToJson() {
+      const settings = {};
+
+      for (const [intId, val] of settingsMap) {
+        const [settingKey, settingObj] = val;
+        if (excludeFromImportExport.includes(settingKey)) {
+          continue;
+        }
+
+        const value = getInputValue(settingObj.id);
+
+        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(settingObj.conversion)) {
+          settings[settingKey] = Number(value);
+        } else if (settingObj.conversion === 'bool') {
+          settings[settingKey] = value === 'true';
+        } else {
+          settings[settingKey] = value;
+        }
+      }
+
+      const json = JSON.stringify(settings, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'settings.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function importFromJson() {
+      const fileInput = document.getElementById('import-file');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select a file to import.');
+        return;
+      }
+
+      console.log('Importing settings from file:', file.name);
+      const reader = new FileReader();
+      reader.onload = async function (event) {
+        const progressContainer = document.getElementById('settings-progress');
+        const progressBar = document.querySelector('#settings-progress div');
+        const settingsSection = document.getElementById('settings-section');
+
+        try {
+          progressBar.style.width = `0%`;
+          progressContainer.style.display = 'block';
+          settingsSection.style.display = 'none';
+
+          const importedSettings = JSON.parse(event.target.result);
+
+          let index = 0;
+          const entries = Object.entries(importedSettings).filter(([key]) => !excludeFromImportExport.includes(key));
+
+          for (const [key, value] of entries) {
+            index++;
+           
+            const settingObj = getByKey(key);
+            if (settingObj) {
+              await updateBleSetting(settingObj.id, value);
+            }
+            progressBar.style.width = `${(index / entries.length) * 100}%`;
+          }
+
+          await fetchAllSettings();
+        } catch (error) {
+          console.error('Error importing settings:', error);
+          alert('Failed to import settings. Please check the file format.');
+        } finally {
+          settingsSection.style.display = 'block';
+          progressContainer.style.display = 'none';
+        }
+      };
+      reader.readAsText(file);
+    }
 
     function loadAvailableSettings() {
       try {
@@ -509,34 +600,33 @@
       setInputValue(settingId, setting.default);
     }
 
-    async function updateSetting(settingId) {
+    async function updateBleSetting(settingId, newValue) {
       const [settingKey, setting] = getById(settingId);
 
-      const newValue = getInputValue(setting.id);
-
-      let valueBytes;
-      try {
-        valueBytes = settingToBytes(setting, newValue);
-      } catch (error) {
-        log(error.message, true);
-        return;
-      }
+      let valueBytes = settingToBytes(setting, newValue);
 
       const length = valueBytes.length;
       const command = [0x03, parseInt(settingId, 16), length, ...valueBytes];
       const commandBuffer = new Uint8Array(command).buffer;
 
       log(`Sending update for ${settingKey} (ID: ${settingId}) with value: ${newValue}`);
-
+      
+      try {
+        await rxCharacteristic.writeValue(commandBuffer);
+        log(`Value updated successfully for ${settingKey} (ID: ${settingId})`);
+      } catch (error) {
+        log(`Error sending update for ${settingKey}: ${error.message}`, true);
+        throw error;
+      }
+    }
+      
+    async function updateSetting(settingId) {
       const rowElement = document.getElementById(`setting-${settingId}`);
       try {
         rowElement.classList.add('disabled');
-        await rxCharacteristic.writeValue(commandBuffer);
-        log(`Value updated successfully for ${settingKey} (ID: ${settingId})`);
+        updateBleSetting(settingId, getInputValue(settingId));
         await sleep(1000);
         updateSettingDisplay(settingId, await requestBleValue(settingId, CMD_SINGLE_SETTING));
-      } catch (error) {
-        log(`Error sending update for ${settingKey}: ${error.message}`, true);
       } finally {
         rowElement.classList.remove('disabled');
       }
