@@ -47,13 +47,12 @@
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
     const CMD_SEND_ALL_SETTINGS = 0xA7;
-    
+
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
 
     let device, server, txCharacteristic, rxCharacteristic;
-    let readPromiseResolve = null;
-    let readPromiseReject = null;
     let readAllSettings = null;
+    let autoLoaded = false;
 
     // Toggle log visibility
     document.getElementById('toggle-log').addEventListener('click', function () {
@@ -142,7 +141,7 @@
 
           for (const [key, value] of entries) {
             index++;
-           
+
             const settingObj = getByKey(key);
             if (settingObj) {
               await updateBleSetting(settingObj.id, value);
@@ -288,9 +287,7 @@
       };
     }
 
-    async function displayStatusMessage() {
-      const statusMessage = await requestStatusMessage();
-
+    function displayStatusMessage(statusMessage) {
       const errorsDiv = document.querySelector('#errors');
       errorsDiv.innerHTML = '';
 
@@ -342,8 +339,6 @@
           <div class="data-item"><span>Acceleration:</span><span>${statusMessage.acc_x.toFixed(2)}, ${statusMessage.acc_y.toFixed(2)}, ${statusMessage.acc_z.toFixed(2)}</span></div>
         </div>
       `;
-
-      return statusMessage;
     }
 
     function displaySettings() {
@@ -388,6 +383,7 @@
     }
 
     function autoSelectAndLoadSettings(statusMessage) {
+      log("autoSelectAndLoadSettings");
       const settingsDropdown = document.getElementById('settings-dropdown');
       const fwVersion = `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
 
@@ -421,7 +417,7 @@
 
         // Load available settings files (instead of loading automatically)
         loadAvailableSettings();
-        autoSelectAndLoadSettings(await displayStatusMessage());
+        await requestStatusMessage();
       } catch (error) {
         log(`Error: ${error.message}`, true);
       }
@@ -441,10 +437,6 @@
     });
 
     async function handleNotifications(event) {
-      if (!readPromiseResolve || !readPromiseReject) {
-        throw new Error('Promise not found');
-      }
-
       const value = event.target.value;
       const data = new Uint8Array(value.buffer);
 
@@ -452,53 +444,40 @@
 
       const port = data[0];
       try {
-        if (readAllSettings != null) {
-          if (data.length > 4 && data[0] == 0x1F && data[1] == 0xF3 && data[2] == 0x02 && data[3] == 0xA7) {
-            readPromiseResolve({ ...readAllSettings });
-            readAllSettings = null;
-          } else {
-            if (port === 3) {
-              decodeAllSettings(data.slice(1));
-            } else {
-              throw new Error('No decoder available for port when reading all settings: ' + port);
-            }
-          }
-        } else if (port === 3 || port === 30) {
-          readPromiseResolve(decodeBleValueResponse(data));
+        if (port === 3) {
+          decodeBleValueResponse(data.slice(1));
         } else if (port === 4) {
-          readPromiseResolve(decodeStatusMessage(data.slice(1)));
+          const statusMessage = decodeStatusMessage(data.slice(1));
+          displayStatusMessage(statusMessage);
+          if (!autoLoaded) {
+            autoLoaded = true;
+            autoSelectAndLoadSettings(statusMessage);
+          }
+        } else if (port === 31) {
+          if (data.length > 4 && data[1] == 0xF3 && data[2] == 0x02 && data[3] == 0xA7) {
+            log('All settings received');
+          }
         } else {
           throw new Error('No decoder available for port: ' + port);
         }
       } catch (error) {
+        console.error(error);
         log(`Error decoding response: ${error.message}`, true);
-        readPromiseReject(error);
       }
     }
 
-    function decodeAllSettings(bytes) {
+    function decodeBleValueResponse(bytes) {
       for (let i = 0; i < bytes.length;) {
         const id = bytes[i++];
         const len = bytes[i++];
-        const msg = bytes.slice(i, i + len);
+        const valueBytes = bytes.slice(i, i + len);
 
-        const [key, valueMeta] = getById(id);
-        readAllSettings[key] = bytesToSetting(valueMeta, msg);
+        const [key, setting] = getById(id);
+        let value = bytesToSetting(setting, valueBytes);
+        log(`Decoded setting response: ${key} = ${value}`);
+        updateSettingDisplay(setting.id, value);
         i += len;
       }
-    }
-
-    function decodeBleValueResponse(data) {
-      const valueId = data[1];
-      const length = data[2];
-      const valueBytes = data.slice(3, 3 + length);
-
-      const [key, valueMeta] = getById(valueId);
-
-      let value = bytesToSetting(valueMeta, valueBytes);
-
-      log(`Decoded setting response: ${key} = ${value}`);
-      return value;
     }
 
     function arraysEqual(arr1, arr2) {
@@ -520,8 +499,6 @@
     }
 
     function updateSettingDisplay(settingId, value) {
-      const [key, valueMeta] = getById(settingId);
-
       setInputValue(settingId, value);
 
       const rowElement = document.getElementById(`setting-${settingId}`);
@@ -548,51 +525,22 @@
     }
 
     async function requestAllSettings() {
-      readAllSettings = {};
       return executeBleCommand([0x20, CMD_SEND_ALL_SETTINGS, 0x00])
     }
 
     async function executeBleCommand(command) {
-      if (readPromiseResolve && readPromiseReject) {
-        log('Previous request still pending', true);
-        return;
-      }
-
       log(`Sending command ${bytesToHex(command)}`);
 
       const commandBuffer = new Uint8Array(command).buffer;
       try {
-        readPromise = new Promise((resolve, reject) => {
-          readPromiseResolve = resolve;
-          readPromiseReject = reject;
-
-          setTimeout(() => {
-            reject(new Error('Timeout'));
-          }, 5000);
-        });
-
         await rxCharacteristic.writeValue(commandBuffer);
-
-        let value = await readPromise;
-        return value;
       } catch (error) {
         log(`Error sending command: ${error.message}`, true);
-      } finally {
-        readPromiseReject = null;
-        readPromiseResolve = null;
       }
     }
 
     async function fetchAllSettings() {
-      const statusTableBody = document.querySelector('#status-table tbody');
-      const entries = Object.entries(settingsData.settings);
-      const allSettings = await requestAllSettings();
-
-      for (const [key, setting] of entries) {
-        if (key in allSettings) {
-          updateSettingDisplay(setting.id, allSettings[key]);
-        }
-      }
+      await requestAllSettings();
     }
 
     async function resetSetting(settingId) {
@@ -610,7 +558,7 @@
       const commandBuffer = new Uint8Array(command).buffer;
 
       log(`Sending update for ${settingKey} (ID: ${settingId}) with value: ${newValue}`);
-      
+
       try {
         await rxCharacteristic.writeValue(commandBuffer);
         log(`Value updated successfully for ${settingKey} (ID: ${settingId})`);
@@ -619,14 +567,14 @@
         throw error;
       }
     }
-      
+
     async function updateSetting(settingId) {
       const rowElement = document.getElementById(`setting-${settingId}`);
       try {
         rowElement.classList.add('disabled');
-        updateBleSetting(settingId, getInputValue(settingId));
+        await updateBleSetting(settingId, getInputValue(settingId));
         await sleep(1000);
-        updateSettingDisplay(settingId, await requestBleValue(settingId, CMD_SINGLE_SETTING));
+        await requestBleValue(settingId, CMD_SINGLE_SETTING);
       } finally {
         rowElement.classList.remove('disabled');
       }
