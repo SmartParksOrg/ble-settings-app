@@ -26,7 +26,6 @@ body {
     border: 1px solid #52735E;
     height: 20px;
     margin-bottom: 10px;
-    margin-top: 10px;
 }
 
 #settings-progress div {
@@ -42,13 +41,19 @@ body {
     margin-bottom: 20px;
 }
 
+.controls button {
+    margin-bottom: 10px;
+}
+
 input,
 select,
 textarea {
     box-sizing: border-box;
 }
 
-#header-section, #settings-section {
+#header-section,
+.settings-section,
+.commands-section {
     padding: 10px;
 }
 
@@ -80,6 +85,7 @@ textarea {
     cursor: wait;
     opacity: 0.6;
 }
+
 .setting.disabled * {
     pointer-events: none;
 }
@@ -113,6 +119,23 @@ textarea {
 
 .setting .input-container .checkbox-container input {
     width: auto;
+}
+
+#commands-buttons-section {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+#commands-section {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+}
+
+#commands-buttons-section button {
+    width: 100%;
+    word-wrap: break-word;
 }
 
 .settings-container {
@@ -165,8 +188,8 @@ button.secondary:hover {
     box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.5);
 }
 
-#settings-section {
-    margin-bottom: 100px;
+#commands-section {
+    margin-bottom: 150px;
 }
 
 #settings-section h3 {
@@ -194,7 +217,6 @@ button.secondary:hover {
 .checkbox-container {
     display: flex;
     align-items: center;
-    margin-bottom: 5px;
 }
 
 .checkbox-container label {
@@ -233,6 +255,7 @@ button.secondary:hover {
     border: 1px solid #ccc;
     padding: 5px;
     border-radius: 5px;
+    margin-top: 5px;
     background: #fafafa;
 }
 

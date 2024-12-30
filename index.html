@@ -34,14 +34,21 @@
     <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
 
     <div class="log" id="log"></div>
+  </div>
 
+  <div class="settings-section">
+    <h2>Settings</h2>
     <div id="settings-progress">
       <div></div>
     </div>
-    <h2>Settings</h2>
+    <div id="settings-section"></div>
   </div>
-  <div id="settings-section"></div>
 
+  <div class="commands-section">
+    <h2>Commands</h2>
+    <div id="commands-buttons-section"></div>
+  </div>
+  
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
     const CMD_SINGLE_VALUE = 0xA3;
@@ -75,6 +82,7 @@
         await loadSettings(selectedFile);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
+        displayCommands();
         await fetchAllSettings();
       } catch (error) {
         console.error(error);
@@ -363,12 +371,28 @@
 
           <div>
             <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
-            <button id="reset-button-${setting.id}" onclick="resetSetting('${setting.id}')" class="secondary" title="Default value: ${setting.default}">Set default</button>
+            <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${setting.default}">Set default</button>
           </div>
         `;
           settingsContainer.appendChild(row);
         }
         settingsSection.appendChild(settingsContainer);
+      }
+    }
+
+    function displayCommands() {
+      const commandsSection = document.getElementById('commands-buttons-section');
+      commandsSection.innerHTML = '';
+      for (const [key, command] of Object.entries(settingsData.commands)) {
+        if (command.length !== 0 || dangerousCommands.some(rx => rx.test(key))) {
+          continue;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'command';
+        row.setAttribute('id', `command-${command.id}`);
+        row.innerHTML = `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${key.replace(/cmd_/g, "")}</button>`;
+        commandsSection.appendChild(row);
       }
     }
 
@@ -396,6 +420,17 @@
       }
     }
 
+    function onDisconnected() {
+      log('Disconnected from device');
+      autoLoaded = false;
+      document.getElementById('errors').textContent = '';
+      document.getElementById('container').textContent = '';
+      document.getElementById('disconnect-button').disabled = true;
+      document.getElementById('settings-selection').style.display = 'none'; // Hide settings dropdown and button
+      document.getElementById('settings-section').innerHTML = '';
+      document.getElementById('commands-buttons-section').innerHTML = '';
+    }
+
     document.getElementById('connect-button').addEventListener('click', async function () {
       try {
         device = await navigator.bluetooth.requestDevice({
@@ -403,6 +438,7 @@
           optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
         });
 
+        device.addEventListener('gattserverdisconnected', onDisconnected);
         server = await device.gatt.connect();
         const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
         txCharacteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
@@ -426,13 +462,6 @@
     document.getElementById('disconnect-button').addEventListener('click', function () {
       if (device && device.gatt.connected) {
         device.gatt.disconnect();
-        document.getElementById('errors').textContent = '';
-        document.getElementById('container').textContent = '';
-        document.getElementById('disconnect-button').disabled = true;
-        document.getElementById('settings-selection').style.display = 'none'; // Hide settings dropdown and button
-        log('Disconnected from device');
-        document.getElementById('settings-section').innerHTML = '';
-        document.getElementById('log').innerHTML = '';
       }
     });
 
@@ -453,16 +482,30 @@
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);
           }
-        } else if (port === 31) {
-          if (data.length > 4 && data[1] == 0xF3 && data[2] == 0x02 && data[3] == 0xA7) {
-            log('All settings received');
-          }
         } else {
-          throw new Error('No decoder available for port: ' + port);
+          decodeMessage(data);
         }
       } catch (error) {
         console.error(error);
         log(`Error decoding response: ${error.message}`, true);
+      }
+    }
+
+    function decodeMessage(data) {
+      const port = data[0];
+      const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port);
+      if (portName) {
+        const id = data[1];
+        const message = Object.entries(settingsData.messages).find(([key, msg]) => msg.port === portName && msg.id.toUpperCase() === `0x${id.toString(16)}`.toUpperCase());
+        if (message) {
+          const [key, msg] = message;
+          const valueBytes = data.slice(3, 3 + msg.length);
+          log(`Decoded message: ${key} = ${bytesToHex(valueBytes)}`);
+        } else {
+          throw new Error(`No message found for port: ${portName} and id: 0x${id.toString(16)}`);
+        }
+      } else {
+        throw new Error('No decoder available for port: ' + port);
       }
     }
 
@@ -520,6 +563,14 @@
       return executeBleCommand([0x20, cmd, 0x01, id]);
     }
 
+    async function executeCommand(cmd) {
+      if (typeof cmd === 'string' || cmd instanceof String) {
+        cmd = parseInt(cmd, 16);
+      }
+
+      return executeBleCommand([0x20, cmd, 0x00]);
+    }
+
     async function requestStatusMessage() {
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
     }
@@ -541,11 +592,6 @@
 
     async function fetchAllSettings() {
       await requestAllSettings();
-    }
-
-    async function resetSetting(settingId) {
-      const [settingKey, setting] = getById(settingId);
-      setInputValue(settingId, setting.default);
     }
 
     async function updateBleSetting(settingId, newValue) {

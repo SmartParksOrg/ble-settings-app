@@ -18,6 +18,17 @@ const files = [
     "settings-v4.4.2.json"
 ];
 
+const dangerousCommands = [/_th$/, /set_hibernation_mode/, /almanac_update/];
+
+const minMaxValues = {
+    'uint8': { min: 0, max: 255 },
+    'uint16': { min: 0, max: 65535 },
+    'uint32': { min: 0, max: 4294967295 },
+    'int8': { min: -128, max: 127 },
+    'int32': { min: -2147483648, max: 2147483647 },
+    'float': { min: -3.4e38, max: 3.4e38 }
+}
+
 function populateSettingsIntoPage() {
     const dropdown = document.getElementById('settings-dropdown');
     dropdown.innerHTML = ''; // Clear previous options
@@ -39,7 +50,8 @@ async function loadSettings(selectedFile) {
         settingsData = await response.json();
 
         settingsMap = new Map();
-        registerValues(settingsData.settings);
+        registerValues(settingsData.settings, "setting");
+        registerValues(settingsData.commands, "command");
     } catch (error) {
         throw new Error(`Error loading settings: ${error.message}`);
     }
@@ -69,14 +81,27 @@ function setInputValue(settingId, value) {
     document.getElementById(`input-container-${settingId}`).innerHTML = renderInputControl(key, setting, value);
 }
 
-function getInputValue(settingId) {
-    return document.getElementById(`new-value-${settingId}`).value.trim();
+function clearInputValue(settingId) {
+    document.getElementById(`input-container-${settingId}`).innerHTML = '';
 }
 
-function registerValues(data) {
+function setDefaultValue(settingId) {
+    const [key, setting] = getById(settingId);
+    document.getElementById(`input-container-${settingId}`).innerHTML = renderInputControl(key, setting, setting.default);
+}
+
+function getInputValue(settingId) {
+    const el = document.getElementById(`new-value-${settingId}`);
+    if (el) {
+        return el.value.trim();
+    }
+}
+
+function registerValues(data, type) {
     for (const [key, value] of Object.entries(data)) {
         // key is the string name of the setting
         // value includes: id, default, min, max, conversion, etc.
+        value["type"] = type;
         settingsMap.set(parseInt(value.id, 16), [key, value]);
     }
 }
@@ -220,10 +245,26 @@ function groupAndSortSettings() {
 }
 
 function renderInput(key, setting) {
+    if (setting.length === 0) {
+        return '';
+    }
+
     return `<div class="input-container" id="input-container-${setting.id}">${renderInputControl(key, setting, setting.default)}</div>`;
 }
 
+function renderInputContainer(key, setting) {
+    return `<div class="input-container" id="input-container-${setting.id}"></div>`;
+}
+
 function renderInputControl(key, setting, value) {
+    if (setting.length === 0) {
+        return '';
+    }
+
+    if (value === undefined) {
+        value = "";
+    }
+
     // Build the "include" checkbox + label
     let html = '';
 
@@ -250,11 +291,13 @@ function renderInputControl(key, setting, value) {
 
     // 4) If it's a normal numeric input
     else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const min = setting.min != undefined ? setting.min : minMaxValues[setting.conversion].min;
+        const max = setting.max != undefined ? setting.max : minMaxValues[setting.conversion].max;
         html += `<input
          type="number"
          id="new-value-${setting.id}"
-         min="${setting.min}"
-         max="${setting.max}"
+         min="${min}"
+         max="${max}"
          step="${setting.conversion === 'float' ? '0.01' : '1'}"
          value="${value}"
          oninput="__onInputChanged('${setting.id}')"
@@ -402,6 +445,10 @@ function bytesToSetting(setting, bytes) {
 function settingToBytes(setting, value) {
     validateInput(setting, value);
 
+    if (setting.length === 0) {
+        return new Uint8Array();
+    }
+
     if (setting.conversion === 'uint32') {
         const intValue = parseInt(value, 10);
         return new Uint8Array(new Uint32Array([intValue]).buffer);
@@ -427,12 +474,30 @@ function settingToBytes(setting, value) {
 }
 
 function validateInput(setting, value) {
+    if (setting.length === 0) {
+        return;
+    }
     if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
         const parsedValue = (setting.conversion === 'float')
             ? parseFloat(value)
             : parseInt(value, 10);
-        if (isNaN(parsedValue) || parsedValue < setting.min || parsedValue > setting.max) {
+        if (isNaN(parsedValue)) {
+            throw new Error(`Must be a number`);
+        }
+
+        if (['uint32', 'uint16', 'uint8', 'int32', 'int8'].includes(setting.conversion) && !Number.isInteger(parseFloat(value))) {
+            throw new Error(`Must be a whole number`);
+        }
+
+        if (setting.min != undefined && setting.max != undefined && (parsedValue < setting.min || parsedValue > setting.max)) {
             throw new Error(`Must be between ${setting.min} and ${setting.max}`);
+        }
+
+        // Check min and max values for uint8, uint16, uint32, int8, int32, etc.
+        const mm = minMaxValues[setting.conversion];
+
+        if (mm && (parsedValue < mm.min || parsedValue > mm.max)) {
+            throw new Error(`Must be between ${mm.min} and ${mm.max}`);
         }
     } else if (setting.conversion === 'bool') {
         const valLower = value.toString().toLowerCase();

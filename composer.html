@@ -11,19 +11,27 @@
 
 <body>
   <div id="header-section">
-  <h1>Settings HEX Composer</h1>
+    <h1>Settings HEX Composer</h1>
 
-  <div class="controls">
-    <label for="settings-dropdown">Choose a settings file:</label>
-    <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
-  </div>
+    <div class="controls">
+      <label for="settings-dropdown">Choose a settings file:</label>
+      <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
+    </div>
   </div>
 
-  <div id="settings-section"></div>
+  <div class="settings-section">
+    <h2>Settings</h2>
+    <div id="settings-section"></div>
+  </div>
+
+  <div class="commands-section">
+    <h2>Commands</h2>
+    <div id="commands-section"></div>
+  </div>
 
   <div id="floating-bar">
     <select id="payload-type" onchange="updateEncodedMessage()">
-      <option value="lorawan">LoRaWAN (port 3)</option>
+      <option value="lorawan" id="payload-lorawan">LoRaWAN</option>
       <option value="rockblock">RockBlock</option>
       <option value="ble">BLE custom command</option>
     </select>
@@ -39,6 +47,7 @@
       const selectedFile = document.getElementById('settings-dropdown').value;
       await loadSettings(selectedFile);
       displaySettings();
+      displayCommands();
       updateEncodedMessage(); // Update once shown
     }
 
@@ -65,9 +74,9 @@
           // Build the "include" checkbox + label
           row.innerHTML = `
             <div class="checkbox-container">
-              <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this)"/>
+              <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
               <label for="checkbox-${setting.id}"><h4>${key} <small>(${setting.id})</small></h4></label>
-            </div>${renderInput(key, setting)}
+            </div>${renderInputContainer(key, setting)}
           `;
 
           settingsContainer.appendChild(row);
@@ -77,14 +86,42 @@
       }
     }
 
+    function displayCommands() {
+      const commandsSection = document.getElementById('commands-section');
+      commandsSection.innerHTML = '';
+
+      for (const [key, command] of Object.entries(settingsData.commands)) {
+        if (dangerousCommands.some(rx => rx.test(key))) {
+          continue;
+        }
+
+        // Create the top-level container
+        const row = document.createElement('div');
+        row.className = 'setting transparent';
+        row.setAttribute('id', `setting-${command.id}`);
+
+        // Build the "include" checkbox + label
+        row.innerHTML = `
+          <div class="checkbox-container">
+            <input type="checkbox" id="checkbox-${command.id}" onchange="updateCheckBox(this, '${command.id}')"/>
+            <label for="checkbox-${command.id}"><h4>${key.replace(/cmd_/g, "")} <small>(${command.id})</small></h4></label>
+          </div>${renderInputContainer(key, command)}
+        `;
+
+        commandsSection.appendChild(row);
+      }
+    }
+
     function onInputChanged(setting, value, valid) {
       updateEncodedMessage();
     }
 
-    function updateCheckBox(element) {
+    function updateCheckBox(element, id) {
       if (element.checked) {
         element.parentElement.parentElement.classList.remove('transparent');
+        setDefaultValue(id);
       } else {
+        clearInputValue(id);
         element.parentElement.parentElement.classList.add('transparent');
       }
       updateEncodedMessage();
@@ -96,10 +133,12 @@
     function updateEncodedMessage() {
       const hexOutput = document.getElementById('hex-output');
       const payloadType = document.getElementById('payload-type');
+      document.getElementById('payload-lorawan').innerHTML = `LoRaWAN`;
 
       const encodedBytes = [];
       hexOutput.classList.remove('invalid');
 
+      const types = new Set();
       // Iterate each known setting
       for (const [intId, val] of settingsMap) {
         const [settingKey, settingObj] = val;
@@ -108,6 +147,14 @@
         const checkbox = document.getElementById(`checkbox-${settingObj.id}`);
         if (!checkbox || !checkbox.checked) {
           continue; // user didn't select it
+        }
+
+        types.add(settingObj.type);
+
+        if (types.size > 1) {
+          hexOutput.value = 'Error: Cannot mix different types';
+          hexOutput.classList.add('invalid');
+          return;
         }
 
         // Convert to bytes
@@ -133,16 +180,26 @@
         return;
       }
 
+      let port = 0;
+      if (types.has("setting")) {
+        port = 3;
+      } else if (types.has("command")) {
+        port = 32;
+      } else {
+        hexOutput.value = 'Error: Unknown type ' + types;
+        hexOutput.classList.add('invalid');
+        return;
+      }
+
       // Depending on payloadType
       if (payloadType.value === 'lorawan') {
         hexOutput.value = bytesToHex(encodedBytes);
+        document.getElementById('payload-lorawan').innerHTML = `LoRaWAN (port: ${port})`;
       } else if (payloadType.value === 'rockblock') {
-        // Example: prepend 0x03 for rockblock
-        encodedBytes.unshift(0x03);
+        encodedBytes.unshift(port);
         hexOutput.value = bytesToHex(encodedBytes);
       } else if (payloadType.value === 'ble') {
-        // Example: prepend 0x03 for BLE
-        encodedBytes.unshift(0x03);
+        encodedBytes.unshift(port);
         hexOutput.value = encodedBytes.map(b => '0x' + toHex(b)).join(' ');
       }
     }
