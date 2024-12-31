@@ -1,7 +1,7 @@
 {
     "name": "Settings HEX Composer",
     "short_name": "HEX Composer",
-    "start_url": "/composer.html",
+    "start_url": "https://smartparksorg.github.io/ble-settings-app/composer.html",
     "display": "standalone",
     "background_color": "#52735E",
     "theme_color": "#52735E",
