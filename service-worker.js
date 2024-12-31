@@ -5,6 +5,8 @@ const STATIC_FILES = [
     '/composer.html',
     '/style.css',
     '/functions.js',
+    '/manifest.json',
+    '/composer-manifest.json',
     '/settings/settings-v4.4.2.json',
     '/settings/settings-v6.10.0.json',
     '/settings/settings-v6.8.1.json',

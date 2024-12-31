@@ -1,9 +1,8 @@
 let settingsData = null;
 let settingsMap = new Map(); // maps int ID -> [key, meta]
-
 const intervalPatterns = [
-    /_interval_?\d?$/,        // matches _interval, _interval1, _interval2, etc.
-    /rf_scan_duration$/     // matches strings ending with rf_scan_duration
+    /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
+    /^rf_scan_duration$/,               // matches strings ending with rf_scan_duration
 ];
 
 const bitmapSettings = ['lr_send_flag', 'flash_store_flag', 'sat_send_flag'];
