@@ -9,33 +9,26 @@
   <script src="functions.js"></script>
 </head>
 
-<body>
+<body style="padding-bottom: 50px;">
   <div id="header-section">
-    <h1>OpenCollar Edge BLE Web Connect</h1>
-
     <div class="controls">
-      <button id="connect-button">Connect to Device</button>
-      <button id="disconnect-button" disabled>Disconnect</button>
-      <label>PIN:
-      <input name="pincode" id="pincode" type="text" class="pincode" value="0000" inputmode="numeric" maxlength="4"></label>
+      <button id="connect-button">Connect</button>
+      <button id="disconnect-button" style="display: none;">Disconnect</button>
+      <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
+          inputmode="numeric" maxlength="4"></label>
       <div id="settings-selection" style="display:none;">
-        <label for="settings-dropdown">Choose a settings file:</label>
+        <button id="load-settings-button">Load from:</button>
         <select id="settings-dropdown"></select>
-        <button id="load-settings-button">Load setting.json</button> <!-- Load button -->
-
         <br>
         <button id="export-button" onclick="exportToJson()">Export</button>
-        <button id="import-button" onclick="importFromJson()">Import</button>
-        <input type="file" id="import-file" />
+        <button id="import-button" onclick="document.getElementById('import-file').click();">Import</button>
+        <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
       </div>
-      <div id="errors"></div>
       <div id="container">
+        <div class="section" id="status-message" style="display: none;"></div>
+        <div class="section" id="main-commands-message" style="display: none;"></div>
       </div>
     </div>
-
-    <button class="toggle-button" id="toggle-log">Show Log</button> <!-- Toggle button -->
-
-    <div class="log" id="log"></div>
   </div>
 
   <div class="settings-section">
@@ -51,6 +44,15 @@
     <div id="commands-buttons-section"></div>
   </div>
 
+  <div class="log-footer" id="logFooter">
+    <div class="log-header" onclick="toggleLog()">
+      <span>Log</span>
+    </div>
+    <div class="log-content" id="log"></div>
+  </div>
+
+  <button class="toggle-button" onclick="toggleLog()">Toggle Log</button>
+
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
     const CMD_SINGLE_VALUE = 0xA3;
@@ -59,23 +61,25 @@
     const CMD_CHECK_PIN = 0xC2;
 
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
+    const mainCommands = {
+      'cmd_join': 'Join LP1',
+      'cmd_send_status_lr': 'Send status to LR1',
+      'cmd_get_ublox_fix': 'Get UBLOX fix',
+      'cmd_reset': 'Reboot device',
+    };
 
     let device, server, txCharacteristic, rxCharacteristic;
     let readAllSettings = null;
     let autoLoaded = false;
 
-    // Toggle log visibility
-    document.getElementById('toggle-log').addEventListener('click', function () {
+    const logFooter = document.getElementById('logFooter');
+
+    function toggleLog() {
+      logFooter.classList.toggle('open');
+      document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : '50px';
       const logElement = document.getElementById('log');
-      if (logElement.style.display !== 'block') {
-        logElement.style.display = 'block';
-        this.textContent = 'Hide Log';
-        logElement.scrollTop = logElement.scrollHeight;
-      } else {
-        logElement.style.display = 'none';
-        this.textContent = 'Show Log';
-      }
-    });
+      logElement.scrollTop = logElement.scrollHeight;
+    }
 
     document.getElementById('load-settings-button').addEventListener('click', async function () {
       const selectedFile = document.getElementById('settings-dropdown').value;
@@ -85,6 +89,7 @@
         await loadSettings(selectedFile);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
+        displayMainCommands();
         displayCommands();
         await fetchAllSettings();
       } catch (error) {
@@ -298,55 +303,35 @@
     }
 
     function displayStatusMessage(statusMessage) {
-      const errorsDiv = document.querySelector('#errors');
-      errorsDiv.innerHTML = '';
-
       // Display error key only if true
-      let hasErrors = false;
-      for (const [key, hasError] of Object.entries(statusMessage)) {
-        if (key.startsWith('err_') && hasError) {
-          if (!hasErrors) {
-            errorsDiv.innerHTML = 'Errors: ';
-            hasErrors = true;
-          }
-
-          errorsDiv.innerHTML += `<span>${key.slice(4).toUpperCase()}</span>,`;
-        }
-      }
-
-      if (hasErrors) {
-        errorsDiv.innerHTML = errorsDiv.innerHTML.slice(0, -1); // Remove trailing comma
-      } else {
-        errorsDiv.innerHTML = 'No errors';
-      }
+      const errors = Object.entries(statusMessage)
+        .filter(([key, hasError]) => key.startsWith('err_') && hasError)
+        .map(([key]) => key.slice(4).toUpperCase())
+        .join(', ') || 'No errors'
 
       // Display decoded values in table
-      const infoContainer = document.querySelector('#container');
-      infoContainer.innerHTML = ''; // clear previous content
-
-      infoContainer.innerHTML += `
-        <div class="section">
-          <h4>Device Info</h4>
-          <div class="data-item"><span>Device name:</span><span>${device.name}</span></div>
-          <div class="data-item"><span>Hardware Version:</span><span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</span></div>
-          <div class="data-item"><span>Firmware Version:</span><span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</span></div>
-          <div class="data-item"><span>Hardware Type:</span><span>${decodeHwFwType(statusMessage.ver_hw_type)}</span></div>
-          <div class="data-item"><span>Firmware Type:</span><span>${decodeHwFwType(statusMessage.ver_fw_type)}</span></div>
-          <div class="data-item"><span>LR Sat:</span><span>${statusMessage.lr_sat}</span></div>
-          <div class="data-item"><span>Msg:</span><span>${statusMessage.msg}</span></div>
+      const statusMessageElement = document.getElementById('status-message');
+      statusMessageElement.style.display = 'block';
+      statusMessageElement.innerHTML = `
+        <div class="status-header">
+          <h4>${device.name}</h4>
+          <a href="#" onclick="requestStatusMessage()">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
         </div>
-      `;
-
-      infoContainer.innerHTML += `
-        <div class="section">
-          <h4>General Information</h4>
-          <div class="data-item"><span>Reset:</span><span>${decodeReset(statusMessage.reset)}</span></div>
-          <div class="data-item"><span>Battery:</span><span>${statusMessage.bat}mV</span></div>
-          <div class="data-item"><span>Charging:</span><span>${statusMessage.chg}</span></div>
-          <div class="data-item"><span>Locked:</span><span>${statusMessage.locked}</span></div>
-          <div class="data-item"><span>Temperature:</span><span>${statusMessage.temp.toFixed(2)}°C</span></div>
-          <div class="data-item"><span>Uptime:</span><span>${statusMessage.uptime} days</span></div>
-          <div class="data-item"><span>Acceleration:</span><span>${statusMessage.acc_x.toFixed(2)}, ${statusMessage.acc_y.toFixed(2)}, ${statusMessage.acc_z.toFixed(2)}</span></div>
+        <div class="status-items">
+          <div class="status-item"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>
+          <div class="status-item"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>
+          <div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>
+          <div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>
+          <div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>
+          <div class="status-item"><span class="icon messages"></span>${statusMessage.msg}</div>
+          <div class="status-item"><span class="icon battery"></span>${statusMessage.bat}mV</div>
+          <div class="status-item"><span class="icon charging"></span>${statusMessage.chg ? 'charging' : 'discharging'}</div>
+          <div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>
+          <div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>
+          <div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>
+          <div class="status-item"><span class="icon errors"></span>${errors}</div>
         </div>
       `;
     }
@@ -386,7 +371,7 @@
       const commandsSection = document.getElementById('commands-buttons-section');
       commandsSection.innerHTML = '';
       for (const [key, command] of Object.entries(settingsData.commands)) {
-        if (command.length !== 0 || dangerousCommands.some(rx => rx.test(key))) {
+        if (command.length !== 0 || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
           continue;
         }
 
@@ -398,11 +383,27 @@
       }
     }
 
+    function displayMainCommands() {
+      const mainCommandsElement = document.getElementById('main-commands-message');
+
+      mainCommandsElement.innerHTML = Object.entries(mainCommands).map(([key, label]) => {
+        const command = settingsData.commands[key];
+        if (!command) {
+          return '';
+        }
+        return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>`;
+      }).join('');
+
+      mainCommandsElement.style.display = 'block';
+    }
+
     function log(message, isError = false) {
       const logElement = document.getElementById('log');
       const logEntry = document.createElement('div');
       logEntry.classList.add('log-entry');
-      logEntry.style.color = isError ? 'red' : 'black';
+      if (isError) {
+        logEntry.classList.add('error');
+      }
       logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
       logElement.appendChild(logEntry);
       logElement.scrollTop = logElement.scrollHeight;
@@ -425,10 +426,11 @@
     function onDisconnected() {
       log('Disconnected from device');
       autoLoaded = false;
-      document.getElementById('errors').textContent = '';
-      document.getElementById('container').textContent = '';
-      document.getElementById('disconnect-button').disabled = true;
-      document.getElementById('connect-button').disabled = false;
+      document.getElementById('status-message').style.display = 'none';
+      document.getElementById('main-commands-message').style.display = 'none';
+      document.getElementById('disconnect-button').style.display = 'none';
+      document.getElementById('connect-button').style.display = 'inline';
+      document.getElementById('pin-label').style.display = 'inline';
       document.getElementById('settings-selection').style.display = 'none'; // Hide settings dropdown and button
       document.getElementById('settings-section').innerHTML = '';
       document.getElementById('commands-buttons-section').innerHTML = '';
@@ -451,8 +453,9 @@
         await txCharacteristic.startNotifications();
         txCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
-        document.getElementById('connect-button').disabled = true;
-        document.getElementById('disconnect-button').disabled = false;
+        document.getElementById('disconnect-button').style.display = 'inline';
+        document.getElementById('connect-button').style.display = 'none';
+        document.getElementById('pin-label').style.display = 'none';
 
         log(`Connected to device: ${device.name}`);
 
@@ -500,6 +503,18 @@
       }
     }
 
+    function decodeLastPositionMessage(bytes) {
+      let val = (bytes[3] << 24) | (bytes[2] << 16) | (bytes[1] << 8) | bytes[0];
+      const longitude = val / 10000000; // gps latitude, units: °
+      val = (bytes[7] << 24) | (bytes[6] << 16) | (bytes[5] << 8) | bytes[4];
+      const latitude = val / 10000000; // gps longitude, units: °
+      val = (bytes[11] << 24) | (bytes[10] << 16) | (bytes[9] << 8) | bytes[8];
+      const altitude = val / 1000; // gps altitude, units: m
+      val = (bytes[15] << 24) | (bytes[14] << 16) | (bytes[13] << 8) | bytes[12];
+      const timestamp = val;
+      return { latitude, longitude, altitude, timestamp };
+    }
+
     function decodeMessage(data) {
       const port = data[0];
       const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port);
@@ -509,7 +524,12 @@
         if (message) {
           const [key, msg] = message;
           const valueBytes = data.slice(3, 3 + msg.length);
-          log(`Decoded message: ${key} = ${bytesToHex(valueBytes)}`);
+
+          if (key === 'msg_last_position') {
+            log(`Decoded message: ${key} = ${JSON.stringify(decodeLastPositionMessage(valueBytes))}`);
+          } else {
+            log(`Decoded message: ${key} = ${bytesToHex(valueBytes)}`);
+          }
         } else {
           throw new Error(`No message found for port: ${portName} and id: 0x${id.toString(16)}`);
         }
