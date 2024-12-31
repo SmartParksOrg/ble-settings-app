@@ -151,12 +151,15 @@ button {
     color: white;
     padding: 10px 20px;
     border: none;
-    cursor: pointer;
 }
 
 button:hover {
     background-color: #426052;
     /* Slightly darker on hover */
+}
+
+button:disabled, button:disabled:hover {
+    background-color: #3b3b3b;
 }
 
 button.secondary {

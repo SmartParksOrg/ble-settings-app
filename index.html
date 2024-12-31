@@ -16,6 +16,8 @@
     <div class="controls">
       <button id="connect-button">Connect to Device</button>
       <button id="disconnect-button" disabled>Disconnect</button>
+      <label>PIN:
+      <input name="pincode" id="pincode" type="text" class="pincode" value="0000" inputmode="numeric" maxlength="4"></label>
       <div id="settings-selection" style="display:none;">
         <label for="settings-dropdown">Choose a settings file:</label>
         <select id="settings-dropdown"></select>
@@ -48,12 +50,13 @@
     <h2>Commands</h2>
     <div id="commands-buttons-section"></div>
   </div>
-  
+
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
     const CMD_SEND_ALL_SETTINGS = 0xA7;
+    const CMD_CHECK_PIN = 0xC2;
 
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
 
@@ -93,20 +96,19 @@
     function exportToJson() {
       const settings = {};
 
-      for (const [intId, val] of settingsMap) {
-        const [settingKey, settingObj] = val;
-        if (excludeFromImportExport.includes(settingKey)) {
+      for (const [key, setting] of Object.entries(settingsData.settings)) {
+        if (excludeFromImportExport.includes(key)) {
           continue;
         }
 
-        const value = getInputValue(settingObj.id);
+        const value = getInputValue(setting.id);
 
-        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(settingObj.conversion)) {
-          settings[settingKey] = Number(value);
-        } else if (settingObj.conversion === 'bool') {
-          settings[settingKey] = value === 'true';
+        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+          settings[key] = Number(value);
+        } else if (setting.conversion === 'bool') {
+          settings[key] = value === 'true';
         } else {
-          settings[settingKey] = value;
+          settings[key] = value;
         }
       }
 
@@ -426,6 +428,7 @@
       document.getElementById('errors').textContent = '';
       document.getElementById('container').textContent = '';
       document.getElementById('disconnect-button').disabled = true;
+      document.getElementById('connect-button').disabled = false;
       document.getElementById('settings-selection').style.display = 'none'; // Hide settings dropdown and button
       document.getElementById('settings-section').innerHTML = '';
       document.getElementById('commands-buttons-section').innerHTML = '';
@@ -440,6 +443,7 @@
 
         device.addEventListener('gattserverdisconnected', onDisconnected);
         server = await device.gatt.connect();
+
         const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
         txCharacteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         rxCharacteristic = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
@@ -447,13 +451,15 @@
         await txCharacteristic.startNotifications();
         txCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
+        document.getElementById('connect-button').disabled = true;
         document.getElementById('disconnect-button').disabled = false;
 
         log(`Connected to device: ${device.name}`);
 
-        // Load available settings files (instead of loading automatically)
+        // Load available settings files
         loadAvailableSettings();
-        await requestStatusMessage();
+
+        await checkPin(document.getElementById('pincode').value);
       } catch (error) {
         log(`Error: ${error.message}`, true);
       }
@@ -473,7 +479,10 @@
 
       const port = data[0];
       try {
-        if (port === 3) {
+        if (port === 31 && data.length >= 5 && data[1] === 0xF3 && data[3] === CMD_CHECK_PIN && data[4] === 0x01) {
+          log(`PIN OK`);
+          await requestStatusMessage();
+        } else if (port === 3) {
           decodeBleValueResponse(data.slice(1));
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
@@ -573,6 +582,14 @@
 
     async function requestStatusMessage() {
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
+    }
+
+    async function checkPin(pin_in) {
+      // add zeros to each number in PIN ("1234" -> "01020304")
+      let pin_out = "0" + pin_in.split("").join("0");
+      // add zeros to the end (to have 16 byte data length)
+      pin_out = pin_out + "000000000000000000000000";
+      return executeBleCommand([0x20, CMD_CHECK_PIN, 16, ...stringToUint8Array(pin_out, 16)]);
     }
 
     async function requestAllSettings() {
