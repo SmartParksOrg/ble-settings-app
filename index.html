@@ -5,6 +5,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenCollar Edge BLE Web Connect</title>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(reg => console.log('Service Worker registered:', reg))
+        .catch(err => console.error('Service Worker registration failed:', err));
+    }
+  </script>
   <link rel="stylesheet" href="style.css" />
   <script src="functions.js"></script>
 </head>
@@ -47,11 +54,12 @@
   <div class="log-footer" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
       <span>Log</span>
+      <span class="icon close"></span>
     </div>
     <div class="log-content" id="log"></div>
   </div>
 
-  <button class="toggle-button" onclick="toggleLog()">Toggle Log</button>
+  <button class="toggle-button" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
 
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
@@ -76,6 +84,7 @@
 
     function toggleLog() {
       logFooter.classList.toggle('open');
+      document.getElementById('toggle-button').style.display = logFooter.classList.contains('open') ? 'none' : 'block';
       document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : '50px';
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
