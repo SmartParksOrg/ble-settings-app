@@ -20,26 +20,31 @@
 <body style="padding-bottom: 50px;">
   <div id="header-section">
     <div class="controls">
-      <button id="connect-button">Connect</button>
-      <button id="disconnect-button" style="display: none;">Disconnect</button>
-      <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
-          inputmode="numeric" maxlength="4"></label>
-      <div id="settings-selection" style="display:none;">
-        <button id="load-settings-button">Load from:</button>
-        <select id="settings-dropdown"></select>
-        <br>
-        <button id="export-button" onclick="exportToJson()">Export</button>
-        <button id="import-button" onclick="document.getElementById('import-file').click();">Import</button>
-        <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+      <div style="display: flex; justify-content: space-between;">
+        <button id="disconnect-button" class="hidden-when-disconnected">Disconnect</button>
+        <div class="hidden-when-no-settings">
+          <button id="export-button" onclick="exportToJson()">Export</button>
+          <button id="import-button" onclick="document.getElementById('import-file').click();"
+            style="margin-right:0;">Import</button>
+          <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+        </div>
+      </div>
+      <div class="hidden-when-connected">
+        <button id="connect-button">Connect</button>
+        <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
+            inputmode="numeric" maxlength="4"></label>
+      </div>
+      <div id="settings-selection" class="hidden-when-disconnected">
+        <select id="settings-dropdown" onchange="loadSelectedSettings()"></select>
       </div>
       <div id="container">
-        <div class="section" id="status-message" style="display: none;"></div>
-        <div class="section" id="main-commands-message" style="display: none;"></div>
+        <div class="section hidden-when-no-status" id="status-message"></div>
+        <div class="section hidden-when-no-settings" id="main-commands"></div>
       </div>
     </div>
   </div>
 
-  <div class="settings-section">
+  <div class="settings-section hidden-when-no-settings">
     <h2>Settings</h2>
     <div id="settings-progress">
       <div></div>
@@ -47,10 +52,13 @@
     <div id="settings-section"></div>
   </div>
 
-  <div class="commands-section">
+  <div class="commands-section hidden-when-no-settings">
+    <a name="allcommands"></a>
     <h2>Commands</h2>
     <div id="commands-buttons-section"></div>
   </div>
+
+  <button class="toggle-button" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
 
   <div class="log-footer" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
@@ -60,13 +68,13 @@
     <div class="log-content" id="log"></div>
   </div>
 
-  <button class="toggle-button" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
 
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
     const CMD_SINGLE_VALUE = 0xA3;
     const CMD_STATUS = 0xA4;
     const CMD_SEND_ALL_SETTINGS = 0xA7;
+    const CMD_SET_LOCATION_AND_TIME = 0xAF;
     const CMD_CHECK_PIN = 0xC2;
 
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
@@ -91,8 +99,12 @@
       logElement.scrollTop = logElement.scrollHeight;
     }
 
-    document.getElementById('load-settings-button').addEventListener('click', async function () {
+    async function loadSelectedSettings() {
       const selectedFile = document.getElementById('settings-dropdown').value;
+      if (!selectedFile) {
+        return;
+      }
+
       log(`Loading settings from ${selectedFile}...`);
 
       try {
@@ -101,12 +113,13 @@
         displaySettings();
         displayMainCommands();
         displayCommands();
+        document.body.classList.add('has-settings');
         await fetchAllSettings();
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
       }
-    });
+    };
 
     function exportToJson() {
       const settings = {};
@@ -188,8 +201,7 @@
 
     function loadAvailableSettings() {
       try {
-        populateSettingsIntoPage();
-        document.getElementById('settings-selection').style.display = 'block'; // Show the dropdown and load button
+        populateSettingsIntoPage("Choose a settings file");
       } catch (error) {
         log(`Error fetching settings files: ${error.message}`, true);
       }
@@ -317,11 +329,10 @@
       const errors = Object.entries(statusMessage)
         .filter(([key, hasError]) => key.startsWith('err_') && hasError)
         .map(([key]) => key.slice(4).toUpperCase())
-        .join(', ') || 'No errors'
+        .join(', ') || 'no errors'
 
       // Display decoded values in table
       const statusMessageElement = document.getElementById('status-message');
-      statusMessageElement.style.display = 'block';
       statusMessageElement.innerHTML = `
         <div class="status-header">
           <h4>${device.name}</h4>
@@ -359,14 +370,14 @@
 
         for (const [key, setting] of Object.entries(group)) {
           const row = document.createElement('div');
-          row.className = 'setting disabled';
+          row.className = 'setting disabled with-controls';
           row.setAttribute('id', `setting-${setting.id}`);
           row.innerHTML = `
           <h4>${key} (${setting.id})</h4> 
           
           ${renderInput(key, setting)}
 
-          <div>
+          <div class="setting-controls">
             <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
             <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${setting.default}">Set default</button>
           </div>
@@ -393,8 +404,44 @@
       }
     }
 
+    function setLocationAndTime() {
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by this browser.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          log(`Got location: ${position.coords.latitude}, ${position.coords.longitude}`);
+          
+          const bytesArray = new Uint8Array(12);
+          bytesArray.set(new Uint8Array(new Int32Array([position.coords.longitude * Math.pow(10, 7)]).buffer), 0);
+          bytesArray.set(new Uint8Array(new Int32Array([position.coords.latitude * Math.pow(10, 7)]).buffer), 4);
+          bytesArray.set(new Uint8Array(new Int32Array([new Date() / 1000]).buffer), 8);
+
+          executeBleCommand([0x20, CMD_SET_LOCATION_AND_TIME, 12, ...bytesArray]);
+        },
+        (error) => {
+          switch (error.code) {
+            case error.PERMISSION_DENIED:
+              alert("User denied the request for Geolocation.");
+              break;
+            case error.POSITION_UNAVAILABLE:
+              alert("Location information is unavailable.");
+              break;
+            case error.TIMEOUT:
+              alert("The request to get user location timed out.");
+              break;
+            case error.UNKNOWN_ERROR:
+              alert("An unknown error occurred.");
+              break;
+          }
+        }
+      );
+    }
+
     function displayMainCommands() {
-      const mainCommandsElement = document.getElementById('main-commands-message');
+      const mainCommandsElement = document.getElementById('main-commands');
 
       mainCommandsElement.innerHTML = Object.entries(mainCommands).map(([key, label]) => {
         const command = settingsData.commands[key];
@@ -404,7 +451,10 @@
         return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>`;
       }).join('');
 
-      mainCommandsElement.style.display = 'block';
+      mainCommandsElement.innerHTML += `
+        <button id="request-status-button" onclick="setLocationAndTime()">Set location & time</button>
+        <a href="#allcommands" class="button secondary">Other commands</button>
+      `;
     }
 
     function log(message, isError = false) {
@@ -420,14 +470,13 @@
     }
 
     function autoSelectAndLoadSettings(statusMessage) {
-      log("autoSelectAndLoadSettings");
       const settingsDropdown = document.getElementById('settings-dropdown');
       const fwVersion = `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
 
       for (let i = 0; i < settingsDropdown.options.length; i++) {
         if (settingsDropdown.options[i].text.includes(fwVersion)) {
           settingsDropdown.selectedIndex = i;
-          document.getElementById('load-settings-button').click();
+          loadSelectedSettings();
           break;
         }
       }
@@ -436,18 +485,17 @@
     function onDisconnected() {
       log('Disconnected from device');
       autoLoaded = false;
-      document.getElementById('status-message').style.display = 'none';
-      document.getElementById('main-commands-message').style.display = 'none';
-      document.getElementById('disconnect-button').style.display = 'none';
-      document.getElementById('connect-button').style.display = 'inline';
-      document.getElementById('pin-label').style.display = 'inline';
-      document.getElementById('settings-selection').style.display = 'none'; // Hide settings dropdown and button
-      document.getElementById('settings-section').innerHTML = '';
-      document.getElementById('commands-buttons-section').innerHTML = '';
+      document.body.classList.remove('connected');
+      document.body.classList.remove('has-status');
+      document.body.classList.remove('has-settings');
     }
 
-    document.getElementById('connect-button').addEventListener('click', async function () {
+    const connectButton = document.getElementById('connect-button');
+    connectButton.addEventListener('click', async function () {
+      const connectLabel = connectButton.textContent;
       try {
+        connectButton.disabled = true;
+        connectButton.textContent = 'Connecting...';
         device = await navigator.bluetooth.requestDevice({
           filters: [{ manufacturerData: [{ companyIdentifier: 0x0A61 }] }],
           optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
@@ -463,10 +511,7 @@
         await txCharacteristic.startNotifications();
         txCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
-        document.getElementById('disconnect-button').style.display = 'inline';
-        document.getElementById('connect-button').style.display = 'none';
-        document.getElementById('pin-label').style.display = 'none';
-
+        document.body.classList.add('connected');
         log(`Connected to device: ${device.name}`);
 
         // Load available settings files
@@ -475,6 +520,9 @@
         await checkPin(document.getElementById('pincode').value);
       } catch (error) {
         log(`Error: ${error.message}`, true);
+      } finally {
+        connectButton.textContent = connectLabel;
+        connectButton.disabled = false;
       }
     });
 
@@ -500,6 +548,7 @@
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
           displayStatusMessage(statusMessage);
+          document.body.classList.add('has-status');
           if (!autoLoaded) {
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);

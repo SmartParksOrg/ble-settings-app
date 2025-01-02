@@ -2,7 +2,8 @@ let settingsData = null;
 let settingsMap = new Map(); // maps int ID -> [key, meta]
 const intervalPatterns = [
     /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
-    /^rf_scan_duration$/,               // matches strings ending with rf_scan_duration
+    /^rf_scan_duration$/,          
+    /^(cold|hot)_fix_timeout$/
 ];
 
 const bitmapSettings = ['lr_send_flag', 'flash_store_flag', 'sat_send_flag'];
@@ -28,9 +29,16 @@ const minMaxValues = {
     'float': { min: -3.4e38, max: 3.4e38 }
 }
 
-function populateSettingsIntoPage() {
+function populateSettingsIntoPage(firstItem = null) {
     const dropdown = document.getElementById('settings-dropdown');
     dropdown.innerHTML = ''; // Clear previous options
+
+    if (firstItem) {
+        const option = document.createElement('option');
+        option.value = "";
+        option.textContent = firstItem;
+        dropdown.appendChild(option);
+    }
 
     files.forEach(file => {
         const option = document.createElement('option');
@@ -178,21 +186,22 @@ function renderIntervalSetting(key, setting, value) {
     return `
         <!-- hidden actual seconds value -->
         <input type="hidden" id="new-value-${setting.id}" value="${defaultSeconds}" />
-        
-        <!-- The numeric input displayed to user -->
-        <input type="number"
-          id="interval-num-${setting.id}"
-          oninput="updateIntervalValue('${setting.id}')"
-          value="${displayValueInGuessedUnit}" />
+        <div class="interval-container">
+            <!-- The numeric input displayed to user -->
+            <input type="number"
+            id="interval-num-${setting.id}"
+            oninput="updateIntervalValue('${setting.id}')"
+            value="${displayValueInGuessedUnit}" />
 
-        <!-- The time unit select, with guessedUnit pre-selected -->
-        <select id="interval-unit-${setting.id}"
-          onchange="updateIntervalUnit('${setting.id}')">
-          <option value="1"${guessedUnit === '1' ? ' selected' : ''}>second(s)</option>
-          <option value="60"${guessedUnit === '60' ? ' selected' : ''}>minute(s)</option>
-          <option value="3600"${guessedUnit === '3600' ? ' selected' : ''}>hour(s)</option>
-          <option value="86400"${guessedUnit === '86400' ? ' selected' : ''}>day(s)</option>
-        </select>
+            <!-- The time unit select, with guessedUnit pre-selected -->
+            <select id="interval-unit-${setting.id}"
+            onchange="updateIntervalUnit('${setting.id}')">
+            <option value="1"${guessedUnit === '1' ? ' selected' : ''}>second(s)</option>
+            <option value="60"${guessedUnit === '60' ? ' selected' : ''}>minute(s)</option>
+            <option value="3600"${guessedUnit === '3600' ? ' selected' : ''}>hour(s)</option>
+            <option value="86400"${guessedUnit === '86400' ? ' selected' : ''}>day(s)</option>
+            </select>
+        </div>
       `;
 }
 
@@ -273,7 +282,7 @@ function renderInputControl(key, setting, value) {
     }
 
     // 2) If the key ends with "_interval" -> render numeric + time-unit select (with auto-guess)
-    else if (intervalPatterns.some(rx => rx.test(key)) && setting.conversion === 'uint32') {
+    else if (intervalPatterns.some(rx => rx.test(key))) {
         html += renderIntervalSetting(key, setting, value);
     }
 

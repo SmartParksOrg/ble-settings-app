@@ -78,6 +78,12 @@ textarea {
     padding-top: 3px;
 }
 
+.setting.with-controls {
+    justify-content: space-between;
+}
+.setting.with-controls .input-container {
+    flex-grow: 1;
+}
 .setting.value-not-default {
     background-color: #a0bfc3;
 }
@@ -109,7 +115,9 @@ textarea {
 .setting h4 small {
     font-weight: normal;
 }
-
+input, select, textarea {
+    font-family: monospace;
+}
 .setting .input-container input,
 .setting .input-container select,
 .setting .input-container textarea {
@@ -136,7 +144,8 @@ textarea {
 
 #commands-buttons-section button {
     width: 100%;
-    word-wrap: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .settings-container {
@@ -145,16 +154,19 @@ textarea {
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
 }
 
-button {
+button, .button {
     background-color: #52735E;
     /* Dark green buttons */
     border: 1px solid #52735E;
     color: white;
     padding: 10px 20px;
     cursor: pointer;
+    text-decoration: none;
+    font-size: 14px;
+    text-align: center;
 }
 
-button:hover {
+button:hover, .button:hover {
     background-color: #426052;
     /* Slightly darker on hover */
 }
@@ -164,14 +176,14 @@ button:disabled, button:disabled:hover {
     border-color: #3b3b3b;
 }
 
-button.secondary {
+button.secondary, .button.secondary {
     background-color: #fff;
     /* Dark grey buttons */
     color: #000;
     border: 1px solid #52735E;
 }
 
-button.secondary:hover {
+button.secondary:hover, .button.secondary:hover {
     background-color: #f2f2f2;
     /* Slightly darker on hover */
 }
@@ -297,6 +309,17 @@ button.secondary:hover {
 }
 .status-item .icon {
     margin-right: 5px;
+}
+.interval-container, .setting-controls, #main-commands {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: repeat(2, 1fr);
+}
+.hidden, body:not(.connected) .hidden-when-disconnected, body.connected .hidden-when-connected, body:not(.has-settings) .hidden-when-no-settings, body:not(.has-status) .hidden-when-no-status {
+    display: none !important;
+}
+#main-commands button {
+    margin: 0;
 }
 .icon {
     width: 14px;
