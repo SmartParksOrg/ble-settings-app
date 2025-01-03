@@ -19,10 +19,9 @@
 
 <body>
   <div id="header-section">
-    <h1>Settings HEX Composer</h1>
-
     <div class="controls">
       <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
+      <button id="export-button" onclick="exportToJson()" style="float: right;">Export</button>
     </div>
   </div>
 
@@ -56,6 +55,42 @@
       displaySettings();
       displayCommands();
       updateEncodedMessage(); // Update once shown
+    }
+
+    function exportToJson() {
+      const settings = {};
+
+      for (const [key, setting] of Object.entries(settingsData.settings)) {
+        const checkbox = document.getElementById(`checkbox-${setting.id}`);
+        if (!checkbox || !checkbox.checked) {
+          continue; // user didn't select it
+        }
+
+        const value = getInputValue(setting.id);
+
+        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+          settings[key] = Number(value);
+        } else if (setting.conversion === 'bool') {
+          settings[key] = value === 'true';
+        } else {
+          settings[key] = value;
+        }
+      }
+
+      if (Object.keys(settings).length === 0) {
+        alert('No settings selected to export');
+        return;
+      }
+
+      const json = JSON.stringify(settings, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'settings.json';
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     function displaySettings() {

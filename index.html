@@ -75,7 +75,11 @@
     const CMD_STATUS = 0xA4;
     const CMD_SEND_ALL_SETTINGS = 0xA7;
     const CMD_SET_LOCATION_AND_TIME = 0xAF;
+    const CMD_SEND_POSITION = 0xA5;
     const CMD_CHECK_PIN = 0xC2;
+    const CMD_SEND_SINGLE_VAL = 0xA3;
+    const CMD_SEND_TIMESTAMP = 0xCE;
+    const VAL_UBLOX_TIME = 0xD8;
 
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
     const mainCommands = {
@@ -324,7 +328,7 @@
       };
     }
 
-    function displayStatusMessage(statusMessage) {
+    async function displayStatusMessage(statusMessage) {
       // Display error key only if true
       const errors = Object.entries(statusMessage)
         .filter(([key, hasError]) => key.startsWith('err_') && hasError)
@@ -352,9 +356,35 @@
           <div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>
           <div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>
           <div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>
+          <div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>
+          <div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>
           <div class="status-item"><span class="icon errors"></span>${errors}</div>
         </div>
       `;
+
+      await executeBleCommand([0x20, CMD_SEND_POSITION, 0x00]);
+
+      if (compareSemanticVersion(statusMessage.ver_fw_major, statusMessage.ver_fw_minor, 6, 11) >= 0) {
+        await executeBleCommand([0x20, CMD_SEND_TIMESTAMP, 0x00]);
+      } else {
+        await executeBleCommand([0x20, CMD_SEND_SINGLE_VAL, 0x01, VAL_UBLOX_TIME]);
+      }
+    }
+
+    function compareSemanticVersion(major1, minor1, major2, minor2) {
+      if (major1 > major2) {
+        return 1;
+      } else if (major1 < major2) {
+        return -1;
+      } else {
+        if (minor1 > minor2) {
+          return 1;
+        } else if (minor1 < minor2) {
+          return -1;
+        } else {
+          return 0;
+        }
+      }
     }
 
     function displaySettings() {
@@ -464,14 +494,14 @@
       if (isError) {
         logEntry.classList.add('error');
       }
-      logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logEntry.textContent = `[${new Date().toLocaleTimeString("nl-NL")}] ${message}`;
       logElement.appendChild(logEntry);
       logElement.scrollTop = logElement.scrollHeight;
     }
 
     function autoSelectAndLoadSettings(statusMessage) {
       const settingsDropdown = document.getElementById('settings-dropdown');
-      const fwVersion = `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
+      const fwVersion = `v${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
 
       for (let i = 0; i < settingsDropdown.options.length; i++) {
         if (settingsDropdown.options[i].text.includes(fwVersion)) {
@@ -545,16 +575,20 @@
           await requestStatusMessage();
         } else if (port === 3) {
           decodeBleValueResponse(data.slice(1));
+        } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
+          const timestamp = bytesToSetting(settingsData.values['ublox_time'], data.slice(3));
+          log(`Decoded: ublox_time = ${timestamp}`);
+          document.getElementById('ublox-timestamp').textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
-          displayStatusMessage(statusMessage);
+          await displayStatusMessage(statusMessage);
           document.body.classList.add('has-status');
           if (!autoLoaded) {
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);
           }
         } else {
-          decodeMessage(data);
+          await decodeMessage(data);
         }
       } catch (error) {
         console.error(error);
@@ -574,7 +608,7 @@
       return { latitude, longitude, altitude, timestamp };
     }
 
-    function decodeMessage(data) {
+    async function decodeMessage(data) {
       const port = data[0];
       const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port);
       if (portName) {
@@ -585,9 +619,16 @@
           const valueBytes = data.slice(3, 3 + msg.length);
 
           if (key === 'msg_last_position') {
-            log(`Decoded message: ${key} = ${JSON.stringify(decodeLastPositionMessage(valueBytes))}`);
+            const lastPositionMessage = decodeLastPositionMessage(valueBytes);
+            document.getElementById('ublox-location').innerHTML = `<a href="https://maps.google.com/?q=${lastPositionMessage.latitude},${lastPositionMessage.longitude}" target="_blank">${lastPositionMessage.latitude.toFixed(3)},${lastPositionMessage.longitude.toFixed(3)}</a>`;
+            log(`Decoded message: ${key} = ${JSON.stringify(lastPositionMessage)}`);
+          } else if(key === 'msg_timestamp') {
+            document.getElementById('ublox-timestamp').textContent = new Date(bytesToSetting(msg, valueBytes) * 1000).toLocaleString("nl-NL");
+          } else if(key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
+            // Updated time and position, refresh time and position
+            await requestStatusMessage();
           } else {
-            log(`Decoded message: ${key} = ${bytesToHex(valueBytes)}`);
+            log(`Decoded message: ${key} = ${bytesToSetting(msg, valueBytes)}`);
           }
         } else {
           throw new Error(`No message found for port: ${portName} and id: 0x${id.toString(16)}`);
