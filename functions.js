@@ -12,7 +12,6 @@ const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_m
 
 // Static list of settings files
 const files = [
-    "settings-v6.11.0.json",
     "settings-v6.10.0.json",
     "settings-v6.9.0.json",
     "settings-v6.8.1.json",
