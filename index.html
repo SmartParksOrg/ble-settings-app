@@ -67,7 +67,7 @@
     </div>
     <div class="log-content" id="log"></div>
   </div>
-  
+
   <div id="toast"></div>
 
 
@@ -97,6 +97,7 @@
     let device, server, txCharacteristic, rxCharacteristic;
     let readAllSettings = null;
     let autoLoaded = false;
+    let lastPositionMessage = null;
 
     const logFooter = document.getElementById('logFooter');
 
@@ -459,6 +460,15 @@
       });
     }
 
+    function sendLocationAndTimeCommand(latitude, longitude) {
+      const bytesArray = new Uint8Array(12);
+      bytesArray.set(new Uint8Array(new Int32Array([longitude * Math.pow(10, 7)]).buffer), 0);
+      bytesArray.set(new Uint8Array(new Int32Array([latitude * Math.pow(10, 7)]).buffer), 4);
+      bytesArray.set(new Uint8Array(new Int32Array([new Date() / 1000]).buffer), 8);
+
+      executeBleCommand([0x20, CMD_SET_LOCATION_AND_TIME, 12, ...bytesArray]);
+    }
+
     function setLocationAndTime() {
       if (!navigator.geolocation) {
         alert("Geolocation is not supported by this browser.");
@@ -468,28 +478,25 @@
       navigator.geolocation.getCurrentPosition(
         (position) => {
           log(`Got location: ${position.coords.latitude}, ${position.coords.longitude}`);
-          
-          const bytesArray = new Uint8Array(12);
-          bytesArray.set(new Uint8Array(new Int32Array([position.coords.longitude * Math.pow(10, 7)]).buffer), 0);
-          bytesArray.set(new Uint8Array(new Int32Array([position.coords.latitude * Math.pow(10, 7)]).buffer), 4);
-          bytesArray.set(new Uint8Array(new Int32Array([new Date() / 1000]).buffer), 8);
-
-          executeBleCommand([0x20, CMD_SET_LOCATION_AND_TIME, 12, ...bytesArray]);
+          sendLocationAndTimeCommand(position.coords.latitude, position.coords.longitude);
         },
         (error) => {
-          switch (error.code) {
-            case error.PERMISSION_DENIED:
-              alert("User denied the request for Geolocation.");
-              break;
-            case error.POSITION_UNAVAILABLE:
-              alert("Location information is unavailable.");
-              break;
-            case error.TIMEOUT:
-              alert("The request to get user location timed out.");
-              break;
-            case error.UNKNOWN_ERROR:
-              alert("An unknown error occurred.");
-              break;
+          let errorMessage = '';
+          if (error.code === error.PERMISSION_DENIED) {
+            errorMessage = "User denied the request for location";
+          } else if (error.code === error.POSITION_UNAVAILABLE) {
+            errorMessage = "Location information is unavailable";
+          } else if (error.code === error.TIMEOUT) {
+            errorMessage = "The request to get user location timed out";
+          } else {
+            errorMessage = "An unknown error occurred";
+          }
+
+          if (lastPositionMessage) {
+            showToast(`${errorMessage}. Using last known location.`);
+            sendLocationAndTimeCommand(lastPositionMessage.latitude, lastPositionMessage.longitude);
+          } else {
+            showToast(errorMessage);
           }
         }
       );
@@ -543,6 +550,7 @@
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
+      lastPositionMessage = null;
     }
 
     const connectButton = document.getElementById('connect-button');
@@ -609,7 +617,7 @@
           document.getElementById('ublox-timestamp').textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
           log(`Decoded: timestamp = ${JSON.stringify(timestamp)}`);
         } else if (port === 31 && data[1] === MSG_LAST_POSITION) {
-          const lastPositionMessage = decodeLastPositionMessage(data.slice(3));
+          lastPositionMessage = decodeLastPositionMessage(data.slice(3));
           document.getElementById('ublox-location').innerHTML = `<a href="https://maps.google.com/?q=${lastPositionMessage.latitude},${lastPositionMessage.longitude}" target="_blank">${lastPositionMessage.latitude.toFixed(3)},${lastPositionMessage.longitude.toFixed(3)}</a>`;
           log(`Decoded: last postion = ${JSON.stringify(lastPositionMessage)}`);
         } else if (port === 4) {
@@ -656,7 +664,7 @@
           const [key, msg] = message;
           const valueBytes = data.slice(3, 3 + msg.length);
 
-          if(key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
+          if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
           } else {
