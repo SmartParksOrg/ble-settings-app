@@ -11,7 +11,8 @@ const bitmapSettings = ['lr_send_flag', 'flash_store_flag', 'sat_send_flag'];
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
 
 // Static list of settings files
-const files = [
+const SETTINGS_FILES = [
+    "settings-v6.11.0.json",
     "settings-v6.10.0.json",
     "settings-v6.9.0.json",
     "settings-v6.8.1.json",
@@ -40,7 +41,7 @@ function populateSettingsIntoPage(firstItem = null) {
         dropdown.appendChild(option);
     }
 
-    files.forEach(file => {
+    SETTINGS_FILES.forEach(file => {
         const option = document.createElement('option');
         option.value = `./settings/${file}`;
         option.textContent = file;
@@ -519,4 +520,26 @@ function validateInput(setting, value) {
             throw new Error(`Max length is ${setting.length} characters`);
         }
     }
+}
+
+let toastTimeout;
+
+function showToast(message) {
+    // Clear the previous timer if the button is pressed quickly
+    if (toastTimeout) {
+        clearTimeout(toastTimeout);
+    }
+
+    const toast = document.getElementById('toast');
+    toast.innerText = message;
+    toast.style.opacity = '1';
+    toast.style.visibility = 'visible';
+
+    // Hide the toast after 3 seconds
+    toastTimeout = setTimeout(() => {
+        toast.style.opacity = '0';
+        toastTimeout = setTimeout(() => {
+            toast.style.visibility = 'hidden';
+        }, 500); // Ensure visibility is hidden after fade-out
+    }, 3000);
 }

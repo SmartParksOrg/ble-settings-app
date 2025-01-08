@@ -37,6 +37,7 @@
 
   <div id="floating-bar">
     <select id="payload-type" onchange="updateEncodedMessage()">
+      <option value="none">Payload type</option>
       <option value="lorawan" id="payload-lorawan">LoRaWAN</option>
       <option value="rockblock">RockBlock</option>
       <option value="ble">BLE custom command</option>
@@ -44,6 +45,8 @@
     <input type="text" id="hex-output" readonly value="(no settings selected)" />
     <button id="copy-button" onclick="copyToClipboard()">📋</button>
   </div>
+
+  <div id="toast"></div>
 
   <script>
     // ---------------------------------------------
@@ -78,7 +81,7 @@
       }
 
       if (Object.keys(settings).length === 0) {
-        alert('No settings selected to export');
+        showToast('No settings selected to export');
         return;
       }
 
@@ -177,6 +180,11 @@
       const payloadType = document.getElementById('payload-type');
       document.getElementById('payload-lorawan').innerHTML = `LoRaWAN`;
 
+      if (payloadType == null || payloadType.value === 'none') {
+        hexOutput.value = '(please select a payload type)';
+        return;
+      }
+
       const encodedBytes = [];
       hexOutput.classList.remove('invalid');
 
@@ -251,8 +259,9 @@
       updateEncodedMessage();
       const hexOutput = document.getElementById('hex-output');
       navigator.clipboard.writeText(hexOutput.value).then(() => {
-        // optionally provide feedback
+        showToast('Copied to clipboard');
       }).catch(err => {
+        showToast('Failed to copy to clipboard');
         console.error('Could not copy text: ', err);
       });
     }

@@ -7,10 +7,11 @@ const STATIC_FILES = [
     '/functions.js',
     '/manifest.json',
     '/composer-manifest.json',
-    '/settings/settings-v4.4.2.json',
+    '/settings/settings-v6.11.0.json',
     '/settings/settings-v6.10.0.json',
+    '/settings/settings-v6.9.0.json',
     '/settings/settings-v6.8.1.json',
-    '/settings/settings-v6.9.0.json'
+    '/settings/settings-v4.4.2.json',
 ];
 
 // Install Event: Cache all static files
