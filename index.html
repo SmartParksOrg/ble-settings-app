@@ -441,19 +441,30 @@
     }
 
     function copyDeviceInfo() {
-      if (!settingsData) {
+      if (!settingsData || !settingsData.settings) {
         return;
       }
 
-      const fw_version = document.getElementById('fw-version').textContent;
-      const hw_version = document.getElementById('hw-version').textContent;
-      const name = getInputValue(settingsData.settings.device_name.id);
-      const eui = getInputValue(settingsData.settings.device_eui.id);
-      const app_key = getInputValue(settingsData.settings.app_key.id);
-      const app_eui = getInputValue(settingsData.settings.app_eui.id);
-      const pin = getInputValue(settingsData.settings.device_pin.id).split("").filter((_, index) => (index + 1) % 2 === 0).join("");
+      function safeGetValue(name) {
+        if(name in settingsData.settings) {
+          return getInputValue(settingsData.settings[name].id);
+        }
+      }
 
-      navigator.clipboard.writeText(`${name}\t${eui}\t${app_key}\t${app_eui}\t${pin}\t${hw_version}\t${fw_version}`).then(() => {
+      const values = [
+        safeGetValue("device_name"),
+        safeGetValue("device_eui"),
+        safeGetValue("app_key"),
+        safeGetValue("app_eui"),
+        safeGetValue("device_pin").split("").filter((_, index) => (index + 1) % 2 === 0).join(""),
+        document.getElementById('hw-version').textContent,
+        document.getElementById('fw-version').textContent,
+        safeGetValue("s_band_dev_adr"),
+        safeGetValue("s_band_app_key"),
+        safeGetValue("s_band_network_key"),
+      ].filter(value => value).join("\t");
+
+      navigator.clipboard.writeText(values).then(() => {
         showToast('Device info copied to clipboard');
       }).catch(err => {
         showToast('Failed to copy to clipboard');
