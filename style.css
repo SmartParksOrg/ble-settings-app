@@ -493,21 +493,27 @@ body:not(.has-status) .hidden-when-no-status {
     overflow-wrap: break-word;
 }
 
+.search {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-direction: row;
+}
+
 /* Style the search bar */
 #settings-search {
-    flex: 1;
+    min-width: 300px;
     padding: 10px 15px;
     font-size: 16px;
     border: 1px solid #ccc;
     border-radius: 5px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     outline: none;
-    transition: border-color 0.2s ease;
 }
 
 /* Adjust layout for smaller screens */
 @media (max-width: 600px) {
     #settings-search {
-        width: 100%;
+        flex-grow: 1;
     }
 }
