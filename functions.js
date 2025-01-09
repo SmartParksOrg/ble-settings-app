@@ -2,7 +2,7 @@ let settingsData = null;
 let settingsMap = new Map(); // maps int ID -> [key, meta]
 const intervalPatterns = [
     /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
-    /^rf_scan_duration$/,          
+    /^rf_scan_duration$/,
     /^(cold|hot)_fix_timeout$/
 ];
 
@@ -104,6 +104,42 @@ function getInputValue(settingId) {
         return el.value.trim();
     }
 }
+
+function filterSettings() {
+    const query = document.getElementById('settings-search').value.toLowerCase();
+    const showNonDefaultOnly = document.getElementById('non-default-checkbox') ? document.getElementById('non-default-checkbox').checked : false;
+    const settingsSection = document.getElementById('settings-section');
+    const groups = settingsSection.querySelectorAll('.settings-container');
+
+    groups.forEach(group => {
+        let hasVisibleSettings = false;
+        const settings = group.querySelectorAll('.setting');
+
+        settings.forEach(setting => {
+            const matchesSearch = setting.querySelector('h4').textContent.toLowerCase().includes(query);
+            const isNonDefault = setting.classList.contains('value-not-default');
+            const shouldShow = matchesSearch && (!showNonDefaultOnly || isNonDefault);
+
+            if (shouldShow) {
+                setting.classList.remove('hidden');
+                hasVisibleSettings = true;
+            } else {
+                setting.classList.add('hidden');
+            }
+        });
+
+        // Hide or show group heading based on visible settings
+        const groupHeading = group.previousElementSibling; // Assumes heading is immediately before the group
+        if (hasVisibleSettings) {
+            groupHeading.classList.remove('hidden');
+            group.classList.remove('hidden');
+        } else {
+            groupHeading.classList.add('hidden');
+            group.classList.add('hidden');
+        }
+    });
+}
+
 
 function registerValues(data, type) {
     for (const [key, value] of Object.entries(data)) {

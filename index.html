@@ -46,6 +46,12 @@
 
   <div class="settings-section hidden-when-no-settings">
     <h2>Settings</h2>
+    <div style="margin-bottom: 10px;">
+      <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
+      <label>
+        <input type="checkbox" id="non-default-checkbox" onchange="filterSettings()"> Show non-default settings
+      </label>
+    </div>
     <div id="settings-progress">
       <div></div>
     </div>
@@ -525,8 +531,8 @@
       }).join('');
 
       mainCommandsElement.innerHTML += `
-        <button id="request-status-button" onclick="setLocationAndTime()">Set location & time</button>
-        <button id="request-status-button" onclick="copyDeviceInfo()">Copy device info</button>
+        <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
+        <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
       `;
     }
 
