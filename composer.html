@@ -19,9 +19,16 @@
 
 <body>
   <div id="header-section">
-    <div class="controls">
-      <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
-      <button id="export-button" onclick="exportToJson()" style="float: right;">Export</button>
+    <div class="controls" style="display: flex; justify-content: space-between;">
+      <div>
+        <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
+      </div>
+      <div>
+        <button id="export-button" onclick="exportToJson()">Export</button>
+        <button id="import-button" onclick="document.getElementById('import-file').click();"
+          style="margin-right:0;">Import</button>
+        <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+      </div>
     </div>
   </div>
 
@@ -99,6 +106,39 @@
       URL.revokeObjectURL(url);
     }
 
+    async function importFromJson() {
+      const fileInput = document.getElementById('import-file');
+      const file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select a file to import.');
+        return;
+      }
+
+      displaySettings();
+      console.log('Importing settings from file:', file.name);
+      const reader = new FileReader();
+      reader.onload = async function (event) {
+        try {
+          const entries = Object.entries(JSON.parse(event.target.result));
+
+          for (const [key, value] of entries) {
+            const settingObj = getByKey(key);
+            if (settingObj) {
+              const checkbox = document.getElementById(`checkbox-${settingObj.id}`);
+              checkbox.checked = true;
+              checkbox.parentElement.parentElement.classList.remove('transparent');
+              setInputValue(settingObj.id, value);
+            }
+          }
+        } catch (error) {
+          console.error('Error importing settings:', error);
+          showToast('Failed to import settings. Please check the file format.');
+        }
+      };
+      reader.readAsText(file);
+    }
+
     function displaySettings() {
       const settingsSection = document.getElementById('settings-section');
       settingsSection.innerHTML = '';
@@ -110,7 +150,7 @@
         settingsContainer.className = 'settings-container';
 
         const groupHeading = document.createElement('h3');
-        groupHeading.textContent = groupName.replace(/_/g, "");
+        groupHeading.textContent = groupName.replace(/_/g, " ");
         settingsSection.appendChild(groupHeading);
 
         for (const [key, setting] of Object.entries(group)) {
@@ -118,12 +158,13 @@
           const row = document.createElement('div');
           row.className = 'setting transparent';
           row.setAttribute('id', `setting-${setting.id}`);
+          row.setAttribute('data-search', key);
 
           // Build the "include" checkbox + label
           row.innerHTML = `
             <div class="checkbox-container">
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
-              <label for="checkbox-${setting.id}"><h4>${key} <small>(${setting.id})</small></h4></label>
+              <label for="checkbox-${setting.id}"><h4 title="${key}">${setting.display_name} <small>(${setting.id})</small></h4></label>
             </div>${renderInputContainer(key, setting)}
           `;
 

@@ -6,6 +6,20 @@ const intervalPatterns = [
     /^(cold|hot)_fix_timeout$/
 ];
 
+const grouping = {
+    "^(hot|cold)_": "satellite",
+    "^sat_send_flag$": "satellite",
+    "^rejoin_interval$": "lr",
+    "^app_(key|eui)$": "lr",
+    "^device_eui$": "lr",
+    "^horizontal_accuracy$": "ublox",
+    "^motion_ths$": "gps",
+    "^enable_motion_trig_gps$": "gps",
+    "^rf_open_sky_detection": 0,
+    "^rf_scan": 0,
+    "(^.{2,}?)_": 1
+};
+
 const bitmapSettings = [/^.*_flag$/];
 
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
@@ -116,7 +130,8 @@ function filterSettings() {
         const settings = group.querySelectorAll('.setting');
 
         settings.forEach(setting => {
-            const matchesSearch = setting.querySelector('h4').textContent.toLowerCase().includes(query);
+            const dataSearch = setting.getAttribute('data-search') || setting.querySelector('h4').textContent;
+            const matchesSearch = dataSearch.toLowerCase().includes(query);
             const isNonDefault = setting.classList.contains('value-not-default');
             const shouldShow = matchesSearch && (!showNonDefaultOnly || isNonDefault);
 
@@ -253,16 +268,38 @@ function guessTimeUnit(seconds) {
     return '1';
 }
 
+function formatSettingName(settingName, group) {
+    if (settingName.startsWith(group + "_")) {
+        settingName = settingName.replace(group + "_", "");
+    }
+
+    return settingName;
+}
+
+function getGroupName(key) {
+    for (const [rx, groupName] of Object.entries(grouping)) {
+        const match = key.match(rx);
+        if (match) {
+            if (typeof groupName === 'number') {
+                return match[groupName];
+            } else {
+                return groupName;
+            }
+        }
+    }
+    return key;
+}
+
 function groupAndSortSettings() {
     const grouped = {};
     const other = {};
 
     for (const key in settingsData.settings) {
-        const prefix = key.split('_')[0];
-        if (!grouped[prefix]) {
-            grouped[prefix] = {};
+        const groupName = getGroupName(key);
+        if (!grouped[groupName]) {
+            grouped[groupName] = {};
         }
-        grouped[prefix][key] = settingsData.settings[key];
+        grouped[groupName][key] = settingsData.settings[key];
     }
 
     // Move singletons into "_other"
@@ -273,13 +310,24 @@ function groupAndSortSettings() {
             delete grouped[prefix];
         }
     }
+
     if (Object.keys(other).length > 0) {
         grouped["_other"] = other;
     }
 
+    for (const groupName in grouped) {
+        for (const key in grouped[groupName]) {
+            grouped[groupName][key].display_name = formatSettingName(key, groupName);
+        }
+    }
+
     // Sort groups
     const sortedGroups = Object.keys(grouped).sort().reduce((acc, group) => {
-        acc[group] = Object.keys(grouped[group]).sort().reduce((groupAcc, key) => {
+        acc[group] = Object.keys(grouped[group]).sort((a, b) => {
+            const nameA = grouped[group][a].display_name.toLowerCase();
+            const nameB = grouped[group][b].display_name.toLowerCase();
+            return nameA.localeCompare(nameB);
+        }).reduce((groupAcc, key) => {
             groupAcc[key] = grouped[group][key];
             return groupAcc;
         }, {});

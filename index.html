@@ -46,7 +46,7 @@
 
   <div class="settings-section hidden-when-no-settings">
     <h2>Settings</h2>
-    <div class="search">
+    <div id="search" class="search">
       <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
       <label>
         <input type="checkbox" id="non-default-checkbox" onchange="filterSettings()"> Hide default settings
@@ -58,8 +58,8 @@
     <div id="settings-section"></div>
   </div>
 
-  <div class="commands-section hidden-when-no-settings">
-    <a name="allcommands"></a>
+  <div id="other-commands" class="commands-section hidden-when-no-settings">
+    <a name="other-commands"></a>
     <h2>Commands</h2>
     <div id="commands-buttons-section"></div>
   </div>
@@ -182,11 +182,17 @@
         const progressContainer = document.getElementById('settings-progress');
         const progressBar = document.querySelector('#settings-progress div');
         const settingsSection = document.getElementById('settings-section');
+        const commandsSection = document.getElementById('other-commands');
+        const search = document.getElementById('search');
+        document.getElementById('settings-search').value = '';
+        
 
         try {
+          search.classList.add('hidden');
           progressBar.style.width = `0%`;
           progressContainer.style.display = 'block';
-          settingsSection.style.display = 'none';
+          settingsSection.classList.add('hidden');
+          commandsSection.classList.add('hidden');
 
           const importedSettings = JSON.parse(event.target.result);
 
@@ -208,7 +214,9 @@
           console.error('Error importing settings:', error);
           showToast('Failed to import settings. Please check the file format.');
         } finally {
-          settingsSection.style.display = 'block';
+          search.classList.remove('hidden');
+          settingsSection.classList.remove('hidden');
+          commandsSection.classList.remove('hidden');
           progressContainer.style.display = 'none';
         }
       };
@@ -407,15 +415,16 @@
         settingsContainer.className = 'settings-container';
 
         const groupHeading = document.createElement('h3');
-        groupHeading.textContent = groupName.replace(/_/g, "");
+        groupHeading.textContent = groupName.replace(/_/g, " ");
         settingsSection.appendChild(groupHeading);
 
         for (const [key, setting] of Object.entries(group)) {
           const row = document.createElement('div');
           row.className = 'setting disabled with-controls';
           row.setAttribute('id', `setting-${setting.id}`);
+          row.setAttribute('data-search', key);
           row.innerHTML = `
-          <h4>${key} (${setting.id})</h4> 
+          <h4>${setting.display_name} (${setting.id})</h4> 
           
           ${renderInput(key, setting)}
 
