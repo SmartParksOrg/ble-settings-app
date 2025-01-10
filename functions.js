@@ -6,7 +6,7 @@ const intervalPatterns = [
     /^(cold|hot)_fix_timeout$/
 ];
 
-const bitmapSettings = ['lr_send_flag', 'flash_store_flag', 'sat_send_flag'];
+const bitmapSettings = [/^.*_flag$/];
 
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
 
@@ -167,7 +167,7 @@ function getById(id) {
 }
 
 function isBitmaskSetting(key) {
-    return bitmapSettings.includes(key);
+    return bitmapSettings.some(rx => rx.test(key));
 }
 
 function convertUnitToSeconds(value, unit) {
