@@ -222,6 +222,15 @@ button.secondary:hover,
     margin-bottom: 150px;
 }
 
+.settings-section h3 {
+    position: sticky;
+    top: 0;
+    margin: 0 -10px;
+    background-color: #90AE9B;
+    z-index: 10;
+    padding: 30px 10px 10px;
+}
+
 #settings-section h3 {
     text-transform: capitalize;
 }
@@ -241,6 +250,7 @@ button.secondary:hover,
     padding: 10px;
     text-align: center;
     font-family: monospace;
+    z-index: 20;
 }
 
 .checkbox-container {
@@ -430,6 +440,7 @@ body:not(.has-status) .hidden-when-no-status {
     color: white;
     transition: transform 0.3s ease;
     transform: translateY(100%);
+    z-index: 20;
 }
 
 .log-footer.open {
@@ -462,6 +473,7 @@ body:not(.has-status) .hidden-when-no-status {
     padding: 10px;
     border-radius: 5px;
     cursor: pointer;
+    z-index: 15;
 }
 
 .toggle-button:hover {
@@ -481,7 +493,7 @@ body:not(.has-status) .hidden-when-no-status {
     border-radius: 5px;
     padding: 15px;
     position: fixed;
-    z-index: 1;
+    z-index: 100;
     left: 50%;
     transform: translateX(-50%);
     bottom: 30px;
