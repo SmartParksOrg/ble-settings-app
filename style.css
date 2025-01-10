@@ -157,6 +157,7 @@ textarea {
 .settings-container {
     display: grid;
     gap: 10px;
+    margin-bottom: 20px;
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
 }
 
@@ -228,7 +229,7 @@ button.secondary:hover,
     margin: 0 -10px;
     background-color: #90AE9B;
     z-index: 10;
-    padding: 30px 10px 10px;
+    padding: 10px;
 }
 
 #settings-section h3 {
