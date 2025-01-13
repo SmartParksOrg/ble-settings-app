@@ -124,6 +124,7 @@
       log(`Loading settings from ${selectedFile}...`);
 
       try {
+        document.getElementById('settings-search').value = '';
         await loadSettings(selectedFile);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
@@ -185,7 +186,7 @@
         const commandsSection = document.getElementById('other-commands');
         const search = document.getElementById('search');
         document.getElementById('settings-search').value = '';
-        
+        filterSettings();
 
         try {
           search.classList.add('hidden');
