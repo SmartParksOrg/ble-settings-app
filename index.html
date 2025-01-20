@@ -205,8 +205,13 @@
 
             const settingObj = getByKey(key);
             if (settingObj) {
+              const start = Date.now();
               await updateBleSetting(settingObj.id, value);
-              await sleep(200);
+              const elapsed = Date.now() - start;
+              const remainingSleep = Math.max(0, 200 - elapsed);
+              if (remainingSleep > 0) {
+                await sleep(remainingSleep);
+              }
             }
             progressBar.style.width = `${(index / entries.length) * 100}%`;
           }

@@ -1,17 +1,17 @@
 const CACHE_NAME = 'app-cache-v1';
 const STATIC_FILES = [
-    '/', // for index.html
-    '/index.html',
-    '/composer.html',
-    '/style.css',
-    '/functions.js',
-    '/manifest.json',
-    '/composer-manifest.json',
-    '/settings/settings-v6.11.0.json',
-    '/settings/settings-v6.10.0.json',
-    '/settings/settings-v6.9.0.json',
-    '/settings/settings-v6.8.1.json',
-    '/settings/settings-v4.4.2.json',
+    '/ble-settings-app/', // for index.html
+    '/ble-settings-app/index.html',
+    '/ble-settings-app/composer.html',
+    '/ble-settings-app/style.css',
+    '/ble-settings-app/functions.js',
+    '/ble-settings-app/manifest.json',
+    '/ble-settings-app/composer-manifest.json',
+    '/ble-settings-app/settings/settings-v6.11.0.json',
+    '/ble-settings-app/settings/settings-v6.10.0.json',
+    '/ble-settings-app/settings/settings-v6.9.0.json',
+    '/ble-settings-app/settings/settings-v6.8.1.json',
+    '/ble-settings-app/settings/settings-v4.4.2.json',
 ];
 
 // Install Event: Cache all static files
