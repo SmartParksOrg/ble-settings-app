@@ -7,6 +7,7 @@ const STATIC_FILES = [
     '/ble-settings-app/functions.js',
     '/ble-settings-app/manifest.json',
     '/ble-settings-app/composer-manifest.json',
+    '/ble-settings-app/settings/settings-v6.14.1.json',
     '/ble-settings-app/settings/settings-v6.12.1.json',
     '/ble-settings-app/settings/settings-v6.11.0.json',
     '/ble-settings-app/settings/settings-v6.10.0.json',
