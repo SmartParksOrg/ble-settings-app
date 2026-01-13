@@ -23,6 +23,10 @@ const grouping = {
 const bitmapSettings = [/^.*_flag$/];
 
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
+const customByteArrayRenderers = {
+    lp0_communication_params: renderLp0CommunicationParams,
+    lp0_node_params: renderLp0NodeParams
+};
 
 // Static list of settings files
 const SETTINGS_FILES = [
@@ -365,8 +369,14 @@ function renderInputControl(key, setting, value) {
     // Build the "include" checkbox + label
     let html = '';
 
+    // 0) Special byte array renderers
+    if (customByteArrayRenderers[key]) {
+        value = stripBytes(value);
+        html += customByteArrayRenderers[key](setting, value);
+    }
+
     // 1) If it's one of the three bitmask settings -> render port checkboxes
-    if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
+    else if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
         html += renderPortCheckboxes(setting, value);
     }
 
@@ -427,6 +437,130 @@ function renderInputControl(key, setting, value) {
     html += `<div class="input-error" id="input-error-${setting.id}">${errorText}</div>`; // close input-container
 
     return html;
+}
+
+function parseByteArrayValue(value, expectedLength) {
+    const hex = stripBytes(value || '');
+    const bytes = new Uint8Array(expectedLength);
+    for (let i = 0; i < expectedLength; i++) {
+        const start = i * 2;
+        if (start + 2 <= hex.length) {
+            bytes[i] = parseInt(hex.substr(start, 2), 16);
+        } else {
+            bytes[i] = 0;
+        }
+    }
+    return bytes;
+}
+
+function renderByteArrayField(settingId, index, label, value, options, helpText, readOnly) {
+    const inputId = `byte-${settingId}-${index}`;
+    const control = options
+        ? `<select id="${inputId}" onchange="updateLp0ByteArray('${settingId}')">
+            ${options.map(option => `<option value="${option.value}"${option.value === value ? ' selected' : ''}>${option.label}</option>`).join('')}
+           </select>`
+        : `<input type="number"
+            id="${inputId}"
+            min="0"
+            max="255"
+            value="${value}"
+            ${readOnly ? 'readonly' : ''}
+            oninput="updateLp0ByteArray('${settingId}')"
+          />`;
+
+    return `
+        <div class="byte-array-field">
+            <label for="${inputId}">${label}</label>
+            ${control}
+            ${helpText ? `<div class="byte-array-help">${helpText}</div>` : ''}
+        </div>
+    `;
+}
+
+function renderLp0CommunicationParams(setting, value) {
+    const bytes = parseByteArrayValue(value, setting.length);
+    return `
+        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <div class="byte-array-grid">
+            ${renderByteArrayField(setting.id, 0, 'Spreading factor', bytes[0], [
+                { value: 0x05, label: 'LR11XX_RADIO_LORA_SF5 (0x05)' },
+                { value: 0x06, label: 'LR11XX_RADIO_LORA_SF6 (0x06)' },
+                { value: 0x07, label: 'LR11XX_RADIO_LORA_SF7 (0x07)' },
+                { value: 0x08, label: 'LR11XX_RADIO_LORA_SF8 (0x08)' },
+                { value: 0x09, label: 'LR11XX_RADIO_LORA_SF9 (0x09)' },
+                { value: 0x0A, label: 'LR11XX_RADIO_LORA_SF10 (0x0A)' },
+                { value: 0x0B, label: 'LR11XX_RADIO_LORA_SF11 (0x0B)' },
+                { value: 0x0C, label: 'LR11XX_RADIO_LORA_SF12 (0x0C)' }
+            ], 'Default: LR11XX_RADIO_LORA_SF9 (0x09)')}
+            ${renderByteArrayField(setting.id, 1, 'Bandwidth', bytes[1], [
+                { value: 0x08, label: 'LR11XX_RADIO_LORA_BW_10 (10.42 kHz, 0x08)' },
+                { value: 0x01, label: 'LR11XX_RADIO_LORA_BW_15 (15.63 kHz, 0x01)' },
+                { value: 0x09, label: 'LR11XX_RADIO_LORA_BW_20 (20.83 kHz, 0x09)' },
+                { value: 0x02, label: 'LR11XX_RADIO_LORA_BW_31 (31.25 kHz, 0x02)' },
+                { value: 0x0A, label: 'LR11XX_RADIO_LORA_BW_41 (41.67 kHz, 0x0A)' },
+                { value: 0x03, label: 'LR11XX_RADIO_LORA_BW_62 (62.50 kHz, 0x03)' },
+                { value: 0x04, label: 'LR11XX_RADIO_LORA_BW_125 (125.00 kHz, 0x04)' },
+                { value: 0x05, label: 'LR11XX_RADIO_LORA_BW_250 (250.00 kHz, 0x05)' },
+                { value: 0x06, label: 'LR11XX_RADIO_LORA_BW_500 (500.00 kHz, 0x06)' },
+                { value: 0x0D, label: 'LR11XX_RADIO_LORA_BW_200 (203.00 kHz, 0x0D)' },
+                { value: 0x0E, label: 'LR11XX_RADIO_LORA_BW_400 (406.00 kHz, 0x0E)' },
+                { value: 0x0F, label: 'LR11XX_RADIO_LORA_BW_800 (812.00 kHz, 0x0F)' }
+            ], 'Default: LR11XX_RADIO_LORA_BW_125 (0x04)')}
+            ${renderByteArrayField(setting.id, 2, 'Coding rate', bytes[2], [
+                { value: 0x00, label: 'LR11XX_RADIO_LORA_NO_CR (0x00)' },
+                { value: 0x01, label: 'LR11XX_RADIO_LORA_CR_4_5 (0x01)' },
+                { value: 0x02, label: 'LR11XX_RADIO_LORA_CR_4_6 (0x02)' },
+                { value: 0x03, label: 'LR11XX_RADIO_LORA_CR_4_7 (0x03)' },
+                { value: 0x04, label: 'LR11XX_RADIO_LORA_CR_4_8 (0x04)' },
+                { value: 0x05, label: 'LR11XX_RADIO_LORA_CR_LI_4_5 (0x05)' },
+                { value: 0x06, label: 'LR11XX_RADIO_LORA_CR_LI_4_6 (0x06)' },
+                { value: 0x07, label: 'LR11XX_RADIO_LORA_CR_LI_4_8 (0x07)' }
+            ], 'Default: LR11XX_RADIO_LORA_CR_4_5 (0x01)')}
+            ${renderByteArrayField(setting.id, 3, 'RX1 window delay (seconds)', bytes[3], null, 'Must match across devices in the same network')}
+            ${renderByteArrayField(setting.id, 4, 'Unused (reserved)', bytes[4], null, 'Currently not used')}
+        </div>
+    `;
+}
+
+function renderLp0NodeParams(setting, value) {
+    const bytes = parseByteArrayValue(value, setting.length);
+    return `
+        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <div class="byte-array-grid">
+            ${renderByteArrayField(setting.id, 0, 'Offload feature', bytes[0], [
+                { value: 0, label: '0 - Offload feature off' },
+                { value: 1, label: '1 - Device is a tracker' },
+                { value: 2, label: '2 - Device is an offload station' }
+            ])}
+            ${renderByteArrayField(setting.id, 1, 'Offload station ID', bytes[1])}
+            ${renderByteArrayField(setting.id, 2, 'Max overlapping nodes', bytes[2])}
+            ${renderByteArrayField(setting.id, 3, 'Use LoRaWAN header for ping', bytes[3], [
+                { value: 0, label: '0 - Disabled' },
+                { value: 1, label: '1 - Enabled' }
+            ], 'Currently unused; pings use LoRaWAN header')}
+            ${renderByteArrayField(setting.id, 4, 'Ping interval (seconds)', bytes[4], null, '0-255; 0 = ping ASAP after idle')}
+        </div>
+    `;
+}
+
+function updateLp0ByteArray(settingId) {
+    const [_, setting] = getById(settingId);
+    const bytes = new Uint8Array(setting.length);
+    for (let i = 0; i < setting.length; i++) {
+        const input = document.getElementById(`byte-${settingId}-${i}`);
+        let value = input ? parseInt(input.value, 10) : 0;
+        if (isNaN(value)) {
+            value = 0;
+        }
+        value = Math.min(255, Math.max(0, value));
+        if (input && !input.readOnly) {
+            input.value = value;
+        }
+        bytes[i] = value;
+    }
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    hiddenField.value = bytesToHex(bytes);
+    __onInputChanged(settingId);
 }
 
 function updateBitmaskForSetting(settingId) {

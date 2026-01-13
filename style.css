@@ -136,6 +136,24 @@ textarea {
     width: auto;
 }
 
+.byte-array-grid {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.byte-array-field label {
+    display: block;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.byte-array-help {
+    color: #3d3d3d;
+    font-size: 11px;
+    margin-top: 2px;
+}
+
 #commands-buttons-section {
     display: grid;
     gap: 10px;
