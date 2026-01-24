@@ -104,6 +104,13 @@
     let readAllSettings = null;
     let autoLoaded = false;
     let lastPositionMessage = null;
+    let flashLogState = {
+      active: false,
+      lines: [],
+      buffer: '',
+      startedAt: null,
+      deviceName: ''
+    };
 
     const logFooter = document.getElementById('logFooter');
 
@@ -113,6 +120,86 @@
       document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : '50px';
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
+    }
+
+    function formatFilenameTimestamp(date) {
+      const pad = (num) => num.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+    }
+
+    function sanitizeFilenamePart(value) {
+      return (value || 'device').toString().replace(/[^A-Za-z0-9_-]+/g, '') || 'device';
+    }
+
+    function startFlashLogCapture() {
+      flashLogState = {
+        active: true,
+        lines: [],
+        buffer: '',
+        startedAt: new Date(),
+        deviceName: device && device.name ? device.name : ''
+      };
+      log('Starting flash log download...');
+    }
+
+    function finishFlashLogCapture(reason) {
+      if (!flashLogState.active) {
+        return;
+      }
+
+      if (flashLogState.buffer) {
+        flashLogState.lines.push(flashLogState.buffer);
+        flashLogState.buffer = '';
+      }
+
+      const lines = flashLogState.lines;
+      const startedAt = flashLogState.startedAt || new Date();
+      const deviceName = sanitizeFilenamePart(flashLogState.deviceName);
+      const timestamp = formatFilenameTimestamp(startedAt);
+      const filename = `raw_logs-${deviceName}_${timestamp}.txt`;
+
+      const contents = lines.join('\n');
+      const blob = new Blob([contents], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      log(`Flash log download complete (${lines.length} lines). File: ${filename}${reason ? ` (${reason})` : ''}`);
+      flashLogState.active = false;
+    }
+
+    function bytesToBase64(bytes) {
+      let binary = '';
+      bytes.forEach((byte) => {
+        binary += String.fromCharCode(byte);
+      });
+      return btoa(binary);
+    }
+
+    function handleFlashLogChunk(data) {
+      let payloadLength = data.length >= 3 ? data[2] : 0;
+      if (payloadLength === 0 || payloadLength > data.length - 3) {
+        payloadLength = data.length - 3;
+      }
+
+      if (payloadLength <= 0 && data.length <= 3) {
+        finishFlashLogCapture('empty payload');
+        return;
+      }
+
+      const payload = data.slice(0);
+      if (!payload.length) {
+        return;
+      }
+
+      const base64Line = bytesToBase64(payload);
+      if (flashLogState.active) {
+        flashLogState.lines.push(base64Line);
+      }
+      log(`Flash log: ${base64Line}`);
     }
 
     async function loadSelectedSettings() {
@@ -451,7 +538,7 @@
       const commandsSection = document.getElementById('commands-buttons-section');
       commandsSection.innerHTML = '';
       for (const [key, command] of Object.entries(settingsData.commands)) {
-        if (command.length !== 0 || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
+        if ((command.length !== 0 && command.length !== 1) || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
           continue;
         }
 
@@ -580,6 +667,9 @@
 
     function onDisconnected() {
       log('Disconnected from device');
+      if (flashLogState.active) {
+        finishFlashLogCapture('disconnected');
+      }
       autoLoaded = false;
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
@@ -637,9 +727,16 @@
 
       const port = data[0];
       try {
+        const flashLogPort = settingsData && settingsData.ports ? settingsData.ports.port_flash_log : null;
+        if (flashLogPort && port === flashLogPort) {
+          handleFlashLogChunk(data);
+          return;
+        }
         if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_CHECK_PIN && data[4] === 0x01) {
           log(`PIN OK`);
           await requestStatusMessage();
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB && data[4] === 0x01) {
+          finishFlashLogCapture('device confirm');
         } else if (port === 3) {
           decodeBleValueResponse(data.slice(1));
         } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
@@ -771,8 +868,17 @@
         cmd = parseInt(cmd, 16);
       }
 
-      const [key, _] = getById(cmd);
+      const [key, commandMeta] = getById(cmd);
       showToast(`Executing command: ${key}`);
+      if (key === 'cmd_flash_get_all') {
+        startFlashLogCapture();
+        const value = commandMeta && commandMeta.value !== undefined ? commandMeta.value : 0;
+        return executeBleCommand([0x20, cmd, 0x01, value]);
+      }
+      if (commandMeta && commandMeta.length === 1) {
+        const value = commandMeta.value !== undefined ? commandMeta.value : 0;
+        return executeBleCommand([0x20, cmd, 0x01, value]);
+      }
       return executeBleCommand([0x20, cmd, 0x00]);
     }
 
