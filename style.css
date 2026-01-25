@@ -85,6 +85,19 @@ body {
     margin-right: 10px;
 }
 
+.header-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.header-select {
+    min-width: 220px;
+    flex: 1 1 280px;
+}
+
 .primary-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -506,7 +519,10 @@ h2 {
     background-color: var(--sp-forest);
     color: white;
     padding: 10px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
     font-family: monospace;
     z-index: 20;
 }
@@ -521,9 +537,20 @@ h2 {
     cursor: pointer;
 }
 
+#payload-type {
+    height: 40px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(31, 42, 35, 0.2);
+    background: #fff;
+    color: #000;
+    font-family: monospace;
+}
+
 #hex-output {
     width: 70%;
-    padding: 7px 10px;
+    height: 40px;
+    padding: 0 10px;
     font-family: monospace;
     border: 1px solid rgba(31, 42, 35, 0.2);
     border-radius: var(--radius-sm);
@@ -536,8 +563,10 @@ h2 {
     color: var(--sp-forest);
     border: 1px solid rgba(82, 115, 94, 0.5);
     cursor: pointer;
-    padding: 6px 12px;
-    border-radius: var(--radius-pill);
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: var(--radius-sm);
     font-size: 14px;
 }
 
@@ -926,6 +955,10 @@ body:not(.has-status) .hidden-when-no-status {
 @media (max-width: 900px) {
     :root {
         --body-bottom-padding: 88px;
+    }
+
+    #floating-bar {
+        bottom: 58px;
     }
 
     #container,

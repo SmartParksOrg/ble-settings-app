@@ -7,7 +7,7 @@
   <title>Settings HEX Composer</title>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/ble-settings-app/service-worker.js')
+      navigator.serviceWorker.register('service-worker.js')
         .then(reg => console.log('Service Worker registered:', reg))
         .catch(err => console.error('Service Worker registration failed:', err));
     }
@@ -18,21 +18,30 @@
 </head>
 
 <body>
-  <div id="header-section">
-    <div class="controls" style="display: flex; justify-content: space-between;">
-      <div>
-        <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
+  <div id="header-section" class="page-section">
+    <div class="brand">
+      <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
+      <div class="brand-title">
+        <span class="brand-name">Smart Parks</span>
+        <span class="brand-subtitle">Settings HEX Composer</span>
       </div>
-      <div>
-        <button id="export-button" onclick="exportToJson()">Export</button>
-        <button id="import-button" onclick="document.getElementById('import-file').click();"
-          style="margin-right:0;">Import</button>
-        <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+    </div>
+    <div class="controls">
+      <div class="header-actions">
+        <div class="header-select">
+          <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
+        </div>
+        <div class="button-cluster">
+          <button id="export-button" onclick="exportToJson()">Export</button>
+          <button id="import-button" onclick="document.getElementById('import-file').click();"
+            style="margin-right:0;">Import</button>
+          <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="settings-section">
+  <div id="settings-area" class="settings-section page-section">
     <h2>Settings</h2>
     <div class="search">
       <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
@@ -40,7 +49,7 @@
     <div id="settings-section"></div>
   </div>
 
-  <div class="commands-section">
+  <div id="composer-commands" class="commands-section page-section">
     <h2>Commands</h2>
     <div id="commands-section"></div>
   </div>
@@ -57,6 +66,16 @@
   </div>
 
   <div id="toast"></div>
+
+  <nav class="bottom-nav" aria-label="Primary">
+    <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
+      <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
+    </a>
+    <a href="#header-section">Top</a>
+    <a href="#settings-area">Settings</a>
+    <a href="#composer-commands">Commands</a>
+    <a href="index.html">Home</a>
+  </nav>
 
   <script>
     // ---------------------------------------------
@@ -146,12 +165,21 @@
       const groupedSettings = groupAndSortSettings(settingsData.settings);
 
       for (const [groupName, group] of Object.entries(groupedSettings)) {
+        const groupWrapper = document.createElement('div');
+        groupWrapper.className = 'settings-group is-collapsed';
+
+        const groupToggle = document.createElement('button');
+        groupToggle.type = 'button';
+        groupToggle.className = 'group-toggle';
+        groupToggle.setAttribute('aria-expanded', 'false');
+        groupToggle.innerHTML = `
+          <span class="group-title">${groupName.replace(/_/g, " ")}</span>
+          <span class="group-caret" aria-hidden="true"></span>
+        `;
+        groupToggle.addEventListener('click', () => toggleGroup(groupWrapper));
+
         const settingsContainer = document.createElement('div');
         settingsContainer.className = 'settings-container';
-
-        const groupHeading = document.createElement('h3');
-        groupHeading.textContent = groupName.replace(/_/g, " ");
-        settingsSection.appendChild(groupHeading);
 
         for (const [key, setting] of Object.entries(group)) {
           // Create the top-level container
@@ -171,7 +199,9 @@
           settingsContainer.appendChild(row);
         }
 
-        settingsSection.appendChild(settingsContainer);
+        groupWrapper.appendChild(groupToggle);
+        groupWrapper.appendChild(settingsContainer);
+        settingsSection.appendChild(groupWrapper);
       }
     }
 
