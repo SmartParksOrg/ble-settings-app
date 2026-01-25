@@ -699,6 +699,241 @@ function bytesToHex(bytes) {
     return Array.from(bytes).map(toHex).join('');
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatSettingValueForPreview(key, setting, value, compareValue = null, mode = null) {
+    if (value === undefined || value === null || value === '') {
+        return '<span class="import-preview-empty">—</span>';
+    }
+
+    if (customByteArrayRenderers[key]) {
+        return formatCustomByteArrayPreview(key, setting, value);
+    }
+
+    if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
+        return formatBitmaskPreview(key, value, compareValue, mode);
+    }
+
+    if (intervalPatterns.some(rx => rx.test(key))) {
+        const seconds = parseInt(value, 10) || 0;
+        const guessedUnit = guessTimeUnit(seconds);
+        const displayValue = Math.round(convertSecondsToUnit(seconds, guessedUnit));
+        const unitLabel = guessedUnit === '86400' ? 'day(s)'
+            : guessedUnit === '3600' ? 'hour(s)'
+                : guessedUnit === '60' ? 'minute(s)'
+                    : 'second(s)';
+        return `<div class="import-preview-value">${escapeHtml(displayValue)} <span class="import-preview-muted">${escapeHtml(unitLabel)}</span><div class="import-preview-subvalue">${escapeHtml(seconds)} sec</div></div>`;
+    }
+
+    if (setting.conversion === 'bool') {
+        if (value === true || value === 'true' || value === 1 || value === '1') {
+            return '<span class="import-preview-bool import-preview-bool-true">true</span>';
+        }
+        if (value === false || value === 'false' || value === 0 || value === '0') {
+            return '<span class="import-preview-bool import-preview-bool-false">false</span>';
+        }
+        return escapeHtml(value);
+    }
+
+    if (setting.conversion === 'byte_array') {
+        try {
+            const bytes = parseByteArrayValue(value, setting.length);
+            return `<div class="import-preview-mono">${bytes.map(b => `0x${toHex(b)}`).join(' ')}</div>`;
+        } catch (error) {
+            return `<div class="import-preview-mono">${escapeHtml(value)}</div>`;
+        }
+    }
+
+    if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const num = Number(value);
+        return `<span class="import-preview-mono">${escapeHtml(Number.isFinite(num) ? num : value)}</span>`;
+    }
+
+    return escapeHtml(value);
+}
+
+function formatBitmaskPreview(key, value, compareValue = null, mode = null) {
+    const bitmask = parseInt(value, 10) || 0;
+    const compareBitmask = compareValue == null ? null : (parseInt(compareValue, 10) || 0);
+    const ports = [];
+    const safeKey = (key || 'bitmask').toString().replace(/[^A-Za-z0-9_-]/g, '');
+    for (const [portName, portNum] of Object.entries(settingsData.ports || {})) {
+        if (skipPorts.includes(portName)) {
+            continue;
+        }
+        const mask = (1 << (portNum - 1));
+        const isSet = (bitmask & mask) !== 0;
+        const wasSet = compareBitmask == null ? null : (compareBitmask & mask) !== 0;
+
+        let tagClass = '';
+        if (mode === 'next' && compareBitmask != null && isSet && !wasSet) {
+            tagClass = 'import-preview-tag-added';
+        } else if (mode === 'next' && compareBitmask != null && !isSet && wasSet) {
+            tagClass = 'import-preview-tag-removed';
+        }
+
+        ports.push({
+            id: `import-preview-${safeKey}-${mode || 'value'}-${portNum}`,
+            name: portName.replace(/^port_/, ''),
+            checked: isSet,
+            className: tagClass
+        });
+    }
+
+    if (!ports.length) {
+        return '<span class="import-preview-empty">none</span>';
+    }
+
+    return `
+        <div class="import-preview-checkboxes">
+          ${ports.map(port => `
+            <div class="import-preview-checkbox ${port.className}">
+              <input type="checkbox" id="${port.id}" ${port.checked ? 'checked' : ''} disabled />
+              <label for="${port.id}">${escapeHtml(port.name)}</label>
+            </div>
+          `).join('')}
+        </div>
+    `;
+}
+
+function formatCustomByteArrayPreview(key, setting, value) {
+    let bytes;
+    try {
+        bytes = parseByteArrayValue(value, setting.length);
+    } catch (error) {
+        return `<div class="import-preview-mono">${escapeHtml(value)}</div>`;
+    }
+
+    if (key === 'lp0_communication_params') {
+        const sfOptions = [
+            { value: 0x05, label: 'LR11XX_RADIO_LORA_SF5 (0x05)' },
+            { value: 0x06, label: 'LR11XX_RADIO_LORA_SF6 (0x06)' },
+            { value: 0x07, label: 'LR11XX_RADIO_LORA_SF7 (0x07)' },
+            { value: 0x08, label: 'LR11XX_RADIO_LORA_SF8 (0x08)' },
+            { value: 0x09, label: 'LR11XX_RADIO_LORA_SF9 (0x09)' },
+            { value: 0x0A, label: 'LR11XX_RADIO_LORA_SF10 (0x0A)' },
+            { value: 0x0B, label: 'LR11XX_RADIO_LORA_SF11 (0x0B)' },
+            { value: 0x0C, label: 'LR11XX_RADIO_LORA_SF12 (0x0C)' }
+        ];
+        const bwOptions = [
+            { value: 0x08, label: 'LR11XX_RADIO_LORA_BW_10 (10.42 kHz, 0x08)' },
+            { value: 0x01, label: 'LR11XX_RADIO_LORA_BW_15 (15.63 kHz, 0x01)' },
+            { value: 0x09, label: 'LR11XX_RADIO_LORA_BW_20 (20.83 kHz, 0x09)' },
+            { value: 0x02, label: 'LR11XX_RADIO_LORA_BW_31 (31.25 kHz, 0x02)' },
+            { value: 0x0A, label: 'LR11XX_RADIO_LORA_BW_41 (41.67 kHz, 0x0A)' },
+            { value: 0x03, label: 'LR11XX_RADIO_LORA_BW_62 (62.50 kHz, 0x03)' },
+            { value: 0x04, label: 'LR11XX_RADIO_LORA_BW_125 (125.00 kHz, 0x04)' },
+            { value: 0x05, label: 'LR11XX_RADIO_LORA_BW_250 (250.00 kHz, 0x05)' },
+            { value: 0x06, label: 'LR11XX_RADIO_LORA_BW_500 (500.00 kHz, 0x06)' },
+            { value: 0x0D, label: 'LR11XX_RADIO_LORA_BW_200 (203.00 kHz, 0x0D)' },
+            { value: 0x0E, label: 'LR11XX_RADIO_LORA_BW_400 (406.00 kHz, 0x0E)' },
+            { value: 0x0F, label: 'LR11XX_RADIO_LORA_BW_800 (812.00 kHz, 0x0F)' }
+        ];
+        const crOptions = [
+            { value: 0x00, label: 'LR11XX_RADIO_LORA_NO_CR (0x00)' },
+            { value: 0x01, label: 'LR11XX_RADIO_LORA_CR_4_5 (0x01)' },
+            { value: 0x02, label: 'LR11XX_RADIO_LORA_CR_4_6 (0x02)' },
+            { value: 0x03, label: 'LR11XX_RADIO_LORA_CR_4_7 (0x03)' },
+            { value: 0x04, label: 'LR11XX_RADIO_LORA_CR_4_8 (0x04)' },
+            { value: 0x05, label: 'LR11XX_RADIO_LORA_CR_LI_4_5 (0x05)' },
+            { value: 0x06, label: 'LR11XX_RADIO_LORA_CR_LI_4_6 (0x06)' },
+            { value: 0x07, label: 'LR11XX_RADIO_LORA_CR_LI_4_8 (0x07)' }
+        ];
+
+        return `
+            <ul class="import-preview-list">
+              <li>${formatOptionPreview('Spreading factor', bytes[0], sfOptions)}</li>
+              <li>${formatOptionPreview('Bandwidth', bytes[1], bwOptions)}</li>
+              <li>${formatOptionPreview('Coding rate', bytes[2], crOptions)}</li>
+              <li>${formatOptionPreview('RX1 window delay', `${bytes[3]} sec`)}</li>
+              <li>${formatOptionPreview('Unused', bytes[4])}</li>
+            </ul>
+        `;
+    }
+
+    if (key === 'lp0_node_params') {
+        const offloadOptions = [
+            { value: 0, label: '0 - Offload feature off' },
+            { value: 1, label: '1 - Device is a tracker' },
+            { value: 2, label: '2 - Device is an offload station' }
+        ];
+        const headerOptions = [
+            { value: 0, label: '0 - Disabled' },
+            { value: 1, label: '1 - Enabled' }
+        ];
+
+        return `
+            <ul class="import-preview-list">
+              <li>${formatOptionPreview('Offload feature', bytes[0], offloadOptions)}</li>
+              <li>${formatOptionPreview('Offload station ID', bytes[1])}</li>
+              <li>${formatOptionPreview('Max overlapping nodes', bytes[2])}</li>
+              <li>${formatOptionPreview('Use LoRaWAN header for ping', bytes[3], headerOptions)}</li>
+              <li>${formatOptionPreview('Ping interval', `${bytes[4]} sec`)}</li>
+            </ul>
+        `;
+    }
+
+    return `<div class="import-preview-mono">${bytes.map(b => `0x${toHex(b)}`).join(' ')}</div>`;
+}
+
+function formatOptionPreview(label, value, options) {
+    if (Array.isArray(options)) {
+        const match = options.find(option => option.value === value);
+        return `<strong>${escapeHtml(label)}:</strong> ${escapeHtml(match ? match.label : value)}`;
+    }
+    return `<strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}`;
+}
+
+function normalizeSettingValueForCompare(key, setting, value) {
+    if (value === undefined || value === null || value === '') {
+        return '';
+    }
+
+    if (intervalPatterns.some(rx => rx.test(key))) {
+        const seconds = parseInt(value, 10);
+        return Number.isFinite(seconds) ? seconds : value;
+    }
+
+    if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
+        const bitmask = parseInt(value, 10);
+        return Number.isFinite(bitmask) ? bitmask : value;
+    }
+
+    if (setting.conversion === 'bool') {
+        if (value === true || value === 'true' || value === 1 || value === '1') {
+            return true;
+        }
+        if (value === false || value === 'false' || value === 0 || value === '0') {
+            return false;
+        }
+        return value;
+    }
+
+    if (setting.conversion === 'byte_array') {
+        return stripBytes(String(value));
+    }
+
+    if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const num = Number(value);
+        return Number.isFinite(num) ? num : value;
+    }
+
+    return String(value);
+}
+
+function isSettingValueEqual(key, setting, currentValue, nextValue) {
+    const currentNorm = normalizeSettingValueForCompare(key, setting, currentValue);
+    const nextNorm = normalizeSettingValueForCompare(key, setting, nextValue);
+    return currentNorm === nextNorm;
+}
+
 function stringToUint8Array(hexString, expectedLength) {
     if (!hexString || typeof hexString !== 'string') {
         return new Uint8Array();

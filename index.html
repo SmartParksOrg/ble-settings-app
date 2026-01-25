@@ -99,6 +99,32 @@
     <div class="log-content" id="log"></div>
   </div>
 
+  <div id="import-preview-overlay" class="import-preview-overlay hidden" role="dialog" aria-modal="true"
+    aria-labelledby="import-preview-title">
+    <div class="import-preview-dialog">
+      <div class="import-preview-header">
+        <h3 id="import-preview-title">Import preview</h3>
+        <p id="import-preview-subtitle"></p>
+      </div>
+      <div class="import-preview-body">
+        <table class="import-preview-table">
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Current</th>
+              <th>New</th>
+            </tr>
+          </thead>
+          <tbody id="import-preview-rows"></tbody>
+        </table>
+      </div>
+      <div class="import-preview-footer">
+        <button id="import-preview-cancel" class="secondary" type="button">Cancel</button>
+        <button id="import-preview-confirm" type="button">Import</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
 
@@ -281,6 +307,53 @@
       URL.revokeObjectURL(url);
     }
 
+    function showImportPreviewModal({ title, subtitle, rows }) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('import-preview-overlay');
+        const titleEl = document.getElementById('import-preview-title');
+        const subtitleEl = document.getElementById('import-preview-subtitle');
+        const rowsEl = document.getElementById('import-preview-rows');
+        const cancelBtn = document.getElementById('import-preview-cancel');
+        const confirmBtn = document.getElementById('import-preview-confirm');
+
+        titleEl.textContent = title;
+        subtitleEl.textContent = subtitle;
+        rowsEl.innerHTML = rows.map((row) => `
+          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}">
+            <td>
+              <div class="import-preview-setting">${row.name}</div>
+              <div class="import-preview-meta">${row.key} (${row.id})</div>
+              ${row.description ? `<div class="import-preview-desc">${row.description}</div>` : ''}
+            </td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">${row.current}</td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">
+              ${row.next}
+              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : ''}
+            </td>
+          </tr>
+        `).join('');
+
+        function cleanup(result) {
+          overlay.classList.add('hidden');
+          cancelBtn.removeEventListener('click', onCancel);
+          confirmBtn.removeEventListener('click', onConfirm);
+          resolve(result);
+        }
+
+        function onCancel() {
+          cleanup(false);
+        }
+
+        function onConfirm() {
+          cleanup(true);
+        }
+
+        cancelBtn.addEventListener('click', onCancel);
+        confirmBtn.addEventListener('click', onConfirm);
+        overlay.classList.remove('hidden');
+      });
+    }
+
     async function importFromJson() {
       const fileInput = document.getElementById('import-file');
       const file = fileInput.files[0];
@@ -302,16 +375,50 @@
         filterSettings();
 
         try {
+          const importedSettings = JSON.parse(event.target.result);
+          const previewRows = [];
+
+          let index = 0;
+          const entries = Object.entries(importedSettings).filter(([key]) => !excludeFromImportExport.includes(key));
+
+          for (const [key, value] of entries) {
+            const settingObj = getByKey(key);
+            if (!settingObj) {
+              continue;
+            }
+            const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
+            const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
+            previewRows.push({
+              key,
+              id: settingObj.id,
+              name: settingObj.display_name || key,
+              description: getSettingDescription(key),
+              current: formatSettingValueForPreview(key, settingObj, currentValue, value, 'current'),
+              next: formatSettingValueForPreview(key, settingObj, value, currentValue, 'next'),
+              unchanged
+            });
+          }
+
+          if (previewRows.length === 0) {
+            showToast('No valid settings found in the import file.');
+            return;
+          }
+
+          const ok = await showImportPreviewModal({
+            title: `Import ${previewRows.length} settings`,
+            subtitle: `File: ${file.name}`,
+            rows: previewRows
+          });
+          if (!ok) {
+            showToast('Import cancelled');
+            return;
+          }
+
           search.classList.add('hidden');
           progressBar.style.width = `0%`;
           progressContainer.style.display = 'block';
           settingsSection.classList.add('hidden');
           commandsSection.classList.add('hidden');
-
-          const importedSettings = JSON.parse(event.target.result);
-
-          let index = 0;
-          const entries = Object.entries(importedSettings).filter(([key]) => !excludeFromImportExport.includes(key));
 
           for (const [key, value] of entries) {
             index++;

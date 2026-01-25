@@ -60,9 +60,36 @@
       <option value="lorawan" id="payload-lorawan">LoRaWAN</option>
       <option value="rockblock">RockBlock</option>
       <option value="ble">BLE custom command</option>
+      <option value="file_export">File export</option>
     </select>
     <input type="text" id="hex-output" readonly value="(no settings selected)" />
     <button id="copy-button" onclick="copyToClipboard()">📋</button>
+  </div>
+
+  <div id="import-preview-overlay" class="import-preview-overlay hidden" role="dialog" aria-modal="true"
+    aria-labelledby="import-preview-title">
+    <div class="import-preview-dialog">
+      <div class="import-preview-header">
+        <h3 id="import-preview-title">Import preview</h3>
+        <p id="import-preview-subtitle"></p>
+      </div>
+      <div class="import-preview-body">
+        <table class="import-preview-table">
+          <thead>
+            <tr>
+              <th>Setting</th>
+              <th>Current</th>
+              <th>New</th>
+            </tr>
+          </thead>
+          <tbody id="import-preview-rows"></tbody>
+        </table>
+      </div>
+      <div class="import-preview-footer">
+        <button id="import-preview-cancel" class="secondary" type="button">Cancel</button>
+        <button id="import-preview-confirm" type="button">Import</button>
+      </div>
+    </div>
   </div>
 
   <div id="toast"></div>
@@ -89,8 +116,32 @@
       updateEncodedMessage(); // Update once shown
     }
 
-    function exportToJson() {
+    let lastPayloadType = 'none';
+
+    function sanitizeFilename(name) {
+      const cleaned = (name || '').toString().trim().replace(/[^A-Za-z0-9_.-]/g, '');
+      return cleaned || 'settings.json';
+    }
+
+    function ensureJsonExtension(name) {
+      if (!name.toLowerCase().endsWith('.json')) {
+        return `${name}.json`;
+      }
+      return name;
+    }
+
+    function getProposedFilename() {
+      const selectedFile = document.getElementById('settings-dropdown').value;
+      const base = selectedFile ? selectedFile.split('/').pop().replace(/\.json$/i, '') : 'settings';
+      return `${base}-compose.json`;
+    }
+
+    function buildSelectedSettingsPayload() {
       const settings = {};
+
+      if (!settingsData || !settingsData.settings) {
+        return settings;
+      }
 
       for (const [key, setting] of Object.entries(settingsData.settings)) {
         const checkbox = document.getElementById(`checkbox-${setting.id}`);
@@ -109,20 +160,77 @@
         }
       }
 
-      if (Object.keys(settings).length === 0) {
-        showToast('No settings selected to export');
-        return;
-      }
+      return settings;
+    }
 
+    function downloadSettingsJson(settings, filename) {
       const json = JSON.stringify(settings, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'settings.json';
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
+    }
+
+    function exportToJson(filename = 'settings.json') {
+      const settings = buildSelectedSettingsPayload();
+      if (Object.keys(settings).length === 0) {
+        showToast('No settings selected to export');
+        return;
+      }
+
+      const safeFilename = ensureJsonExtension(sanitizeFilename(filename));
+      downloadSettingsJson(settings, safeFilename);
+    }
+
+    function showImportPreviewModal({ title, subtitle, rows }) {
+      return new Promise((resolve) => {
+        const overlay = document.getElementById('import-preview-overlay');
+        const titleEl = document.getElementById('import-preview-title');
+        const subtitleEl = document.getElementById('import-preview-subtitle');
+        const rowsEl = document.getElementById('import-preview-rows');
+        const cancelBtn = document.getElementById('import-preview-cancel');
+        const confirmBtn = document.getElementById('import-preview-confirm');
+
+        titleEl.textContent = title;
+        subtitleEl.textContent = subtitle;
+        rowsEl.innerHTML = rows.map((row) => `
+          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}">
+            <td>
+              <div class="import-preview-setting">${row.name}</div>
+              <div class="import-preview-meta">${row.key} (${row.id})</div>
+              ${row.description ? `<div class="import-preview-desc">${row.description}</div>` : ''}
+            </td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">${row.current}</td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">
+              ${row.next}
+              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : ''}
+            </td>
+          </tr>
+        `).join('');
+
+        function cleanup(result) {
+          overlay.classList.add('hidden');
+          cancelBtn.removeEventListener('click', onCancel);
+          confirmBtn.removeEventListener('click', onConfirm);
+          resolve(result);
+        }
+
+        function onCancel() {
+          cleanup(false);
+        }
+
+        function onConfirm() {
+          cleanup(true);
+        }
+
+        cancelBtn.addEventListener('click', onCancel);
+        confirmBtn.addEventListener('click', onConfirm);
+        overlay.classList.remove('hidden');
+      });
     }
 
     async function importFromJson() {
@@ -140,6 +248,40 @@
       reader.onload = async function (event) {
         try {
           const entries = Object.entries(JSON.parse(event.target.result));
+          const previewRows = [];
+
+          for (const [key, value] of entries) {
+            const settingObj = getByKey(key);
+            if (!settingObj) {
+              continue;
+            }
+            const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
+            const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
+            previewRows.push({
+              key,
+              id: settingObj.id,
+              name: settingObj.display_name || key,
+              description: getSettingDescription(key),
+              current: formatSettingValueForPreview(key, settingObj, currentValue, value, 'current'),
+              next: formatSettingValueForPreview(key, settingObj, value, currentValue, 'next'),
+              unchanged
+            });
+          }
+
+          if (previewRows.length === 0) {
+            showToast('No valid settings found in the import file.');
+            return;
+          }
+
+          const ok = await showImportPreviewModal({
+            title: `Import ${previewRows.length} settings`,
+            subtitle: `File: ${file.name}`,
+            rows: previewRows
+          });
+          if (!ok) {
+            showToast('Import cancelled');
+            return;
+          }
 
           for (const [key, value] of entries) {
             const settingObj = getByKey(key);
@@ -257,12 +399,43 @@
     function updateEncodedMessage() {
       const hexOutput = document.getElementById('hex-output');
       const payloadType = document.getElementById('payload-type');
+      const actionButton = document.getElementById('copy-button');
       document.getElementById('payload-lorawan').innerHTML = `LoRaWAN`;
 
-      if (payloadType == null || payloadType.value === 'none') {
+      const payloadValue = payloadType ? payloadType.value : 'none';
+
+      if (payloadType == null || payloadValue === 'none') {
         hexOutput.value = '(please select a payload type)';
+        hexOutput.readOnly = true;
+        actionButton.textContent = '📋';
+        lastPayloadType = 'none';
         return;
       }
+
+      if (payloadValue === 'file_export') {
+        const selectedSettings = buildSelectedSettingsPayload();
+        const hasSelectedSettings = Object.keys(selectedSettings).length > 0;
+        hexOutput.classList.remove('invalid');
+        hexOutput.readOnly = false;
+        actionButton.textContent = '⬇️';
+
+        if (hasSelectedSettings) {
+          if (lastPayloadType !== 'file_export' || hexOutput.value === '(no settings selected)') {
+            hexOutput.value = getProposedFilename();
+          } else if (!hexOutput.value.trim()) {
+            hexOutput.value = getProposedFilename();
+          }
+        } else {
+          hexOutput.value = '(no settings selected)';
+        }
+
+        lastPayloadType = 'file_export';
+        return;
+      }
+
+      hexOutput.readOnly = true;
+      actionButton.textContent = '📋';
+      lastPayloadType = payloadValue;
 
       const encodedBytes = [];
       hexOutput.classList.remove('invalid');
@@ -336,6 +509,13 @@
     // Copy to clipboard
     function copyToClipboard() {
       updateEncodedMessage();
+      const payloadType = document.getElementById('payload-type');
+      if (payloadType && payloadType.value === 'file_export') {
+        const filenameInput = document.getElementById('hex-output').value;
+        const filename = ensureJsonExtension(sanitizeFilename(filenameInput || getProposedFilename()));
+        exportToJson(filename);
+        return;
+      }
       const hexOutput = document.getElementById('hex-output');
       navigator.clipboard.writeText(hexOutput.value).then(() => {
         showToast('Copied to clipboard');

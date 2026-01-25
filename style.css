@@ -649,6 +649,228 @@ body:not(.has-status) .hidden-when-no-status {
     display: none !important;
 }
 
+.import-preview-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 24, 19, 0.5);
+    display: grid;
+    place-items: center;
+    padding: 24px 16px;
+    z-index: 1000;
+}
+
+.import-preview-dialog {
+    width: min(960px, 100%);
+    max-height: 88vh;
+    background: #fff;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(82, 115, 94, 0.25);
+    box-shadow: var(--sp-shadow);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+}
+
+.import-preview-header {
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid rgba(82, 115, 94, 0.18);
+    background: rgba(245, 247, 243, 0.85);
+}
+
+.import-preview-header h3 {
+    margin: 0 0 4px;
+    font-size: 18px;
+}
+
+.import-preview-header p {
+    margin: 0;
+    color: rgba(31, 42, 35, 0.7);
+    font-size: 13px;
+}
+
+.import-preview-body {
+    padding: 14px 20px 6px;
+    overflow: auto;
+}
+
+.import-preview-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+    padding: 10px 8px;
+    border-bottom: 1px solid rgba(82, 115, 94, 0.18);
+    vertical-align: top;
+    text-align: left;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.import-preview-table th {
+    font-size: 12px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.import-preview-setting {
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.import-preview-meta {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.6);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.import-preview-desc {
+    font-size: 12px;
+    margin-top: 6px;
+    color: rgba(31, 42, 35, 0.65);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.import-preview-list {
+    margin: 0;
+    padding-left: 18px;
+    color: rgba(31, 42, 35, 0.85);
+}
+
+.import-preview-list li {
+    margin-bottom: 4px;
+}
+
+.import-preview-value {
+    display: grid;
+    gap: 4px;
+}
+
+.import-preview-subvalue {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.55);
+}
+
+.import-preview-muted {
+    color: rgba(31, 42, 35, 0.6);
+}
+
+.import-preview-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.import-preview-tags span {
+    background: rgba(144, 174, 155, 0.22);
+    border-radius: var(--radius-pill);
+    padding: 4px 8px;
+    font-size: 12px;
+}
+
+.import-preview-tags .import-preview-tag-added {
+    background: rgba(45, 106, 79, 0.22);
+    color: #1f4f3b;
+}
+
+.import-preview-tags .import-preview-tag-removed {
+    background: rgba(155, 75, 63, 0.2);
+    color: #6b2f25;
+    text-decoration: line-through;
+}
+
+.import-preview-checkboxes {
+    display: grid;
+    gap: 6px 12px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.import-preview-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.85);
+    min-width: 0;
+}
+
+.import-preview-checkbox input {
+    margin: 0;
+    flex: 0 0 auto;
+}
+
+.import-preview-checkbox label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.import-preview-checkbox.import-preview-tag-added label {
+    color: #1f4f3b;
+    font-weight: 600;
+}
+
+.import-preview-checkbox.import-preview-tag-removed label {
+    color: #6b2f25;
+    text-decoration: line-through;
+}
+
+.import-preview-mono {
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+    font-size: 12px;
+}
+
+.import-preview-empty {
+    color: rgba(31, 42, 35, 0.55);
+}
+
+.import-preview-bool {
+    font-weight: 600;
+    text-transform: lowercase;
+}
+
+.import-preview-bool-true {
+    color: #2d6a4f;
+}
+
+.import-preview-bool-false {
+    color: #9b4b3f;
+}
+
+.import-preview-footer {
+    padding: 14px 20px 18px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    border-top: 1px solid rgba(82, 115, 94, 0.18);
+    background: rgba(245, 247, 243, 0.85);
+}
+
+.import-preview-unchanged {
+    background: rgba(144, 174, 155, 0.08);
+}
+
+.import-preview-cell-unchanged {
+    color: rgba(31, 42, 35, 0.65);
+}
+
+.import-preview-unchanged-tag {
+    display: inline-flex;
+    margin-top: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    background: rgba(144, 174, 155, 0.18);
+    font-size: 11px;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    color: rgba(31, 42, 35, 0.6);
+}
+
 #main-commands button {
     margin: 0;
 }
