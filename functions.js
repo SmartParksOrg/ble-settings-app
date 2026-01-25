@@ -1,5 +1,6 @@
 let settingsData = null;
 let settingsMap = new Map(); // maps int ID -> [key, meta]
+let settingsMeta = null;
 const intervalPatterns = [
     /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
     /^rf_scan_duration$/,
@@ -40,6 +41,7 @@ const SETTINGS_FILES = [
     "settings-v6.8.1.json",
     "settings-v4.4.2.json"
 ];
+const SETTINGS_META_FILE = "settings-meta.json";
 
 const dangerousCommands = [/_th$/, /set_hibernation_mode/, /almanac_update/];
 
@@ -71,11 +73,25 @@ function populateSettingsIntoPage(firstItem = null) {
     });
 }
 
+async function loadSettingsMeta() {
+    if (settingsMeta) {
+        return;
+    }
+    try {
+        const response = await fetch(SETTINGS_META_FILE);
+        settingsMeta = await response.json();
+    } catch (error) {
+        console.warn('Failed to load settings metadata:', error);
+        settingsMeta = { settings: {}, commands: {} };
+    }
+}
+
 async function loadSettings(selectedFile) {
     settingsData = null;
     settingsMap = new Map();
 
     try {
+        await loadSettingsMeta();
         const response = await fetch(selectedFile);
         settingsData = await response.json();
 
@@ -296,7 +312,45 @@ function formatSettingName(settingName, group) {
     return settingName;
 }
 
+function getSettingMeta(key) {
+    return settingsMeta && settingsMeta.settings ? settingsMeta.settings[key] : null;
+}
+
+function getCommandMeta(key) {
+    return settingsMeta && settingsMeta.commands ? settingsMeta.commands[key] : null;
+}
+
+function getSettingLabel(key, group) {
+    const meta = getSettingMeta(key);
+    if (meta && meta.label) {
+        return meta.label;
+    }
+    return formatSettingName(key, group).replace(/_/g, " ");
+}
+
+function getSettingDescription(key) {
+    const meta = getSettingMeta(key);
+    return meta && meta.description ? meta.description : "";
+}
+
+function getCommandLabel(key) {
+    const meta = getCommandMeta(key);
+    if (meta && meta.label) {
+        return meta.label;
+    }
+    return key.replace(/^cmd_/, "").replace(/_/g, " ");
+}
+
+function getCommandDescription(key) {
+    const meta = getCommandMeta(key);
+    return meta && meta.description ? meta.description : "";
+}
+
 function getGroupName(key) {
+    const meta = getSettingMeta(key);
+    if (meta && meta.category) {
+        return meta.category;
+    }
     for (const [rx, groupName] of Object.entries(grouping)) {
         const match = key.match(rx);
         if (match) {
@@ -337,7 +391,11 @@ function groupAndSortSettings() {
 
     for (const groupName in grouped) {
         for (const key in grouped[groupName]) {
-            grouped[groupName][key].display_name = formatSettingName(key, groupName);
+            grouped[groupName][key].display_name = getSettingLabel(key, groupName);
+            const description = getSettingDescription(key);
+            if (description) {
+                grouped[groupName][key].description = description;
+            }
         }
     }
 

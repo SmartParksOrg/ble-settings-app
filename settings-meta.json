@@ -1,0 +1,982 @@
+{
+  "version": 1,
+  "settings": {
+    "accel_g_scale": {
+      "category": "accel",
+      "label": "g scale",
+      "description": "Accel g scale setting."
+    },
+    "accel_movement_data_fifo_enabled": {
+      "category": "accel",
+      "label": "movement data fifo enabled",
+      "description": "Accel movement data fifo enabled setting."
+    },
+    "accel_odr_hz": {
+      "category": "accel",
+      "label": "odr hz",
+      "description": "Accel odr hz setting."
+    },
+    "air_quality_enabled": {
+      "category": "air",
+      "label": "quality enabled",
+      "description": "Air quality enabled setting."
+    },
+    "air_quality_interval": {
+      "category": "air",
+      "label": "quality interval",
+      "description": "How often this is reported."
+    },
+    "app_eui": {
+      "category": "lorawan",
+      "label": "app eui",
+      "description": "The app ID used when joining the network."
+    },
+    "app_key": {
+      "category": "lorawan",
+      "label": "app key",
+      "description": "The key used to join the network."
+    },
+    "ble_adv": {
+      "category": "ble",
+      "label": "adv",
+      "description": "Bluetooth related setting."
+    },
+    "ble_advertisement_interval": {
+      "category": "ble",
+      "label": "advertisement interval",
+      "description": "How often this is reported."
+    },
+    "ble_auto_disconnect": {
+      "category": "ble",
+      "label": "auto disconnect",
+      "description": "Bluetooth related setting."
+    },
+    "ble_scan_aggregated_interval": {
+      "category": "ble_scan",
+      "label": "scan aggregated interval",
+      "description": "How often this is reported."
+    },
+    "ble_scan_duration": {
+      "category": "ble_scan",
+      "label": "scan duration",
+      "description": "How long this stays active."
+    },
+    "ble_scan_filter": {
+      "category": "ble_scan",
+      "label": "scan filter",
+      "description": "Bluetooth related setting."
+    },
+    "ble_scan_interval": {
+      "category": "ble_scan",
+      "label": "scan interval",
+      "description": "How often this is reported."
+    },
+    "ble_scan_manufacturer_id": {
+      "category": "ble_scan",
+      "label": "scan manufacturer id",
+      "description": "Bluetooth related setting."
+    },
+    "ble_scan_report_zero_connections_found": {
+      "category": "ble_scan",
+      "label": "scan report zero connections found",
+      "description": "Bluetooth related setting."
+    },
+    "check_error_interval": {
+      "category": "device",
+      "label": "error interval",
+      "description": "How often this is reported."
+    },
+    "cmdq_enabled": {
+      "category": "cmdq",
+      "label": "enabled",
+      "description": "Cmdq enabled setting."
+    },
+    "cmdq_on_no_detection_wait_duration": {
+      "category": "cmdq",
+      "label": "on no detection wait duration",
+      "description": "How long this stays active."
+    },
+    "cmdq_report_zero_messages_to_be_sent": {
+      "category": "cmdq",
+      "label": "report zero messages to be sent",
+      "description": "Cmdq report zero messages to be sent setting."
+    },
+    "cmdq_reporting_interval": {
+      "category": "cmdq",
+      "label": "reporting interval",
+      "description": "How often this is reported."
+    },
+    "cmdq_scan_duration": {
+      "category": "cmdq",
+      "label": "scan duration",
+      "description": "How long this stays active."
+    },
+    "cmdq_search_interval": {
+      "category": "cmdq",
+      "label": "search interval",
+      "description": "How often this is reported."
+    },
+    "cmdq_searched_mac_address": {
+      "category": "cmdq",
+      "label": "searched mac address",
+      "description": "Cmdq searched mac address setting."
+    },
+    "cold_fix_retry": {
+      "category": "gps",
+      "label": "cold fix retry",
+      "description": "Cold fix retry setting."
+    },
+    "cold_fix_timeout": {
+      "category": "gps",
+      "label": "cold fix timeout",
+      "description": "How long to wait before timing out."
+    },
+    "data_log": {
+      "category": "logs",
+      "label": "log",
+      "description": "Data log setting."
+    },
+    "device_eui": {
+      "category": "LoRaWAN",
+      "label": "device eui",
+      "description": "The unique ID for this device."
+    },
+    "device_name": {
+      "category": "device",
+      "label": "name",
+      "description": "Device name setting."
+    },
+    "device_pin": {
+      "category": "device",
+      "label": "pin",
+      "description": "The PIN used to access the device."
+    },
+    "enable_motion_trig_gps": {
+      "category": "gps",
+      "label": "enable motion trig gps",
+      "description": "Turn motion trig gps on or off."
+    },
+    "external_switch_counter_enabled": {
+      "category": "switch",
+      "label": "switch counter enabled",
+      "description": "External switch counter enabled setting."
+    },
+    "external_switch_detection_enabled": {
+      "category": "switch",
+      "label": "switch detection enabled",
+      "description": "External switch detection enabled setting."
+    },
+    "external_switch_detection_gpio_pin_power_enabled": {
+      "category": "switch",
+      "label": "switch detection gpio pin power enabled",
+      "description": "External switch detection gpio pin power enabled setting."
+    },
+    "external_switch_detection_reporting_interval": {
+      "category": "switch",
+      "label": "switch detection reporting interval",
+      "description": "How often this is reported."
+    },
+    "external_switch_detection_trigger_debounce_ms": {
+      "category": "switch",
+      "label": "switch detection trigger debounce ms",
+      "description": "External switch detection trigger debounce ms setting."
+    },
+    "external_switch_detection_trigger_type": {
+      "category": "switch",
+      "label": "switch detection trigger type",
+      "description": "External switch detection trigger type setting."
+    },
+    "external_switch_input_pull": {
+      "category": "switch",
+      "label": "switch input pull",
+      "description": "External switch input pull setting."
+    },
+    "external_switch_minimal_report_duration_ms": {
+      "category": "switch",
+      "label": "switch minimal report duration ms",
+      "description": "External switch minimal report duration ms setting."
+    },
+    "external_switch_send_inactivity_report": {
+      "category": "switch",
+      "label": "switch send inactivity report",
+      "description": "External switch send inactivity report setting."
+    },
+    "fence_enabled": {
+      "category": "fence",
+      "label": "enabled",
+      "description": "Fence enabled setting."
+    },
+    "fence_interval": {
+      "category": "fence",
+      "label": "interval",
+      "description": "How often this is reported."
+    },
+    "fence_led_blink": {
+      "category": "fence",
+      "label": "led blink",
+      "description": "Fence led blink setting."
+    },
+    "fence_mv_scaling_factor": {
+      "category": "fence",
+      "label": "mv scaling factor",
+      "description": "Fence mv scaling factor setting."
+    },
+    "fence_sampling_length": {
+      "category": "fence",
+      "label": "sampling length",
+      "description": "Fence sampling length setting."
+    },
+    "flash_status_interval": {
+      "category": "logs",
+      "label": "status interval",
+      "description": "How often this is reported."
+    },
+    "flash_store_flag": {
+      "category": "logs",
+      "label": "store flag",
+      "description": "Advanced flags for this feature."
+    },
+    "gnss_assisted_scan": {
+      "category": "gps",
+      "label": "assisted scan",
+      "description": "Gnss assisted scan setting."
+    },
+    "gnss_constellation_to_use": {
+      "category": "gps",
+      "label": "constellation to use",
+      "description": "Gnss constellation to use setting."
+    },
+    "gps_backoff_factor": {
+      "category": "gps",
+      "label": "backoff factor",
+      "description": "GPS-related setting."
+    },
+    "gps_init_lat": {
+      "category": "gps",
+      "label": "init lat",
+      "description": "GPS-related setting."
+    },
+    "gps_init_lon": {
+      "category": "gps",
+      "label": "init lon",
+      "description": "GPS-related setting."
+    },
+    "gps_motion_triggered_min_num_of_triggers_per_interval": {
+      "category": "gps_open_sky_detection",
+      "label": "motion triggered min num of triggers per interval",
+      "description": "How often this is reported."
+    },
+    "gps_open_sky_detection_avg_rssi_threshold_dbm": {
+      "category": "gps_open_sky_detection",
+      "label": "open sky detection avg rssi threshold dbm",
+      "description": "GPS-related setting."
+    },
+    "gps_open_sky_detection_bitmask": {
+      "category": "gps_open_sky_detection",
+      "label": "open sky detection bitmask",
+      "description": "GPS-related setting."
+    },
+    "gps_open_sky_detection_max_rssi_threshold_dbm": {
+      "category": "gps_open_sky_detection",
+      "label": "open sky detection max rssi threshold dbm",
+      "description": "GPS-related setting."
+    },
+    "gps_resend_interval": {
+      "category": "gps",
+      "label": "resend interval",
+      "description": "How often this is reported."
+    },
+    "gps_skipped_triggered_interval": {
+      "category": "gps",
+      "label": "skipped triggered interval",
+      "description": "How often this is reported."
+    },
+    "gps_triggered_interval": {
+      "category": "gps",
+      "label": "triggered interval",
+      "description": "How often this is reported."
+    },
+    "horizontal_accuracy": {
+      "category": "gps",
+      "label": "horizontal accuracy",
+      "description": "Horizontal accuracy setting."
+    },
+    "hot_fix_retry": {
+      "category": "gps",
+      "label": "hot fix retry",
+      "description": "Hot fix retry setting."
+    },
+    "hot_fix_timeout": {
+      "category": "gps",
+      "label": "hot fix timeout",
+      "description": "How long to wait before timing out."
+    },
+    "init_time": {
+      "category": "device",
+      "label": "time",
+      "description": "Init time setting."
+    },
+    "led_enabled": {
+      "category": "device",
+      "label": "enabled",
+      "description": "Led enabled setting."
+    },
+    "lp0_app_key": {
+      "category": "lp0",
+      "label": "app key",
+      "description": "Low-power mode setting."
+    },
+    "lp0_communication_params": {
+      "category": "lp0",
+      "label": "communication params",
+      "description": "Low-power mode setting."
+    },
+    "lp0_dev_addr": {
+      "category": "lp0",
+      "label": "dev addr",
+      "description": "Low-power mode setting."
+    },
+    "lp0_network_key": {
+      "category": "lp0",
+      "label": "network key",
+      "description": "Low-power mode setting."
+    },
+    "lp0_node_params": {
+      "category": "lp0",
+      "label": "node params",
+      "description": "Low-power mode setting."
+    },
+    "lp0_rx_frequency_hz": {
+      "category": "lp0",
+      "label": "rx frequency hz",
+      "description": "Low-power mode setting."
+    },
+    "lp0_send_flag": {
+      "category": "lp0",
+      "label": "send flag",
+      "description": "Advanced flags for this feature."
+    },
+    "lp0_tx_frequency_hz": {
+      "category": "lp0",
+      "label": "tx frequency hz",
+      "description": "Low-power mode setting."
+    },
+    "lr_adr": {
+      "category": "lorawan",
+      "label": "adr",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_adr_profile": {
+      "category": "lorawan",
+      "label": "adr profile",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_confirm_flag": {
+      "category": "lorawan",
+      "label": "confirm flag",
+      "description": "Advanced flags for this feature."
+    },
+    "lr_gps_interval": {
+      "category": "lr_gps",
+      "label": "gps interval",
+      "description": "How often this is reported."
+    },
+    "lr_join_flag": {
+      "category": "lorawan",
+      "label": "join flag",
+      "description": "Advanced flags for this feature."
+    },
+    "lr_max_confirm_fail": {
+      "category": "lorawan",
+      "label": "max confirm fail",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_messaging_retry_count": {
+      "category": "lr_messaging",
+      "label": "messaging retry count",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_messaging_retry_interval": {
+      "category": "lr_messaging",
+      "label": "messaging retry interval",
+      "description": "How often this is reported."
+    },
+    "lr_region": {
+      "category": "lorawan",
+      "label": "region",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_sat_data": {
+      "category": "lr_gps",
+      "label": "sat data",
+      "description": "LoRaWAN-related setting."
+    },
+    "lr_send_flag": {
+      "category": "lorawan",
+      "label": "send flag",
+      "description": "Advanced flags for this feature."
+    },
+    "memfault_send_interval": {
+      "category": "memfault",
+      "label": "send interval",
+      "description": "How often this is reported."
+    },
+    "motion_ths": {
+      "category": "gps",
+      "label": "motion ths",
+      "description": "The threshold for this behavior."
+    },
+    "outdoor_detection_enabled": {
+      "category": "outdoor",
+      "label": "detection enabled",
+      "description": "Outdoor detection enabled setting."
+    },
+    "outdoor_detection_parameters": {
+      "category": "outdoor",
+      "label": "detection parameters",
+      "description": "Outdoor detection parameters setting."
+    },
+    "outdoor_detection_tau": {
+      "category": "outdoor",
+      "label": "detection tau",
+      "description": "Outdoor detection tau setting."
+    },
+    "rejoin_interval": {
+      "category": "lorawan",
+      "label": "rejoin interval",
+      "description": "How often the device tries to rejoin the network."
+    },
+    "rf_open_sky_detection_duration": {
+      "category": "rf_open_sky_detection",
+      "label": "duration",
+      "description": "How long this stays active."
+    },
+    "rf_open_sky_detection_enabled": {
+      "category": "rf_open_sky_detection",
+      "label": "enabled",
+      "description": "Radio scan related setting."
+    },
+    "rf_open_sky_detection_interval1": {
+      "category": "rf_open_sky_detection",
+      "label": "interval1",
+      "description": "How often this is reported."
+    },
+    "rf_open_sky_detection_interval1_start": {
+      "category": "rf_open_sky_detection",
+      "label": "interval1 start",
+      "description": "Radio scan related setting."
+    },
+    "rf_open_sky_detection_interval2": {
+      "category": "rf_open_sky_detection",
+      "label": "interval2",
+      "description": "How often this is reported."
+    },
+    "rf_open_sky_detection_interval2_start": {
+      "category": "rf_open_sky_detection",
+      "label": "interval2 start",
+      "description": "Radio scan related setting."
+    },
+    "rf_open_sky_detection_multiple_intervals": {
+      "category": "rf_open_sky_detection",
+      "label": "multiple intervals",
+      "description": "Radio scan related setting."
+    },
+    "rf_scan_config": {
+      "category": "rf_scan",
+      "label": "config",
+      "description": "Radio scan related setting."
+    },
+    "rf_scan_duration": {
+      "category": "rf_scan",
+      "label": "duration",
+      "description": "How long this stays active."
+    },
+    "rf_scan_enabled": {
+      "category": "rf_scan",
+      "label": "enabled",
+      "description": "Radio scan related setting."
+    },
+    "rf_scan_interval": {
+      "category": "rf_scan",
+      "label": "interval",
+      "description": "How often this is reported."
+    },
+    "rf_scan_interval1": {
+      "category": "rf_scan",
+      "label": "interval1",
+      "description": "How often this is reported."
+    },
+    "rf_scan_interval1_start": {
+      "category": "rf_scan",
+      "label": "interval1 start",
+      "description": "Radio scan related setting."
+    },
+    "rf_scan_interval2": {
+      "category": "rf_scan",
+      "label": "interval2",
+      "description": "How often this is reported."
+    },
+    "rf_scan_interval2_start": {
+      "category": "rf_scan",
+      "label": "interval2 start",
+      "description": "Radio scan related setting."
+    },
+    "rf_scan_multiple_intervals": {
+      "category": "rf_scan",
+      "label": "multiple intervals",
+      "description": "Radio scan related setting."
+    },
+    "s_band_app_key": {
+      "category": "s_band",
+      "label": "app key",
+      "description": "S-band related setting."
+    },
+    "s_band_dev_adr": {
+      "category": "s_band",
+      "label": "dev adr",
+      "description": "S-band related setting."
+    },
+    "s_band_network_key": {
+      "category": "s_band",
+      "label": "network key",
+      "description": "S-band related setting."
+    },
+    "s_band_rf_frequency_hz": {
+      "category": "s_band",
+      "label": "rf frequency hz",
+      "description": "S-band related setting."
+    },
+    "s_band_send_interval": {
+      "category": "s_band",
+      "label": "send interval",
+      "description": "How often this is reported."
+    },
+    "s_band_send_mode": {
+      "category": "s_band",
+      "label": "send mode",
+      "description": "S-band related setting."
+    },
+    "sat_send_flag": {
+      "category": "satellite",
+      "label": "sat send flag",
+      "description": "Advanced flags for this feature."
+    },
+    "satellite_enabled": {
+      "category": "satellite",
+      "label": "enabled",
+      "description": "Satellite enabled setting."
+    },
+    "satellite_interval1_start": {
+      "category": "satellite",
+      "label": "interval1 start",
+      "description": "Satellite interval1 start setting."
+    },
+    "satellite_max_messages_per_interval": {
+      "category": "satellite",
+      "label": "max messages per interval",
+      "description": "How often this is reported."
+    },
+    "satellite_min_signal_strength": {
+      "category": "satellite",
+      "label": "min signal strength",
+      "description": "Satellite min signal strength setting."
+    },
+    "satellite_multiple_intervals": {
+      "category": "satellite",
+      "label": "multiple intervals",
+      "description": "Satellite multiple intervals setting."
+    },
+    "satellite_retry": {
+      "category": "satellite",
+      "label": "retry",
+      "description": "Satellite retry setting."
+    },
+    "satellite_send_interval": {
+      "category": "satellite",
+      "label": "send interval",
+      "description": "How often this is reported."
+    },
+    "satellite_send_interval2": {
+      "category": "satellite",
+      "label": "send interval2",
+      "description": "How often this is reported."
+    },
+    "satellite_send_interval2_start": {
+      "category": "satellite",
+      "label": "send interval2 start",
+      "description": "Satellite send interval2 start setting."
+    },
+    "status_send_interval": {
+      "category": "status",
+      "label": "send interval",
+      "description": "How often this is reported."
+    },
+    "tracker_type": {
+      "category": "device",
+      "label": "type",
+      "description": "Tracker type setting."
+    },
+    "ublox_active_tracking": {
+      "category": "gps",
+      "label": "active tracking",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_cold_fix_hour_interval": {
+      "category": "gps",
+      "label": "cold fix hour interval",
+      "description": "How often this is reported."
+    },
+    "ublox_interval1_start": {
+      "category": "gps",
+      "label": "interval1 start",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_interval2_start": {
+      "category": "gps",
+      "label": "interval2 start",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_leave_on": {
+      "category": "gps",
+      "label": "leave on",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_min_fix_time": {
+      "category": "gps",
+      "label": "min fix time",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_min_satellites": {
+      "category": "gps",
+      "label": "min satellites",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_multiple_intervals": {
+      "category": "gps",
+      "label": "multiple intervals",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_send_interval": {
+      "category": "gps",
+      "label": "send interval",
+      "description": "How often this is reported."
+    },
+    "ublox_send_interval_2": {
+      "category": "gps",
+      "label": "send interval 2",
+      "description": "GNSS (u-blox) related setting."
+    },
+    "ublox_switch_interval": {
+      "category": "gps",
+      "label": "switch interval",
+      "description": "How often this is reported."
+    },
+    "vhf_enabled": {
+      "category": "vhf",
+      "label": "enabled",
+      "description": "Vhf enabled setting."
+    },
+    "vhf_external_path": {
+      "category": "vhf",
+      "label": "external path",
+      "description": "Vhf external path setting."
+    },
+    "vhf_interval1": {
+      "category": "vhf",
+      "label": "interval1",
+      "description": "How often this is reported."
+    },
+    "vhf_interval1_start": {
+      "category": "vhf",
+      "label": "interval1 start",
+      "description": "Vhf interval1 start setting."
+    },
+    "vhf_interval2": {
+      "category": "vhf",
+      "label": "interval2",
+      "description": "How often this is reported."
+    },
+    "vhf_interval2_start": {
+      "category": "vhf",
+      "label": "interval2 start",
+      "description": "Vhf interval2 start setting."
+    },
+    "vhf_multiple_intervals": {
+      "category": "vhf",
+      "label": "multiple intervals",
+      "description": "Vhf multiple intervals setting."
+    },
+    "vhf_num_of_packets_per_burst": {
+      "category": "vhf",
+      "label": "num of packets per burst",
+      "description": "Vhf num of packets per burst setting."
+    },
+    "vhf_single_pulse_duration_ms": {
+      "category": "vhf",
+      "label": "single pulse duration ms",
+      "description": "Vhf single pulse duration ms setting."
+    },
+    "vhf_time_between_packets_ms": {
+      "category": "vhf",
+      "label": "time between packets ms",
+      "description": "Vhf time between packets ms setting."
+    },
+    "vhf_tx_frequency_khz": {
+      "category": "vhf",
+      "label": "tx frequency khz",
+      "description": "Vhf tx frequency khz setting."
+    },
+    "wifi_scan_aggregated_interval": {
+      "category": "wifi_scan",
+      "label": "scan aggregated interval",
+      "description": "How often this is reported."
+    },
+    "wifi_scan_interval": {
+      "category": "wifi_scan",
+      "label": "scan interval",
+      "description": "How often this is reported."
+    },
+    "wifi_scan_report_zero_connections_found": {
+      "category": "wifi_scan",
+      "label": "scan report zero connections found",
+      "description": "Wifi scan report zero connections found setting."
+    }
+  },
+  "commands": {
+    "cmd_aggregated_bt_scan": {
+      "category": "commands",
+      "label": "aggregated bt scan",
+      "description": "Aggregated bt scan command."
+    },
+    "cmd_almanac_update": {
+      "category": "commands",
+      "label": "almanac update",
+      "description": "Almanac update command."
+    },
+    "cmd_bt_disconnect": {
+      "category": "commands",
+      "label": "bt disconnect",
+      "description": "Bt disconnect command."
+    },
+    "cmd_check_pin": {
+      "category": "commands",
+      "label": "check pin",
+      "description": "Check pin command."
+    },
+    "cmd_clear_nvs": {
+      "category": "commands",
+      "label": "clear nvs",
+      "description": "Clear nvs command."
+    },
+    "cmd_decouple_collar": {
+      "category": "commands",
+      "label": "decouple collar",
+      "description": "Decouple collar command."
+    },
+    "cmd_disable_bt_th": {
+      "category": "commands",
+      "label": "disable bt th",
+      "description": "Disable bt th command."
+    },
+    "cmd_disable_flash_th": {
+      "category": "commands",
+      "label": "disable flash th",
+      "description": "Disable flash th command."
+    },
+    "cmd_fence_measure": {
+      "category": "commands",
+      "label": "fence measure",
+      "description": "Fence measure command."
+    },
+    "cmd_flash_clear": {
+      "category": "commands",
+      "label": "flash clear",
+      "description": "Flash clear command."
+    },
+    "cmd_flash_get_all": {
+      "category": "commands",
+      "label": "flash get all",
+      "description": "Flash get all command."
+    },
+    "cmd_flash_get_from_head": {
+      "category": "commands",
+      "label": "flash get from head",
+      "description": "Flash get from head command."
+    },
+    "cmd_get_ble_scan": {
+      "category": "commands",
+      "label": "get ble scan",
+      "description": "Request data from the device."
+    },
+    "cmd_get_flash_status": {
+      "category": "commands",
+      "label": "get flash status",
+      "description": "Request data from the device."
+    },
+    "cmd_get_lr_satellite_data": {
+      "category": "commands",
+      "label": "get lr satellite data",
+      "description": "Request data from the device."
+    },
+    "cmd_get_mac": {
+      "category": "commands",
+      "label": "get mac",
+      "description": "Request data from the device."
+    },
+    "cmd_get_rf_scan": {
+      "category": "commands",
+      "label": "get rf scan",
+      "description": "Request data from the device."
+    },
+    "cmd_get_ublox_fix": {
+      "category": "commands",
+      "label": "get ublox fix",
+      "description": "Request a GNSS fix."
+    },
+    "cmd_get_ublox_satellite_data": {
+      "category": "commands",
+      "label": "get ublox satellite data",
+      "description": "Request data from the device."
+    },
+    "cmd_get_wifi_scan": {
+      "category": "commands",
+      "label": "get wifi scan",
+      "description": "Request data from the device."
+    },
+    "cmd_join": {
+      "category": "commands",
+      "label": "join",
+      "description": "Join the network."
+    },
+    "cmd_pause_rf_scan": {
+      "category": "commands",
+      "label": "pause rf scan",
+      "description": "Pause rf scan command."
+    },
+    "cmd_read_all_lr_messages": {
+      "category": "commands",
+      "label": "read all lr messages",
+      "description": "Read all lr messages command."
+    },
+    "cmd_reset": {
+      "category": "commands",
+      "label": "reset",
+      "description": "Restart the device."
+    },
+    "cmd_reset_gps": {
+      "category": "commands",
+      "label": "reset gps",
+      "description": "Reset gps command."
+    },
+    "cmd_reset_initial_position": {
+      "category": "commands",
+      "label": "reset initial position",
+      "description": "Reset initial position command."
+    },
+    "cmd_reset_initial_time": {
+      "category": "commands",
+      "label": "reset initial time",
+      "description": "Reset initial time command."
+    },
+    "cmd_reset_lr": {
+      "category": "commands",
+      "label": "reset lr",
+      "description": "Reset lr command."
+    },
+    "cmd_reset_to_def_settings": {
+      "category": "commands",
+      "label": "reset to def settings",
+      "description": "Reset to def settings command."
+    },
+    "cmd_s_band_send": {
+      "category": "commands",
+      "label": "s band send",
+      "description": "S band send command."
+    },
+    "cmd_send_all_settings": {
+      "category": "commands",
+      "label": "send all settings",
+      "description": "Send data from the device."
+    },
+    "cmd_send_all_val": {
+      "category": "commands",
+      "label": "send all val",
+      "description": "Send data from the device."
+    },
+    "cmd_send_bt_cmdq_results": {
+      "category": "commands",
+      "label": "send bt cmdq results",
+      "description": "Send data from the device."
+    },
+    "cmd_send_lr_fix": {
+      "category": "commands",
+      "label": "send lr fix",
+      "description": "Send data from the device."
+    },
+    "cmd_send_lr_message": {
+      "category": "commands",
+      "label": "send lr message",
+      "description": "Send data from the device."
+    },
+    "cmd_send_position": {
+      "category": "commands",
+      "label": "send position",
+      "description": "Send data from the device."
+    },
+    "cmd_send_sat_buffer": {
+      "category": "commands",
+      "label": "send sat buffer",
+      "description": "Send data from the device."
+    },
+    "cmd_send_single_setting": {
+      "category": "commands",
+      "label": "send single setting",
+      "description": "Send data from the device."
+    },
+    "cmd_send_single_val": {
+      "category": "commands",
+      "label": "send single val",
+      "description": "Send data from the device."
+    },
+    "cmd_send_status": {
+      "category": "commands",
+      "label": "send status",
+      "description": "Send a status update."
+    },
+    "cmd_send_status_lr": {
+      "category": "commands",
+      "label": "send status lr",
+      "description": "Send a status update."
+    },
+    "cmd_send_timestamp": {
+      "category": "commands",
+      "label": "send timestamp",
+      "description": "Send data from the device."
+    },
+    "cmd_set_hibernation_mode": {
+      "category": "commands",
+      "label": "set hibernation mode",
+      "description": "Set a device option."
+    },
+    "cmd_set_location_and_time": {
+      "category": "commands",
+      "label": "set location and time",
+      "description": "Set a device option."
+    },
+    "cmd_set_operation_mode_com_th": {
+      "category": "commands",
+      "label": "set operation mode com th",
+      "description": "Set a device option."
+    },
+    "cmd_set_operation_mode_main_th": {
+      "category": "commands",
+      "label": "set operation mode main th",
+      "description": "Set a device option."
+    },
+    "cmd_single_bt_scan": {
+      "category": "commands",
+      "label": "single bt scan",
+      "description": "Single bt scan command."
+    }
+  }
+}

@@ -186,7 +186,8 @@
           const row = document.createElement('div');
           row.className = 'setting transparent';
           row.setAttribute('id', `setting-${setting.id}`);
-          row.setAttribute('data-search', key);
+          const settingDescription = getSettingDescription(key);
+          row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
 
           // Build the "include" checkbox + label
           row.innerHTML = `
@@ -194,6 +195,7 @@
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
               <label for="checkbox-${setting.id}"><h4 title="${key}">${setting.display_name} <small>(${setting.id})</small></h4></label>
             </div>${renderInputContainer(key, setting)}
+            ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
           `;
 
           settingsContainer.appendChild(row);
@@ -220,11 +222,14 @@
         row.setAttribute('id', `setting-${command.id}`);
 
         // Build the "include" checkbox + label
+        const commandLabel = getCommandLabel(key);
+        const commandDescription = getCommandDescription(key);
         row.innerHTML = `
           <div class="checkbox-container">
             <input type="checkbox" id="checkbox-${command.id}" onchange="updateCheckBox(this, '${command.id}')"/>
-            <label for="checkbox-${command.id}"><h4>${key.replace(/cmd_/g, "")} <small>(${command.id})</small></h4></label>
+            <label for="checkbox-${command.id}"><h4>${commandLabel} <small>(${command.id})</small></h4></label>
           </div>${renderInputContainer(key, command)}
+          ${commandDescription ? `<p class="setting-help">${commandDescription}</p>` : ""}
         `;
 
         commandsSection.appendChild(row);

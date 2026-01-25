@@ -552,9 +552,11 @@
           const row = document.createElement('div');
           row.className = 'setting disabled with-controls';
           row.setAttribute('id', `setting-${setting.id}`);
-          row.setAttribute('data-search', key);
+          const settingDescription = getSettingDescription(key);
+          row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
           row.innerHTML = `
           <h4>${setting.display_name} (${setting.id})</h4> 
+          ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
           
           ${renderInput(key, setting)}
 
@@ -582,7 +584,11 @@
         const row = document.createElement('div');
         row.className = 'command';
         row.setAttribute('id', `command-${command.id}`);
-        row.innerHTML = `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${key.replace(/cmd_/g, "")}</button>`;
+        const label = getCommandLabel(key);
+        const description = getCommandDescription(key);
+        row.innerHTML = `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${
+          description ? ` title="${description}"` : ""
+        }>${label}</button>`;
         commandsSection.appendChild(row);
       }
     }

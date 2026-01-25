@@ -215,6 +215,13 @@ body {
     padding-top: 3px;
 }
 
+.setting-help {
+    margin: 6px 0 0;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.7);
+    line-height: 1.4;
+}
+
 .setting.with-controls {
     justify-content: space-between;
 }

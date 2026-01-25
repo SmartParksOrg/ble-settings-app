@@ -9,6 +9,7 @@ const STATIC_FILES = [
     toUrl('functions.js'),
     toUrl('manifest.json'),
     toUrl('composer-manifest.json'),
+    toUrl('settings-meta.json'),
     toUrl('favicon.ico'),
     toUrl('icon512_maskable.png'),
     toUrl('icon512_rounded.png'),
