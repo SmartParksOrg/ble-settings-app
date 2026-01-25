@@ -131,11 +131,13 @@ function filterSettings() {
     const query = document.getElementById('settings-search').value.toLowerCase();
     const showNonDefaultOnly = document.getElementById('non-default-checkbox') ? document.getElementById('non-default-checkbox').checked : false;
     const settingsSection = document.getElementById('settings-section');
-    const groups = settingsSection.querySelectorAll('.settings-container');
+    const groups = settingsSection.querySelectorAll('.settings-group');
 
     groups.forEach(group => {
+        const settingsContainer = group.querySelector('.settings-container');
+        const groupToggle = group.querySelector('.group-toggle');
         let hasVisibleSettings = false;
-        const settings = group.querySelectorAll('.setting');
+        const settings = settingsContainer ? settingsContainer.querySelectorAll('.setting') : [];
 
         settings.forEach(setting => {
             const dataSearch = setting.getAttribute('data-search') || setting.querySelector('h4').textContent;
@@ -151,16 +153,26 @@ function filterSettings() {
             }
         });
 
-        // Hide or show group heading based on visible settings
-        const groupHeading = group.previousElementSibling; // Assumes heading is immediately before the group
         if (hasVisibleSettings) {
-            groupHeading.classList.remove('hidden');
             group.classList.remove('hidden');
+            if (query || showNonDefaultOnly) {
+                group.classList.remove('is-collapsed');
+                if (groupToggle) {
+                    groupToggle.setAttribute('aria-expanded', 'true');
+                }
+            }
         } else {
-            groupHeading.classList.add('hidden');
             group.classList.add('hidden');
         }
     });
+}
+
+function toggleGroup(group) {
+    const isCollapsed = group.classList.toggle('is-collapsed');
+    const groupToggle = group.querySelector('.group-toggle');
+    if (groupToggle) {
+        groupToggle.setAttribute('aria-expanded', (!isCollapsed).toString());
+    }
 }
 
 

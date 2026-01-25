@@ -7,7 +7,7 @@
   <title>OpenCollar Edge BLE Web Connect</title>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/ble-settings-app/service-worker.js')
+      navigator.serviceWorker.register('service-worker.js')
         .then(reg => console.log('Service Worker registered:', reg))
         .catch(err => console.error('Service Worker registration failed:', err));
     }
@@ -17,22 +17,37 @@
   <script src="functions.js"></script>
 </head>
 
-<body style="padding-bottom: 50px;">
-  <div id="header-section">
+<body>
+  <div id="header-section" class="page-section">
+    <div class="brand">
+      <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
+      <div class="brand-title">
+        <span class="brand-name">Smart Parks</span>
+        <span class="brand-subtitle">OpenCollar Edge BLE Web Connect</span>
+      </div>
+    </div>
     <div class="controls">
       <div style="display: flex; justify-content: space-between;">
         <button id="disconnect-button" class="hidden-when-disconnected">Disconnect</button>
-        <div class="hidden-when-no-settings">
-          <button id="export-button" onclick="exportToJson()">Export</button>
-          <button id="import-button" onclick="document.getElementById('import-file').click();"
-            style="margin-right:0;">Import</button>
-          <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+        <div class="button-cluster">
+          <div class="hidden-when-no-settings">
+            <button id="export-button" onclick="exportToJson()">Export</button>
+            <button id="import-button" onclick="document.getElementById('import-file').click();"
+              style="margin-right:0;">Import</button>
+            <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
+          </div>
         </div>
       </div>
       <div class="hidden-when-connected">
-        <button id="connect-button">Connect</button>
-        <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
-            inputmode="numeric" maxlength="4"></label>
+        <div class="primary-actions">
+          <button id="connect-button" class="scan-button">Scan</button>
+          <a class="button secondary composer-button" href="composer.html">Composer</a>
+        </div>
+        <details class="pin-details">
+          <summary>PIN</summary>
+          <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
+              inputmode="numeric" maxlength="4"></label>
+        </details>
       </div>
       <div id="settings-selection" class="hidden-when-disconnected">
         <select id="settings-dropdown" onchange="loadSelectedSettings()"></select>
@@ -44,7 +59,7 @@
     </div>
   </div>
 
-  <div class="settings-section hidden-when-no-settings">
+  <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
     <h2>Settings</h2>
     <div id="search" class="search">
       <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
@@ -58,15 +73,25 @@
     <div id="settings-section"></div>
   </div>
 
-  <div id="other-commands" class="commands-section hidden-when-no-settings">
+  <div id="other-commands" class="commands-section page-section hidden-when-no-settings">
     <a name="other-commands"></a>
     <h2>Commands</h2>
     <div id="commands-buttons-section"></div>
   </div>
 
-  <button class="toggle-button" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
+  <nav class="bottom-nav hidden-when-disconnected" aria-label="Primary">
+    <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
+      <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
+    </a>
+    <a href="#header-section">Status</a>
+    <a href="#settings-area">Settings</a>
+    <a href="#other-commands">Commands</a>
+    <button type="button" onclick="toggleLog()">Log</button>
+  </nav>
 
-  <div class="log-footer" id="logFooter">
+  <button class="toggle-button hidden-when-disconnected" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
+
+  <div class="log-footer hidden-when-disconnected" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
       <span>Log</span>
       <span class="icon close"></span>
@@ -115,9 +140,10 @@
     const logFooter = document.getElementById('logFooter');
 
     function toggleLog() {
+      const basePadding = getComputedStyle(document.documentElement).getPropertyValue('--body-bottom-padding').trim() || '50px';
       logFooter.classList.toggle('open');
       document.getElementById('toggle-button').style.display = logFooter.classList.contains('open') ? 'none' : 'block';
-      document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : '50px';
+      document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : basePadding;
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
     }
@@ -506,12 +532,21 @@
       const settingsSection = document.getElementById('settings-section');
       settingsSection.innerHTML = '';
       for (const [groupName, group] of Object.entries(groupAndSortSettings(settingsData.settings))) {
+        const groupWrapper = document.createElement('div');
+        groupWrapper.className = 'settings-group is-collapsed';
+
+        const groupToggle = document.createElement('button');
+        groupToggle.type = 'button';
+        groupToggle.className = 'group-toggle';
+        groupToggle.setAttribute('aria-expanded', 'false');
+        groupToggle.innerHTML = `
+          <span class="group-title">${groupName.replace(/_/g, " ")}</span>
+          <span class="group-caret" aria-hidden="true"></span>
+        `;
+        groupToggle.addEventListener('click', () => toggleGroup(groupWrapper));
+
         const settingsContainer = document.createElement('div');
         settingsContainer.className = 'settings-container';
-
-        const groupHeading = document.createElement('h3');
-        groupHeading.textContent = groupName.replace(/_/g, " ");
-        settingsSection.appendChild(groupHeading);
 
         for (const [key, setting] of Object.entries(group)) {
           const row = document.createElement('div');
@@ -530,7 +565,9 @@
         `;
           settingsContainer.appendChild(row);
         }
-        settingsSection.appendChild(settingsContainer);
+        groupWrapper.appendChild(groupToggle);
+        groupWrapper.appendChild(settingsContainer);
+        settingsSection.appendChild(groupWrapper);
       }
     }
 
@@ -898,12 +935,22 @@
       return executeBleCommand([0x20, CMD_SEND_ALL_SETTINGS, 0x00])
     }
 
+    async function writeGattValue(characteristic, buffer) {
+      if (characteristic.writeValueWithResponse) {
+        return characteristic.writeValueWithResponse(buffer);
+      }
+      if (characteristic.writeValueWithoutResponse) {
+        return characteristic.writeValueWithoutResponse(buffer);
+      }
+      return characteristic.writeValue(buffer);
+    }
+
     async function executeBleCommand(command) {
       log(`Sending command ${bytesToHex(command)}`);
 
       const commandBuffer = new Uint8Array(command).buffer;
       try {
-        await rxCharacteristic.writeValue(commandBuffer);
+        await writeGattValue(rxCharacteristic, commandBuffer);
       } catch (error) {
         log(`Error sending command: ${error.message}`, true);
       }
@@ -925,7 +972,7 @@
       log(`Sending update for ${settingKey} (ID: ${settingId}) with value: ${newValue}`);
 
       try {
-        await rxCharacteristic.writeValue(commandBuffer);
+        await writeGattValue(rxCharacteristic, commandBuffer);
         log(`Value updated successfully for ${settingKey} (ID: ${settingId})`);
       } catch (error) {
         log(`Error sending update for ${settingKey}: ${error.message}`, true);

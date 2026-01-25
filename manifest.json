@@ -1,7 +1,7 @@
 {
     "name": "OpenCollar Edge BLE Web Connect",
     "short_name": "BLE Connect",
-    "start_url": "https://smartparksorg.github.io/ble-settings-app/index.html",
+    "start_url": "./",
     "display": "standalone",
     "background_color": "#52735E",
     "theme_color": "#52735E",

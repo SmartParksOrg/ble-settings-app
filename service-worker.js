@@ -1,21 +1,27 @@
-const CACHE_NAME = 'app-cache-v1';
+const CACHE_NAME = 'app-cache-v2';
+const BASE_URL = new URL(self.registration.scope);
+const toUrl = (path) => new URL(path, BASE_URL).toString();
 const STATIC_FILES = [
-    '/ble-settings-app/', // for index.html
-    '/ble-settings-app/index.html',
-    '/ble-settings-app/composer.html',
-    '/ble-settings-app/style.css',
-    '/ble-settings-app/functions.js',
-    '/ble-settings-app/manifest.json',
-    '/ble-settings-app/composer-manifest.json',
-    '/ble-settings-app/settings/settings_testing_1.json',
-    '/ble-settings-app/settings/settings-v6.15.0.json',
-    '/ble-settings-app/settings/settings-v6.14.1.json',
-    '/ble-settings-app/settings/settings-v6.12.1.json',
-    '/ble-settings-app/settings/settings-v6.11.0.json',
-    '/ble-settings-app/settings/settings-v6.10.0.json',
-    '/ble-settings-app/settings/settings-v6.9.0.json',
-    '/ble-settings-app/settings/settings-v6.8.1.json',
-    '/ble-settings-app/settings/settings-v4.4.2.json',
+    toUrl('./'),
+    toUrl('index.html'),
+    toUrl('composer.html'),
+    toUrl('style.css'),
+    toUrl('functions.js'),
+    toUrl('manifest.json'),
+    toUrl('composer-manifest.json'),
+    toUrl('favicon.ico'),
+    toUrl('icon512_maskable.png'),
+    toUrl('icon512_rounded.png'),
+    toUrl('assets/smart-parks-logo.png'),
+    toUrl('settings/settings_testing_1.json'),
+    toUrl('settings/settings-v6.15.0.json'),
+    toUrl('settings/settings-v6.14.1.json'),
+    toUrl('settings/settings-v6.12.1.json'),
+    toUrl('settings/settings-v6.11.0.json'),
+    toUrl('settings/settings-v6.10.0.json'),
+    toUrl('settings/settings-v6.9.0.json'),
+    toUrl('settings/settings-v6.8.1.json'),
+    toUrl('settings/settings-v4.4.2.json'),
 ];
 
 // Install Event: Cache all static files
