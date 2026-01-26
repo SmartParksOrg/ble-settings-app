@@ -84,6 +84,10 @@
         <p id="import-preview-subtitle"></p>
       </div>
       <div class="import-preview-body">
+        <label class="import-preview-toggle">
+          <input type="checkbox" id="import-preview-changed-only" checked>
+          Show changed only
+        </label>
         <table class="import-preview-table">
           <thead>
             <tr>
@@ -219,12 +223,15 @@
         const titleEl = document.getElementById('import-preview-title');
         const subtitleEl = document.getElementById('import-preview-subtitle');
         const rowsEl = document.getElementById('import-preview-rows');
+        const changedOnlyToggle = document.getElementById('import-preview-changed-only');
         const cancelBtn = document.getElementById('import-preview-cancel');
         const confirmBtn = document.getElementById('import-preview-confirm');
 
         titleEl.textContent = title;
         subtitleEl.textContent = subtitle;
-        rowsEl.innerHTML = rows.map((row) => `
+        function renderRows() {
+          const changedOnly = changedOnlyToggle ? changedOnlyToggle.checked : false;
+          rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => `
           <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}">
             <td>
               <div class="import-preview-setting">${row.name}</div>
@@ -237,7 +244,12 @@
               ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : ''}
             </td>
           </tr>
-        `).join('');
+          `).join('');
+        }
+        renderRows();
+        if (changedOnlyToggle) {
+          changedOnlyToggle.onchange = renderRows;
+        }
 
         function cleanup(result) {
           overlay.classList.add('hidden');

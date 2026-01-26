@@ -863,6 +863,15 @@ body:not(.has-status) .hidden-when-no-status {
     overflow: auto;
 }
 
+.import-preview-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+    margin-bottom: 10px;
+}
+
 .import-preview-table {
     width: 100%;
     border-collapse: collapse;
