@@ -260,6 +260,11 @@ body {
     gap: 8px 10px;
 }
 
+.section-action {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
 .button-cluster .hidden-when-no-settings {
     display: flex;
     align-items: center;
@@ -1207,7 +1212,7 @@ body:not(.has-status) .hidden-when-no-status {
 
 /* Style the search bar */
 #settings-search {
-    min-width: 300px;
+    width: 100%;
     padding: 10px 14px;
     font-size: 16px;
     border: 1px solid rgba(31, 42, 35, 0.18);

@@ -309,7 +309,15 @@
 
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'settings.json';
+      const deviceName = (getInputValue(settingsData.settings?.device_name?.id) || 'device')
+        .toString()
+        .trim()
+        .replace(/[^A-Za-z0-9_-]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'device';
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, '0');
+      const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+      a.download = `${deviceName}_${timestamp}.json`;
       a.click();
       URL.revokeObjectURL(url);
     }

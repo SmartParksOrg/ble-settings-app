@@ -32,9 +32,6 @@
           <select id="settings-dropdown" onchange="loadSelectedFile()"></select>
         </div>
         <div class="button-cluster">
-          <button id="export-button" onclick="exportToJson()">Export</button>
-          <button id="import-button" onclick="document.getElementById('import-file').click();"
-            style="margin-right:0;">Import</button>
           <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
         </div>
       </div>
@@ -45,6 +42,7 @@
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
+        <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
         <div class="search">
           <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
         </div>
