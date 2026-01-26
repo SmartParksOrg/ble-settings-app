@@ -43,7 +43,7 @@
 
   <div id="settings-area" class="settings-section page-section">
     <details class="section section-card">
-      <summary class="section-card-title">Settings</summary>
+      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
         <div class="search">
           <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
@@ -55,7 +55,7 @@
 
   <div id="composer-commands" class="commands-section page-section">
     <details class="section section-card">
-      <summary class="section-card-title">Commands</summary>
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Commands</summary>
       <div class="section-card-body">
         <div id="commands-section"></div>
       </div>
@@ -71,7 +71,11 @@
       <option value="file_export">File export</option>
     </select>
     <input type="text" id="hex-output" readonly value="(no settings selected)" />
-    <button id="copy-button" onclick="copyToClipboard()">📋</button>
+    <button id="copy-button" onclick="copyToClipboard()" aria-label="Copy or export">
+      <svg id="payload-icon" class="payload-icon" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+        <path d="M224 0c-35.3 0-64 28.7-64 64l0 224c0 35.3 28.7 64 64 64l160 0c35.3 0 64-28.7 64-64l0-224c0-35.3-28.7-64-64-64L224 0zM64 128l64 0 0 64-64 0c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l192 0c17.7 0 32-14.3 32-32l0-64 64 0 0 64c0 53-43 96-96 96L64 576c-53 0-96-43-96-96l0-256c0-53 43-96 96-96z"/>
+      </svg>
+    </button>
   </div>
 
   <div id="import-preview-overlay" class="import-preview-overlay hidden" role="dialog" aria-modal="true"
@@ -453,6 +457,26 @@
       updateEncodedMessage();
     }
 
+    const payloadIconPaths = {
+      copy: {
+        viewBox: '0 0 512 576',
+        path: 'M224 0c-35.3 0-64 28.7-64 64l0 224c0 35.3 28.7 64 64 64l160 0c35.3 0 64-28.7 64-64l0-224c0-35.3-28.7-64-64-64L224 0zM64 128l64 0 0 64-64 0c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l192 0c17.7 0 32-14.3 32-32l0-64 64 0 0 64c0 53-43 96-96 96L64 576c-53 0-96-43-96-96l0-256c0-53 43-96 96-96z'
+      },
+      download: {
+        viewBox: '0 0 512 512',
+        path: 'M256 0c17.7 0 32 14.3 32 32l0 246.1 73.4-73.4c12.5-12.5 32.8-12.5 45.3 0s12.5 32.8 0 45.3l-128 128c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l73.4 73.4L224 32c0-17.7 14.3-32 32-32zM64 416c0-17.7 14.3-32 32-32l320 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L96 448c-17.7 0-32-14.3-32-32z'
+      }
+    };
+
+    function setPayloadIcon(mode) {
+      const icon = document.getElementById('payload-icon');
+      if (!icon || !payloadIconPaths[mode]) {
+        return;
+      }
+      icon.setAttribute('viewBox', payloadIconPaths[mode].viewBox);
+      icon.innerHTML = `<path d="${payloadIconPaths[mode].path}"></path>`;
+    }
+
     // ---------------------------------------------
     // Build final payload
     // ---------------------------------------------
@@ -467,7 +491,7 @@
       if (payloadType == null || payloadValue === 'none') {
         hexOutput.value = '(please select a payload type)';
         hexOutput.readOnly = true;
-        actionButton.textContent = '📋';
+        setPayloadIcon('copy');
         lastPayloadType = 'none';
         return;
       }
@@ -476,7 +500,7 @@
         if (hasSelectedCommands()) {
           hexOutput.value = 'Error: Commands cannot be exported';
           hexOutput.classList.add('invalid');
-          actionButton.textContent = '📋';
+          setPayloadIcon('copy');
           lastPayloadType = 'file_export';
           return;
         }
@@ -484,7 +508,7 @@
         const hasSelectedSettings = Object.keys(selectedSettings).length > 0;
         hexOutput.classList.remove('invalid');
         hexOutput.readOnly = false;
-        actionButton.textContent = '⬇️';
+        setPayloadIcon('download');
 
         if (hasSelectedSettings) {
           if (lastPayloadType !== 'file_export' || hexOutput.value === '(no settings selected)') {
@@ -501,7 +525,7 @@
       }
 
       hexOutput.readOnly = true;
-      actionButton.textContent = '📋';
+      setPayloadIcon('copy');
       lastPayloadType = payloadValue;
 
       const encodedBytes = [];
