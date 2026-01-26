@@ -171,6 +171,19 @@
       return settings;
     }
 
+    function hasSelectedCommands() {
+      if (!settingsData || !settingsData.commands) {
+        return false;
+      }
+      for (const [_, command] of Object.entries(settingsData.commands)) {
+        const checkbox = document.getElementById(`checkbox-${command.id}`);
+        if (checkbox && checkbox.checked) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     function downloadSettingsJson(settings, filename) {
       const json = JSON.stringify(settings, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
@@ -184,6 +197,10 @@
     }
 
     function exportToJson(filename = 'settings.json') {
+      if (hasSelectedCommands()) {
+        showToast('Commands cannot be exported. Please deselect commands.');
+        return;
+      }
       const settings = buildSelectedSettingsPayload();
       if (Object.keys(settings).length === 0) {
         showToast('No settings selected to export');
@@ -456,6 +473,13 @@
       }
 
       if (payloadValue === 'file_export') {
+        if (hasSelectedCommands()) {
+          hexOutput.value = 'Error: Commands cannot be exported';
+          hexOutput.classList.add('invalid');
+          actionButton.textContent = '📋';
+          lastPayloadType = 'file_export';
+          return;
+        }
         const selectedSettings = buildSelectedSettingsPayload();
         const hasSelectedSettings = Object.keys(selectedSettings).length > 0;
         hexOutput.classList.remove('invalid');
