@@ -4,7 +4,10 @@ let settingsMeta = null;
 const intervalPatterns = [
     /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
     /^rf_scan_duration$/,
-    /^(cold|hot)_fix_timeout$/
+    /^(cold|hot)_fix_timeout$/,
+    /^ublox_min_fix_time$/,
+    /^cmdq_on_no_detection_wait_duration$/,
+    /^fence_sampling_length$/
 ];
 
 const grouping = {
@@ -22,11 +25,29 @@ const grouping = {
 };
 
 const bitmapSettings = [/^.*_flag$/];
+const customBitmaskRenderers = {
+    gps_open_sky_detection_bitmask: renderOpenSkyDetectionBitmask
+};
 
 const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_messages', 'port_commands'];
 const customByteArrayRenderers = {
     lp0_communication_params: renderLp0CommunicationParams,
-    lp0_node_params: renderLp0NodeParams
+    lp0_node_params: renderLp0NodeParams,
+    outdoor_detection_parameters: renderOutdoorDetectionParameters,
+    cmdq_searched_mac_address: renderMacAddressParameters
+};
+
+const customInputRenderers = {
+    ble_advertisement_interval: renderMsInput,
+    ble_auto_disconnect: renderMsInput,
+    ble_scan_duration: renderMsInput,
+    ble_scan_manufacturer_id: renderHexUint16Input,
+    cmdq_scan_duration: renderMsInput,
+    external_switch_detection_trigger_debounce_ms: renderMsInput,
+    gps_init_lat: renderLatitudeInput,
+    gps_init_lon: renderLongitudeInput,
+    vhf_time_between_packets_ms: renderMsInput,
+    init_time: renderUnixTimeInput
 };
 
 // Static list of settings files
@@ -107,14 +128,19 @@ function __onInputChanged(settingId) {
     const [key, setting] = getById(settingId);
     const value = getInputValue(setting.id);
     const errorElement = document.getElementById(`input-error-${setting.id}`);
+    const rawValueElement = document.getElementById(`raw-value-${setting.id}`);
 
     let valid = true;
     try {
-        validateInput(setting, value);
+        validateInput(key, setting, value);
         errorElement.innerText = '';
     } catch (error) {
         valid = false;
         errorElement.innerText = error.message;
+    }
+
+    if (rawValueElement) {
+        rawValueElement.value = value ?? '';
     }
 
     if (typeof (onInputChanged) === typeof (Function)) {
@@ -128,12 +154,20 @@ function setInputValue(settingId, value) {
 }
 
 function clearInputValue(settingId) {
-    document.getElementById(`input-container-${settingId}`).innerHTML = '';
+    const container = document.getElementById(`input-container-${settingId}`);
+    if (!container) {
+        return;
+    }
+    container.innerHTML = '';
 }
 
 function setDefaultValue(settingId) {
     const [key, setting] = getById(settingId);
-    document.getElementById(`input-container-${settingId}`).innerHTML = renderInputControl(key, setting, setting.default);
+    const container = document.getElementById(`input-container-${settingId}`);
+    if (!container) {
+        return;
+    }
+    container.innerHTML = renderInputControl(key, setting, setting.default);
 }
 
 function getInputValue(settingId) {
@@ -218,7 +252,7 @@ function getById(id) {
 }
 
 function isBitmaskSetting(key) {
-    return bitmapSettings.some(rx => rx.test(key));
+    return bitmapSettings.some(rx => rx.test(key)) || key in customBitmaskRenderers;
 }
 
 function convertUnitToSeconds(value, unit) {
@@ -262,15 +296,50 @@ function renderPortCheckboxes(setting, value) {
     return html;
 }
 
+function renderOpenSkyDetectionBitmask(setting, value) {
+    const defaultVal = parseInt(value || 0, 10);
+    const bands = [
+        { bit: 7, label: 'Enabled' },
+        { bit: 6, label: '100–200 MHz' },
+        { bit: 5, label: '400–500 MHz' },
+        { bit: 4, label: '800–1000 MHz' },
+        { bit: 3, label: '1200–1400 MHz' },
+        { bit: 2, label: '1500–1600 MHz' },
+        { bit: 1, label: '1800–2100 MHz' },
+        { bit: 0, label: '2400–2500 MHz' }
+    ];
+    let html = `
+          <input type="hidden" id="new-value-${setting.id}" value="${defaultVal}" />
+          <div class="checkbox-scroll">
+        `;
+    for (const band of bands) {
+        const bitIsSet = (defaultVal & (1 << band.bit)) !== 0;
+        const checkboxId = `band-${band.bit}-${setting.id}`;
+        html += `
+            <div class="checkbox-container">
+              <input type="checkbox"
+                id="${checkboxId}"
+                onchange="updateCustomBitmask('${setting.id}', ${band.bit})"
+                ${bitIsSet ? 'checked' : ''}
+              />
+              <label for="${checkboxId}">${band.label}</label>
+            </div>
+          `;
+    }
+    html += `</div>`;
+    return html;
+}
+
 function renderIntervalSetting(key, setting, value) {
     const defaultSeconds = parseInt(value || 0, 10);
 
     // Guess a default unit based on the numeric value:
     // >=86400 => days, >=3600 => hours, >=60 => minutes, else seconds
-    const guessedUnit = guessTimeUnit(defaultSeconds);
+    const guessedUnit = (key === 'cold_fix_timeout' || key === 'hot_fix_timeout') ? '1' : guessTimeUnit(defaultSeconds);
     // Convert the default seconds into that guessed unit
     const displayValueInGuessedUnit = Math.round(convertSecondsToUnit(defaultSeconds, guessedUnit));
 
+    const lockToSeconds = key === 'cold_fix_timeout' || key === 'hot_fix_timeout';
     return `
         <!-- hidden actual seconds value -->
         <input type="hidden" id="new-value-${setting.id}" value="${defaultSeconds}" />
@@ -282,13 +351,15 @@ function renderIntervalSetting(key, setting, value) {
             value="${displayValueInGuessedUnit}" />
 
             <!-- The time unit select, with guessedUnit pre-selected -->
-            <select id="interval-unit-${setting.id}"
-            onchange="updateIntervalUnit('${setting.id}')">
-            <option value="1"${guessedUnit === '1' ? ' selected' : ''}>second(s)</option>
-            <option value="60"${guessedUnit === '60' ? ' selected' : ''}>minute(s)</option>
-            <option value="3600"${guessedUnit === '3600' ? ' selected' : ''}>hour(s)</option>
-            <option value="86400"${guessedUnit === '86400' ? ' selected' : ''}>day(s)</option>
-            </select>
+            ${lockToSeconds
+                ? `<input type="hidden" id="interval-unit-${setting.id}" value="1" /><span class="interval-unit-label">second(s)</span>`
+                : `<select id="interval-unit-${setting.id}" onchange="updateIntervalUnit('${setting.id}')">
+                    <option value="1"${guessedUnit === '1' ? ' selected' : ''}>second(s)</option>
+                    <option value="60"${guessedUnit === '60' ? ' selected' : ''}>minute(s)</option>
+                    <option value="3600"${guessedUnit === '3600' ? ' selected' : ''}>hour(s)</option>
+                    <option value="86400"${guessedUnit === '86400' ? ' selected' : ''}>day(s)</option>
+                  </select>`
+            }
         </div>
       `;
 }
@@ -320,10 +391,58 @@ function getCommandMeta(key) {
     return settingsMeta && settingsMeta.commands ? settingsMeta.commands[key] : null;
 }
 
+function getCommandInputMeta(key) {
+    const meta = getCommandMeta(key);
+    if (!meta) {
+        return null;
+    }
+    if (meta.input && meta.input.source) {
+        if (meta.input.source === 'values') {
+            return { source: 'values' };
+        }
+        if (meta.input.source === 'settings') {
+            return { source: 'settings' };
+        }
+    }
+    if (meta.options || meta.input) {
+        return meta;
+    }
+    return null;
+}
+
+function getCommandValueOptions() {
+    if (!settingsData || !settingsData.values) {
+        return [];
+    }
+    return Object.entries(settingsData.values)
+        .map(([name, meta]) => ({
+            name,
+            id: meta.id
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getCommandSettingOptions() {
+    if (!settingsData || !settingsData.settings) {
+        return [];
+    }
+    return Object.entries(settingsData.settings)
+        .map(([name, meta]) => ({
+            name,
+            id: meta.id
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function getSettingLabel(key, group) {
     const meta = getSettingMeta(key);
-    if (meta && meta.label) {
-        return meta.label;
+    if (meta) {
+        if (meta.display_name) {
+            return meta.display_name;
+        }
+        if (meta.label) {
+            return meta.label;
+        }
     }
     return formatSettingName(key, group).replace(/_/g, " ");
 }
@@ -333,10 +452,20 @@ function getSettingDescription(key) {
     return meta && meta.description ? meta.description : "";
 }
 
+function getSettingOptions(key) {
+    const meta = getSettingMeta(key);
+    return meta && Array.isArray(meta.options) ? meta.options : null;
+}
+
 function getCommandLabel(key) {
     const meta = getCommandMeta(key);
-    if (meta && meta.label) {
-        return meta.label;
+    if (meta) {
+        if (meta.display_name) {
+            return meta.display_name;
+        }
+        if (meta.label) {
+            return meta.label;
+        }
     }
     return key.replace(/^cmd_/, "").replace(/_/g, " ");
 }
@@ -367,6 +496,7 @@ function getGroupName(key) {
 function groupAndSortSettings() {
     const grouped = {};
     const other = {};
+    const keepSingletonGroups = new Set(['status', 'memfault']);
 
     for (const key in settingsData.settings) {
         const groupName = getGroupName(key);
@@ -378,7 +508,7 @@ function groupAndSortSettings() {
 
     // Move singletons into "_other"
     for (const prefix in grouped) {
-        if (Object.keys(grouped[prefix]).length === 1) {
+        if (Object.keys(grouped[prefix]).length === 1 && !keepSingletonGroups.has(prefix)) {
             const [singleKey] = Object.keys(grouped[prefix]);
             other[singleKey] = grouped[prefix][singleKey];
             delete grouped[prefix];
@@ -445,17 +575,42 @@ function renderInputControl(key, setting, value) {
         html += customByteArrayRenderers[key](setting, value);
     }
 
-    // 1) If it's one of the three bitmask settings -> render port checkboxes
-    else if (isBitmaskSetting(key) && setting.conversion === 'uint32') {
-        html += renderPortCheckboxes(setting, value);
+    // 1) Custom input renderers
+    else if (customInputRenderers[key]) {
+        html += customInputRenderers[key](setting, value);
     }
 
-    // 2) If the key ends with "_interval" -> render numeric + time-unit select (with auto-guess)
+    // 2) If it's one of the bitmask settings -> render custom or port checkboxes
+    else if (isBitmaskSetting(key) && (setting.conversion === 'uint32' || setting.conversion === 'uint8')) {
+        if (customBitmaskRenderers[key]) {
+            html += customBitmaskRenderers[key](setting, value);
+        } else {
+            html += renderPortCheckboxes(setting, value);
+        }
+    }
+
+    // 3) If the key ends with "_interval" -> render numeric + time-unit select (with auto-guess)
     else if (intervalPatterns.some(rx => rx.test(key))) {
         html += renderIntervalSetting(key, setting, value);
     }
 
-    // 3) If it's a normal bool
+    // 4) If metadata provides options -> render select + raw value
+    else if (getSettingOptions(key)) {
+        const metaOptions = getSettingOptions(key);
+        html += `<select id="new-value-${setting.id}" onchange="__onInputChanged('${setting.id}')">`;
+        for (const option of metaOptions) {
+            const optionValue = option.value;
+            const selected = String(optionValue) === String(value) ? ' selected' : '';
+            html += `<option value="${optionValue}"${selected}>${option.label}</option>`;
+        }
+        html += `</select>`;
+        html += `
+          <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+          <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+        `;
+    }
+
+    // 5) If it's a normal bool
     else if (setting.conversion === 'bool') {
         html += `<select id="new-value-${setting.id}" onchange="__onInputChanged('${setting.id}')">`;
         if (value) {
@@ -466,7 +621,7 @@ function renderInputControl(key, setting, value) {
         html += `</select>`;
     }
 
-    // 4) If it's a normal numeric input
+    // 6) If it's a normal numeric input
     else if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
         const min = setting.min != undefined ? setting.min : minMaxValues[setting.conversion].min;
         const max = setting.max != undefined ? setting.max : minMaxValues[setting.conversion].max;
@@ -481,25 +636,25 @@ function renderInputControl(key, setting, value) {
        />`;
     }
 
-    // 5) If it's a byte_array
+    // 7) If it's a byte_array
     else if (setting.conversion === 'byte_array') {
         value = stripBytes(value);
         html += `<textarea id="new-value-${setting.id}" rows="4" oninput="__onInputChanged('${setting.id}')">${value}</textarea>`;
     }
 
-    // 6) If it's a string
+    // 8) If it's a string
     else if (setting.conversion === 'string') {
         html += `<input type="text" id="new-value-${setting.id}" value="${value}" oninput="__onInputChanged('${setting.id}')"/>`;
     }
 
-    // 7) Otherwise unknown/custom, default to text
+    // 9) Otherwise unknown/custom, default to text
     else {
         html += `<input type="text" id="new-value-${setting.id}" value="${value}" oninput="__onInputChanged('${setting.id}')"/>`;
     }
 
     let errorText = '';
     try {
-        validateInput(setting, value);
+        validateInput(key, setting, value);
     } catch (error) {
         errorText = error.message;
     }
@@ -613,6 +768,113 @@ function renderLp0NodeParams(setting, value) {
     `;
 }
 
+function renderOutdoorDetectionParameters(setting, value) {
+    const bytes = parseByteArrayValue(value, setting.length);
+    return `
+        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <div class="byte-array-grid">
+            ${renderByteArrayField(setting.id, 0, 'Bias (byte 0)', bytes[0], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 1, 'Bias (byte 1)', bytes[1], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 2, 'Temperature weight (byte 0)', bytes[2], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 3, 'Temperature weight (byte 1)', bytes[3], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 4, 'Accelerometer weight (byte 0)', bytes[4], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 5, 'Accelerometer weight (byte 1)', bytes[5], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 6, 'Hour weight (byte 0)', bytes[6], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 7, 'Hour weight (byte 1)', bytes[7], null, 'Little-endian, value * 1000')}
+            ${renderByteArrayField(setting.id, 8, 'TZ offset (byte 0)', bytes[8], null, 'Seconds, little-endian')}
+            ${renderByteArrayField(setting.id, 9, 'TZ offset (byte 1)', bytes[9], null, 'Seconds, little-endian')}
+            ${renderByteArrayField(setting.id, 10, 'TZ offset (byte 2)', bytes[10], null, 'Seconds, little-endian')}
+            ${renderByteArrayField(setting.id, 11, 'TZ offset (byte 3)', bytes[11], null, 'Seconds, little-endian')}
+        </div>
+    `;
+}
+
+function renderMsInput(setting, value) {
+    const msValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const seconds = Number.isFinite(msValue) ? (msValue / 1000) : '';
+    return `
+        <label class="input-label" for="new-value-${setting.id}">Milliseconds</label>
+        <input type="number" id="new-value-${setting.id}" value="${value ?? ''}" min="0" oninput="updateMsValue('${setting.id}')" />
+        <div class="input-helper">Seconds: ${seconds === '' ? '—' : seconds}</div>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+    `;
+}
+
+function renderSecondsInput(setting, value) {
+    const secondsValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const minutes = Number.isFinite(secondsValue) ? (secondsValue / 60) : '';
+    return `
+        <label class="input-label" for="new-value-${setting.id}">Seconds</label>
+        <input type="number" id="new-value-${setting.id}" value="${value ?? ''}" min="0" oninput="updateSecondsValue('${setting.id}')" />
+        <div class="input-helper">Minutes: ${minutes === '' ? '—' : minutes}</div>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+    `;
+}
+
+function renderUnixTimeInput(setting, value) {
+    const seconds = Number(value);
+    const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
+    const dateValue = date ? formatLocalDateTime(date) : '';
+    return `
+        <label class="input-label" for="datetime-${setting.id}">Date & time (local)</label>
+        <input type="datetime-local" id="datetime-${setting.id}" value="${dateValue}" onchange="updateUnixTimeValue('${setting.id}')" />
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (unix seconds)</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+        <input type="hidden" id="new-value-${setting.id}" value="${value ?? ''}" />
+    `;
+}
+
+function renderMacAddressParameters(setting, value) {
+    const bytes = parseByteArrayValue(value, setting.length);
+    const mac = bytes.map(byte => toHex(byte)).join(':');
+    return `
+        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <div class="byte-array-grid">
+            ${renderByteArrayField(setting.id, 0, 'MAC byte 0', bytes[0], null, 'Hex 00-FF')}
+            ${renderByteArrayField(setting.id, 1, 'MAC byte 1', bytes[1], null, 'Hex 00-FF')}
+            ${renderByteArrayField(setting.id, 2, 'MAC byte 2', bytes[2], null, 'Hex 00-FF')}
+            ${renderByteArrayField(setting.id, 3, 'MAC byte 3', bytes[3], null, 'Hex 00-FF')}
+            ${renderByteArrayField(setting.id, 4, 'MAC byte 4', bytes[4], null, 'Hex 00-FF')}
+            ${renderByteArrayField(setting.id, 5, 'MAC byte 5', bytes[5], null, 'Hex 00-FF')}
+        </div>
+        <div class="input-helper" id="mac-preview-${setting.id}">MAC: ${mac}</div>
+    `;
+}
+
+function renderHexUint16Input(setting, value) {
+    const numValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const hexValue = Number.isFinite(numValue) ? `0x${numValue.toString(16).toUpperCase().padStart(4, '0')}` : '';
+    return `
+        <label class="input-label" for="hex-value-${setting.id}">Hex value</label>
+        <input type="text" id="hex-value-${setting.id}" value="${hexValue}" placeholder="0x0000" oninput="updateHexValue('${setting.id}')"/>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (decimal)</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+        <input type="hidden" id="new-value-${setting.id}" value="${value ?? ''}" />
+    `;
+}
+
+function renderLatitudeInput(setting, value) {
+    return renderCoordinateInput(setting, value, 'Latitude', -90, 90);
+}
+
+function renderLongitudeInput(setting, value) {
+    return renderCoordinateInput(setting, value, 'Longitude', -180, 180);
+}
+
+function renderCoordinateInput(setting, value, label, min, max) {
+    const rawValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const degrees = Number.isFinite(rawValue) ? (rawValue / 1e7).toFixed(7) : '';
+    return `
+        <label class="input-label" for="coord-value-${setting.id}">${label} (decimal degrees)</label>
+        <input type="text" id="coord-value-${setting.id}" value="${degrees}" inputmode="decimal" placeholder="${min} to ${max}" oninput="updateCoordinateValue('${setting.id}', ${min}, ${max})"/>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+        <input type="hidden" id="new-value-${setting.id}" value="${value ?? ''}" />
+    `;
+}
+
 function updateLp0ByteArray(settingId) {
     const [_, setting] = getById(settingId);
     const bytes = new Uint8Array(setting.length);
@@ -630,6 +892,83 @@ function updateLp0ByteArray(settingId) {
     }
     const hiddenField = document.getElementById(`new-value-${settingId}`);
     hiddenField.value = bytesToHex(bytes);
+    const macPreview = document.getElementById(`mac-preview-${settingId}`);
+    if (macPreview) {
+        macPreview.textContent = `MAC: ${Array.from(bytes).map(toHex).join(':')}`;
+    }
+    __onInputChanged(settingId);
+}
+
+function updateMsValue(settingId) {
+    const input = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+    }
+    __onInputChanged(settingId);
+}
+
+function updateSecondsValue(settingId) {
+    const input = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+    }
+    __onInputChanged(settingId);
+}
+
+function updateUnixTimeValue(settingId) {
+    const dateInput = document.getElementById(`datetime-${settingId}`);
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (!dateInput || !hiddenField) {
+        return;
+    }
+    const date = dateInput.value ? new Date(dateInput.value) : null;
+    const seconds = date && !Number.isNaN(date.getTime())
+        ? Math.floor(date.getTime() / 1000)
+        : '';
+    hiddenField.value = seconds.toString();
+    if (rawValueElement) {
+        rawValueElement.value = seconds.toString();
+    }
+    __onInputChanged(settingId);
+}
+
+function updateHexValue(settingId) {
+    const hexInput = document.getElementById(`hex-value-${settingId}`);
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (!hexInput || !hiddenField) {
+        return;
+    }
+    const clean = hexInput.value.trim().replace(/^0x/i, '');
+    const parsed = parseInt(clean, 16);
+    const value = Number.isNaN(parsed) ? '' : parsed;
+    hiddenField.value = value.toString();
+    if (rawValueElement) {
+        rawValueElement.value = value.toString();
+    }
+    __onInputChanged(settingId);
+}
+
+function updateCoordinateValue(settingId, min, max) {
+    const input = document.getElementById(`coord-value-${settingId}`);
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (!input || !hiddenField) {
+        return;
+    }
+    const normalized = input.value.trim().replace(',', '.');
+    const parsed = parseFloat(normalized);
+    const clamped = Number.isFinite(parsed)
+        ? Math.min(max, Math.max(min, parsed))
+        : null;
+    const rawValue = clamped === null ? '' : Math.round(clamped * 1e7);
+    hiddenField.value = rawValue.toString();
+    if (rawValueElement) {
+        rawValueElement.value = rawValue.toString();
+    }
     __onInputChanged(settingId);
 }
 
@@ -644,6 +983,17 @@ function updateBitmaskForSetting(settingId) {
         }
     }
     hiddenField.value = (bitmask >>> 0).toString();
+    __onInputChanged(settingId);
+}
+
+function updateCustomBitmask(settingId, bit) {
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    if (!hiddenField) {
+        return;
+    }
+    let bitmask = parseInt(hiddenField.value, 10) || 0;
+    bitmask ^= (1 << bit);
+    hiddenField.value = (bitmask & 0xFF).toString();
     __onInputChanged(settingId);
 }
 
@@ -708,9 +1058,43 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function formatLocalDateTime(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function formatLocalDateTimeDisplay(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 function formatSettingValueForPreview(key, setting, value, compareValue = null, mode = null) {
     if (value === undefined || value === null || value === '') {
         return '<span class="import-preview-empty">—</span>';
+    }
+
+    const msKeys = new Set([
+        'external_switch_detection_trigger_debounce_ms',
+        'vhf_time_between_packets_ms'
+    ]);
+
+    if (msKeys.has(key)) {
+        const ms = Number(value);
+        const seconds = Number.isFinite(ms) ? (ms / 1000) : value;
+        return `<div class="import-preview-value">${escapeHtml(Number.isFinite(ms) ? ms : value)} <span class="import-preview-muted">ms</span><div class="import-preview-subvalue">${escapeHtml(seconds)} sec</div></div>`;
+    }
+
+    if (key === 'init_time') {
+        const seconds = Number(value);
+        const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
+        const display = date ? formatLocalDateTimeDisplay(date) : value;
+        return `<div class="import-preview-value">${escapeHtml(display)}<div class="import-preview-subvalue">Unix: ${escapeHtml(Number.isFinite(seconds) ? seconds : value)} sec</div></div>`;
+    }
+
+    if (key === 'gps_init_lat' || key === 'gps_init_lon') {
+        const raw = Number(value);
+        const degrees = Number.isFinite(raw) ? (raw / 1e7) : value;
+        return `<div class="import-preview-value">${escapeHtml(degrees)} <span class="import-preview-muted">degrees</span><div class="import-preview-subvalue">Raw: ${escapeHtml(Number.isFinite(raw) ? raw : value)}</div></div>`;
     }
 
     if (customByteArrayRenderers[key]) {
@@ -730,6 +1114,14 @@ function formatSettingValueForPreview(key, setting, value, compareValue = null, 
                 : guessedUnit === '60' ? 'minute(s)'
                     : 'second(s)';
         return `<div class="import-preview-value">${escapeHtml(displayValue)} <span class="import-preview-muted">${escapeHtml(unitLabel)}</span><div class="import-preview-subvalue">${escapeHtml(seconds)} sec</div></div>`;
+    }
+
+    const metaOptions = getSettingOptions(key);
+    if (metaOptions) {
+        const match = metaOptions.find(option => String(option.value) === String(value));
+        if (match) {
+            return `<span class="import-preview-mono">${escapeHtml(match.label)}</span>`;
+        }
     }
 
     if (setting.conversion === 'bool') {
@@ -978,12 +1370,16 @@ function bytesToSetting(setting, bytes) {
     }
 }
 
-function settingToBytes(setting, value) {
-    validateInput(setting, value);
-
+function settingToBytes(key, setting, value) {
     if (setting.length === 0) {
         return new Uint8Array();
     }
+
+    if (!setting.conversion) {
+        throw new Error('Missing conversion type');
+    }
+
+    validateInput(key, setting, value);
 
     if (setting.conversion === 'uint32') {
         const intValue = parseInt(value, 10);
@@ -1009,7 +1405,42 @@ function settingToBytes(setting, value) {
     }
 }
 
-function validateInput(setting, value) {
+function formatRangeLabel(key, min, max) {
+    const minNum = Number(min);
+    const maxNum = Number(max);
+
+    if (intervalPatterns.some(rx => rx.test(key)) && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+        const unit = (key === 'cold_fix_timeout' || key === 'hot_fix_timeout') ? '1' : guessTimeUnit(Math.max(minNum, maxNum));
+        const displayMin = Math.round(convertSecondsToUnit(minNum, unit));
+        const displayMax = Math.round(convertSecondsToUnit(maxNum, unit));
+        const unitLabel = unit === '86400' ? 'day(s)'
+            : unit === '3600' ? 'hour(s)'
+                : unit === '60' ? 'minute(s)'
+                    : 'second(s)';
+        return `${displayMin}–${displayMax} ${unitLabel} (raw: ${minNum}–${maxNum} sec)`;
+    }
+
+    if (key === 'init_time' && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+        const minDate = formatLocalDateTimeDisplay(new Date(minNum * 1000));
+        const maxDate = formatLocalDateTimeDisplay(new Date(maxNum * 1000));
+        return `${minDate}–${maxDate} (unix: ${minNum}–${maxNum} sec)`;
+    }
+
+    if (key === 'ble_scan_manufacturer_id' && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+        const toHexRange = value => `0x${Math.round(value).toString(16).toUpperCase().padStart(4, '0')}`;
+        return `${toHexRange(minNum)}–${toHexRange(maxNum)} (decimal: ${minNum}–${maxNum})`;
+    }
+
+    if ((key === 'gps_init_lat' || key === 'gps_init_lon') && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+        const minDeg = minNum / 1e7;
+        const maxDeg = maxNum / 1e7;
+        return `${minDeg}–${maxDeg} degrees (raw: ${minNum}–${maxNum})`;
+    }
+
+    return `${min} and ${max}`;
+}
+
+function validateInput(key, setting, value) {
     if (setting.length === 0) {
         return;
     }
@@ -1026,14 +1457,14 @@ function validateInput(setting, value) {
         }
 
         if (setting.min != undefined && setting.max != undefined && (parsedValue < setting.min || parsedValue > setting.max)) {
-            throw new Error(`Must be between ${setting.min} and ${setting.max}`);
+            throw new Error(`Must be between ${formatRangeLabel(key, setting.min, setting.max)}`);
         }
 
         // Check min and max values for uint8, uint16, uint32, int8, int32, etc.
         const mm = minMaxValues[setting.conversion];
 
         if (mm && (parsedValue < mm.min || parsedValue > mm.max)) {
-            throw new Error(`Must be between ${mm.min} and ${mm.max}`);
+            throw new Error(`Must be between ${formatRangeLabel(key, mm.min, mm.max)}`);
         }
     } else if (setting.conversion === 'bool') {
         const valLower = value.toString().toLowerCase();

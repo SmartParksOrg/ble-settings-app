@@ -42,16 +42,24 @@
   </div>
 
   <div id="settings-area" class="settings-section page-section">
-    <h2>Settings</h2>
-    <div class="search">
-      <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
-    </div>
-    <div id="settings-section"></div>
+    <details class="section section-card">
+      <summary class="section-card-title">Settings</summary>
+      <div class="section-card-body">
+        <div class="search">
+          <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
+        </div>
+        <div id="settings-section"></div>
+      </div>
+    </details>
   </div>
 
   <div id="composer-commands" class="commands-section page-section">
-    <h2>Commands</h2>
-    <div id="commands-section"></div>
+    <details class="section section-card">
+      <summary class="section-card-title">Commands</summary>
+      <div class="section-card-body">
+        <div id="commands-section"></div>
+      </div>
+    </details>
   </div>
 
   <div id="floating-bar">
@@ -335,7 +343,7 @@
           row.innerHTML = `
             <div class="checkbox-container">
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
-              <label for="checkbox-${setting.id}"><h4 title="${key}">${setting.display_name} <small>(${setting.id})</small></h4></label>
+              <label for="checkbox-${setting.id}"><h4 title="${key}">${setting.display_name} <small>${key} (${setting.id})</small></h4></label>
             </div>${renderInputContainer(key, setting)}
             ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
           `;
@@ -366,11 +374,30 @@
         // Build the "include" checkbox + label
         const commandLabel = getCommandLabel(key);
         const commandDescription = getCommandDescription(key);
+        const commandInputMeta = getCommandInputMeta(key);
+        let helperHtml = '';
+        if (commandInputMeta && commandInputMeta.source === 'values') {
+          const valueOptions = getCommandValueOptions();
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Value</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${valueOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
+            </select>
+          `;
+        } else if (commandInputMeta && commandInputMeta.source === 'settings') {
+          const settingOptions = getCommandSettingOptions();
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Setting</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
+            </select>
+          `;
+        }
         row.innerHTML = `
           <div class="checkbox-container">
             <input type="checkbox" id="checkbox-${command.id}" onchange="updateCheckBox(this, '${command.id}')"/>
-            <label for="checkbox-${command.id}"><h4>${commandLabel} <small>(${command.id})</small></h4></label>
-          </div>${renderInputContainer(key, command)}
+            <label for="checkbox-${command.id}"><h4>${commandLabel} <small>${key} (${command.id})</small></h4></label>
+          </div>${helperHtml ? `<div class="command-helper hidden" id="command-helper-${command.id}">${helperHtml}</div>` : ''}
           ${commandDescription ? `<p class="setting-help">${commandDescription}</p>` : ""}
         `;
 
@@ -386,9 +413,25 @@
       if (element.checked) {
         element.parentElement.parentElement.classList.remove('transparent');
         setDefaultValue(id);
+        const helper = document.getElementById(`command-helper-${id}`);
+        if (helper) {
+          helper.classList.remove('hidden');
+        }
       } else {
         clearInputValue(id);
         element.parentElement.parentElement.classList.add('transparent');
+        const helper = document.getElementById(`command-helper-${id}`);
+        if (helper) {
+          helper.classList.add('hidden');
+          const selectEl = helper.querySelector('select');
+          if (selectEl) {
+            selectEl.selectedIndex = 0;
+          }
+          const inputEl = helper.querySelector('input');
+          if (inputEl) {
+            inputEl.value = '';
+          }
+        }
       }
       updateEncodedMessage();
     }
@@ -462,9 +505,20 @@
         // Convert to bytes
         let valueBytes;
         try {
-          valueBytes = settingToBytes(settingObj, getInputValue(settingObj.id));
+          if (settingObj.type === 'command' && settingObj.length === 1) {
+            const selectEl = document.getElementById(`command-select-${settingObj.id}`);
+            if (selectEl) {
+              const selected = selectEl.value;
+              const parsed = selected && selected.startsWith('0x') ? parseInt(selected, 16) : parseInt(selected, 10);
+              valueBytes = settingToBytes(settingKey, settingObj, parsed.toString());
+            } else {
+              valueBytes = settingToBytes(settingKey, settingObj, getInputValue(settingObj.id));
+            }
+          } else {
+            valueBytes = settingToBytes(settingKey, settingObj, getInputValue(settingObj.id));
+          }
         } catch (error) {
-          hexOutput.value = `Error: ${error.message}`;
+          hexOutput.value = `Error (${settingKey}): ${error.message}`;
           hexOutput.classList.add('invalid');
           return;
         }

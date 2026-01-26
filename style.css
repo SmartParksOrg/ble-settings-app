@@ -75,9 +75,66 @@ body {
     padding: 18px 16px;
 }
 
+.settings-section,
+.commands-section {
+    padding: 0 16px;
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+
+.section-card {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.section-card + .section-card {
+    margin-top: 12px;
+}
+
+.settings-section + .commands-section {
+    margin-top: 12px;
+}
+
+.section-card-title {
+    cursor: pointer;
+    list-style: none;
+    font-size: 20px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    color: var(--sp-forest-dark);
+}
+
+.section-card-title::-webkit-details-marker {
+    display: none;
+}
+
+.section-card-title::after {
+    content: '';
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid rgba(31, 42, 35, 0.7);
+    border-bottom: 2px solid rgba(31, 42, 35, 0.7);
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+}
+
+.section-card[open] .section-card-title::after {
+    transform: rotate(225deg);
+}
+
+.section-card-body {
+    padding-top: 12px;
+}
+
 .page-section {
     max-width: 1200px;
     margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .controls button {
@@ -264,6 +321,49 @@ body {
     font-weight: normal;
 }
 
+.input-label {
+    display: block;
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.75);
+    letter-spacing: 0.2px;
+    margin-bottom: 2px;
+}
+
+.input-helper {
+    margin-top: 4px;
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.65);
+}
+
+.command-helper-label {
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.75);
+    letter-spacing: 0.2px;
+}
+
+.command-helper-input {
+    width: 100%;
+}
+
+.raw-value-label {
+    display: block;
+    margin-top: 6px;
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.65);
+    letter-spacing: 0.2px;
+}
+
+.raw-value {
+    margin-top: 2px;
+    background: #e6ece9;
+    border-color: #c7d2cc;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.raw-value:read-only {
+    cursor: not-allowed;
+}
+
 input,
 select,
 textarea {
@@ -328,6 +428,29 @@ button {
     display: grid;
     gap: 10px;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.command {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.command-helper-label {
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.75);
+    letter-spacing: 0.2px;
+}
+
+.command-helper-input {
+    width: 100%;
+}
+
+.command-meta {
+    color: rgba(31, 42, 35, 0.65);
+    font-size: 11px;
+    letter-spacing: 0.2px;
+    word-break: break-all;
 }
 
 #commands-section {
@@ -419,8 +542,12 @@ button.secondary:hover,
     box-shadow: var(--sp-shadow);
 }
 
-#commands-section {
+body.connected #commands-section {
     margin-bottom: 150px;
+}
+
+.section-card .section-card-body #commands-section {
+    margin-bottom: 0;
 }
 
 .settings-group {
@@ -639,6 +766,16 @@ h2 {
     display: grid;
     gap: 10px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.interval-unit-label {
+    align-self: center;
+    color: rgba(31, 42, 35, 0.75);
+    font-size: 13px;
+    padding: 8px 10px;
+    border: 1px solid rgba(31, 42, 35, 0.2);
+    border-radius: 8px;
+    background: rgba(31, 42, 35, 0.06);
 }
 
 .hidden,
@@ -1061,9 +1198,15 @@ body:not(.has-status) .hidden-when-no-status {
 #settings-dropdown {
     width: 100%;
     padding: 10px 12px;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-lg);
     border: 1px solid rgba(31, 42, 35, 0.18);
     background: #fff;
+}
+
+input,
+select,
+textarea {
+    border-radius: var(--radius-lg);
 }
 
 #pin-label {

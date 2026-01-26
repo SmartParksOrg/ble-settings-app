@@ -60,23 +60,30 @@
   </div>
 
   <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
-    <h2>Settings</h2>
-    <div id="search" class="search">
-      <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
-      <label>
-        <input type="checkbox" id="non-default-checkbox" onchange="filterSettings()"> Hide default settings
-      </label>
-    </div>
-    <div id="settings-progress">
-      <div></div>
-    </div>
-    <div id="settings-section"></div>
+    <details class="section section-card">
+      <summary class="section-card-title">Settings</summary>
+      <div class="section-card-body">
+        <div id="search" class="search">
+          <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
+          <label>
+            <input type="checkbox" id="non-default-checkbox" onchange="filterSettings()"> Hide default settings
+          </label>
+        </div>
+        <div id="settings-progress">
+          <div></div>
+        </div>
+        <div id="settings-section"></div>
+      </div>
+    </details>
   </div>
 
   <div id="other-commands" class="commands-section page-section hidden-when-no-settings">
-    <a name="other-commands"></a>
-    <h2>Commands</h2>
-    <div id="commands-buttons-section"></div>
+    <details class="section section-card">
+      <summary class="section-card-title">Commands</summary>
+      <div class="section-card-body">
+        <div id="commands-buttons-section"></div>
+      </div>
+    </details>
   </div>
 
   <nav class="bottom-nav hidden-when-disconnected" aria-label="Primary">
@@ -662,7 +669,7 @@
           const settingDescription = getSettingDescription(key);
           row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
           row.innerHTML = `
-          <h4>${setting.display_name} (${setting.id})</h4> 
+          <h4>${setting.display_name} <small>${key} (${setting.id})</small></h4> 
           ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
           
           ${renderInput(key, setting)}
@@ -693,9 +700,47 @@
         row.setAttribute('id', `command-${command.id}`);
         const label = getCommandLabel(key);
         const description = getCommandDescription(key);
-        row.innerHTML = `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${
-          description ? ` title="${description}"` : ""
-        }>${label}</button>`;
+        const commandInputMeta = getCommandInputMeta(key);
+        let helperHtml = '';
+        if (key === 'cmd_send_single_val') {
+          const valueOptions = getCommandValueOptions();
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Value</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${valueOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
+            </select>
+          `;
+        } else if (key === 'cmd_send_single_setting') {
+          const settingOptions = getCommandSettingOptions();
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Setting</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
+            </select>
+          `;
+        } else if (commandInputMeta && commandInputMeta.options) {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Value</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${commandInputMeta.options.map(option => `<option value="${option.value}">${option.label}</option>`).join('')}
+            </select>
+          `;
+        } else if (commandInputMeta && commandInputMeta.input) {
+          const placeholder = commandInputMeta.input.placeholder || '';
+          const labelText = commandInputMeta.input.label || 'Value';
+          const dataFormat = commandInputMeta.input.format || 'uint8';
+          helperHtml = `
+            <label class="command-helper-label" for="command-input-${command.id}">${labelText}</label>
+            <input id="command-input-${command.id}" class="command-helper-input" type="text" placeholder="${placeholder}" data-format="${dataFormat}" />
+          `;
+        }
+        row.innerHTML = `
+          <button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${
+            description ? ` title="${description}"` : ""
+          }>${label}</button>
+          ${helperHtml}
+          <div class="command-meta">${key} (${command.id})</div>
+        `;
         commandsSection.appendChild(row);
       }
     }
@@ -1022,11 +1067,42 @@
       showToast(`Executing command: ${key}`);
       if (key === 'cmd_flash_get_all') {
         startFlashLogCapture();
-        const value = commandMeta && commandMeta.value !== undefined ? commandMeta.value : 0;
-        return executeBleCommand([0x20, cmd, 0x01, value]);
       }
-      if (commandMeta && commandMeta.length === 1) {
-        const value = commandMeta.value !== undefined ? commandMeta.value : 0;
+        if (commandMeta && commandMeta.length === 1) {
+          const selectEl = document.getElementById(`command-select-${commandMeta.id}`);
+          const inputEl = document.getElementById(`command-input-${commandMeta.id}`);
+          let value = 0;
+          if (selectEl) {
+          const selected = selectEl.value;
+          if (selected && selected.startsWith('0x')) {
+            value = parseInt(selected, 16);
+          } else {
+            value = parseInt(selected, 10);
+          }
+          } else if (inputEl) {
+          const rawValue = inputEl.value.trim();
+          const format = inputEl.getAttribute('data-format') || 'uint8';
+          if (rawValue.length === 0) {
+            value = 0;
+          } else if (format === 'hex8') {
+            const cleaned = rawValue.replace(/^0x/i, '');
+            const parsed = parseInt(cleaned, 16);
+            if (Number.isNaN(parsed)) {
+              showToast('Invalid hex value');
+              return;
+            }
+            value = parsed;
+          } else {
+            const parsed = parseInt(rawValue, 10);
+            if (Number.isNaN(parsed)) {
+              showToast('Invalid numeric value');
+              return;
+            }
+            value = parsed;
+          }
+        } else if (commandMeta && commandMeta.value !== undefined) {
+          value = commandMeta.value;
+        }
         return executeBleCommand([0x20, cmd, 0x01, value]);
       }
       return executeBleCommand([0x20, cmd, 0x00]);
@@ -1076,7 +1152,7 @@
     async function updateBleSetting(settingId, newValue) {
       const [settingKey, setting] = getById(settingId);
 
-      let valueBytes = settingToBytes(setting, newValue);
+      let valueBytes = settingToBytes(settingKey, setting, newValue);
 
       const length = valueBytes.length;
       const command = [0x03, parseInt(settingId, 16), length, ...valueBytes];
