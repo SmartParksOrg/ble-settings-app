@@ -71,12 +71,14 @@ body {
 
 #header-section,
 .settings-section,
-.commands-section {
+.commands-section,
+.map-section {
     padding: 18px 16px;
 }
 
 .settings-section,
-.commands-section {
+.commands-section,
+.map-section {
     padding: 0 16px;
     margin-top: 8px;
     margin-bottom: 0;
@@ -95,7 +97,9 @@ body {
     margin-top: 12px;
 }
 
-.settings-section + .commands-section {
+.settings-section + .commands-section,
+.commands-section + .map-section,
+.settings-section + .map-section {
     margin-top: 12px;
 }
 
@@ -143,6 +147,45 @@ body {
 
 .section-card-body {
     padding-top: 12px;
+}
+
+.map-status {
+    font-size: 14px;
+    color: rgba(31, 42, 35, 0.7);
+    margin-bottom: 10px;
+}
+
+.map-frame {
+    position: relative;
+    width: 100%;
+    height: 280px;
+    border-radius: 16px;
+    overflow: hidden;
+    background: rgba(233, 239, 233, 0.8);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    isolation: isolate;
+}
+
+.map-canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.leaflet-container {
+    z-index: 0;
+}
+
+.map-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 12px;
+    background: rgba(236, 242, 237, 0.9);
+    color: rgba(31, 42, 35, 0.8);
+    font-weight: 600;
 }
 
 .page-section {
@@ -1135,6 +1178,18 @@ body:not(.has-status) .hidden-when-no-status {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--!Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0zM192 128a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"/></svg>');
 }
 
+.icon.square-poll-horizontal {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\"><rect x=\"32\" y=\"32\" width=\"448\" height=\"448\" rx=\"48\" ry=\"48\" fill=\"none\" stroke=\"black\" stroke-width=\"32\"/><rect x=\"128\" y=\"160\" width=\"256\" height=\"48\" rx=\"8\" fill=\"black\"/><rect x=\"128\" y=\"240\" width=\"192\" height=\"48\" rx=\"8\" fill=\"black\"/><rect x=\"128\" y=\"320\" width=\"144\" height=\"48\" rx=\"8\" fill=\"black\"/></svg>');
+}
+
+.icon.square-caret-up {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 448 512\"><rect x=\"32\" y=\"32\" width=\"384\" height=\"448\" rx=\"48\" ry=\"48\" fill=\"none\" stroke=\"black\" stroke-width=\"32\"/><path d=\"M224 168L112 280h224L224 168z\" fill=\"black\"/></svg>');
+}
+
+.icon.house {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 576 512\"><path d=\"M288 0L0 240h48v240h176V336h128v144h176V240h48L288 0z\" fill=\"black\"/></svg>');
+}
+
 .log-footer {
     position: fixed;
     bottom: 0;
@@ -1273,12 +1328,12 @@ textarea {
     left: 0;
     right: 0;
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 6px;
     padding: 10px 12px 14px;
     background: linear-gradient(0deg, rgba(31, 42, 35, 0.98), rgba(31, 42, 35, 0.92));
     border-top: 1px solid rgba(255, 255, 255, 0.1);
-    z-index: 26;
+    z-index: 1000;
 }
 
 .bottom-nav a,
@@ -1293,8 +1348,11 @@ textarea {
     text-align: center;
     cursor: pointer;
     box-shadow: none;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
+    text-transform: none;
+    letter-spacing: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .bottom-nav .nav-logo {
@@ -1320,6 +1378,22 @@ textarea {
 .bottom-nav a:active,
 .bottom-nav button:active {
     transform: translateY(1px);
+}
+
+.bottom-nav .icon {
+    width: 20px;
+    height: 20px;
+    background-size: 20px 20px;
+    filter: invert(1);
+    opacity: 0.95;
+}
+
+.bottom-nav .icon.toggle-log {
+    filter: none;
+}
+
+.bottom-nav.nav-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 @media (min-width: 901px) {
@@ -1358,11 +1432,22 @@ textarea {
         border-radius: var(--radius-md);
         padding: 10px 8px;
         font-size: 11px;
-        letter-spacing: 0.5px;
+        letter-spacing: 0;
+    }
+
+    .bottom-nav.nav-4 {
+        grid-template-columns: 1fr;
     }
 
     .toggle-button {
         display: none !important;
+    }
+}
+
+@media (max-width: 900px) {
+    .map-section {
+        margin-bottom: 12px;
+        padding-bottom: calc(var(--body-bottom-padding) + 8px);
     }
 }
 

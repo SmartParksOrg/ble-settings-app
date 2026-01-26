@@ -85,14 +85,28 @@
     </details>
   </div>
 
+  <div id="map-area" class="map-section page-section hidden-when-no-status">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon ublox-location" aria-hidden="true"></span>Map</summary>
+      <div class="section-card-body">
+        <div id="map-status" class="map-status">Waiting for location...</div>
+        <div class="map-frame">
+          <div id="device-map" class="map-canvas"></div>
+          <div id="map-overlay" class="map-overlay hidden">Offline: map unavailable</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <nav class="bottom-nav hidden-when-disconnected" aria-label="Primary">
     <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
       <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
     </a>
-    <a href="#header-section">Status</a>
-    <a href="#settings-area">Settings</a>
-    <a href="#other-commands">Commands</a>
-    <button type="button" onclick="toggleLog()">Log</button>
+    <a href="#header-section" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
+    <a href="#settings-area" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
+    <a href="#other-commands" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
+    <a href="#map-area" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
+    <button type="button" onclick="toggleLog()" aria-label="Log" title="Log"><span class="icon toggle-log" aria-hidden="true"></span></button>
   </nav>
 
   <button class="toggle-button hidden-when-disconnected" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
@@ -165,6 +179,10 @@
     let readAllSettings = null;
     let autoLoaded = false;
     let lastPositionMessage = null;
+    let mapInstance = null;
+    let mapMarker = null;
+    let mapReady = false;
+    let leafletPromise = null;
     let flashLogState = {
       active: false,
       lines: [],
@@ -182,6 +200,129 @@
       document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : basePadding;
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
+    }
+
+    function loadLeafletIfNeeded() {
+      if (leafletPromise) {
+        return leafletPromise;
+      }
+      leafletPromise = new Promise((resolve, reject) => {
+        if (window.L && window.L.map) {
+          resolve();
+          return;
+        }
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+        link.crossOrigin = '';
+        document.head.appendChild(link);
+
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+        script.crossOrigin = '';
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Failed to load map library'));
+        document.head.appendChild(script);
+      });
+      return leafletPromise;
+    }
+
+    function setMapStatus(message) {
+      const statusEl = document.getElementById('map-status');
+      if (statusEl) {
+        statusEl.textContent = message;
+      }
+    }
+
+    function updateMapOverlay() {
+      const overlay = document.getElementById('map-overlay');
+      if (!overlay) {
+        return;
+      }
+      if (navigator.onLine) {
+        overlay.classList.add('hidden');
+      } else {
+        overlay.classList.remove('hidden');
+      }
+    }
+
+    async function ensureMapReady() {
+      if (!navigator.onLine) {
+        updateMapOverlay();
+        return false;
+      }
+      updateMapOverlay();
+      if (mapReady) {
+        return true;
+      }
+      try {
+        await loadLeafletIfNeeded();
+        const mapContainer = document.getElementById('device-map');
+        if (!mapContainer || mapInstance) {
+          mapReady = true;
+          return true;
+        }
+        mapInstance = L.map(mapContainer, {
+          zoomControl: true,
+          attributionControl: true
+        }).setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap'
+        }).addTo(mapInstance);
+        mapReady = true;
+        return true;
+      } catch (error) {
+        console.error(error);
+        setMapStatus('Map failed to load.');
+        return false;
+      }
+    }
+
+    async function updateMapLocation() {
+      if (!lastPositionMessage) {
+        setMapStatus('Waiting for location...');
+        return;
+      }
+      const { latitude, longitude } = lastPositionMessage;
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        setMapStatus('Location unavailable.');
+        return;
+      }
+      const ready = await ensureMapReady();
+      if (!ready) {
+        setMapStatus('Offline: map unavailable.');
+        return;
+      }
+      setMapStatus(`Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+      const coords = [latitude, longitude];
+      if (!mapMarker) {
+        mapMarker = L.marker(coords).addTo(mapInstance);
+      } else {
+        mapMarker.setLatLng(coords);
+      }
+      mapInstance.setView(coords, 14, { animate: false });
+    }
+
+    function handleConnectivityChange() {
+      updateMapOverlay();
+      if (navigator.onLine && lastPositionMessage) {
+        updateMapLocation();
+      }
+    }
+
+    window.addEventListener('online', handleConnectivityChange);
+    window.addEventListener('offline', handleConnectivityChange);
+    updateMapOverlay();
+    const mapDetails = document.querySelector('#map-area details');
+    if (mapDetails) {
+      mapDetails.addEventListener('toggle', () => {
+        if (mapDetails.open && mapInstance) {
+          setTimeout(() => mapInstance.invalidateSize(), 0);
+        }
+      });
     }
 
     function formatFilenameTimestamp(date) {
@@ -889,6 +1030,11 @@
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
       lastPositionMessage = null;
+      setMapStatus('Waiting for location...');
+      if (mapMarker && mapInstance) {
+        mapInstance.removeLayer(mapMarker);
+      }
+      mapMarker = null;
     }
 
     const connectButton = document.getElementById('connect-button');
@@ -965,6 +1111,7 @@
           lastPositionMessage = decodeLastPositionMessage(data.slice(3));
           document.getElementById('ublox-location').innerHTML = `<a href="https://maps.google.com/?q=${lastPositionMessage.latitude},${lastPositionMessage.longitude}" target="_blank">${lastPositionMessage.latitude.toFixed(3)},${lastPositionMessage.longitude.toFixed(3)}</a>`;
           log(`Decoded: last postion = ${JSON.stringify(lastPositionMessage)}`);
+          updateMapLocation();
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
           await displayStatusMessage(statusMessage);
