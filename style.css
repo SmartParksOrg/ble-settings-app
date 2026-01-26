@@ -82,6 +82,10 @@ body {
     margin-bottom: 0;
 }
 
+#composer-commands {
+    padding-bottom: 60px;
+}
+
 .section-card {
     width: 100%;
     box-sizing: border-box;
