@@ -230,7 +230,7 @@ body {
     font-weight: 600;
     letter-spacing: 0.2px;
     width: 100%;
-    height: 46px;
+    height: 56px;
     padding: 0 18px;
     line-height: 1.2;
 }
@@ -255,7 +255,7 @@ body {
     font-weight: 600;
     letter-spacing: 0.2px;
     width: 100%;
-    height: 46px;
+    height: 56px;
     padding: 0 18px;
     line-height: 1.2;
 }
@@ -273,13 +273,13 @@ body {
 }
 
 .scan-settings-card {
-    margin-top: 6px;
+    margin-top: 3px;
 }
 
 .scan-card .section-card-body {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 3px;
 }
 
 .scan-card .section-card-title::after,
