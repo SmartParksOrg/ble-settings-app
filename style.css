@@ -719,6 +719,16 @@ button.secondary:hover,
     border-color: var(--sp-forest);
 }
 
+#disconnect-button {
+    background: linear-gradient(145deg, #d64545, #b91c1c);
+    border-color: transparent;
+    box-shadow: 0 6px 14px rgba(185, 28, 28, 0.25);
+}
+
+#disconnect-button:hover {
+    background: linear-gradient(145deg, #e35d5d, #a51616);
+}
+
 #hex-output.invalid {
     border: 2px solid red;
 }
