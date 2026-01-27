@@ -1597,10 +1597,11 @@ textarea {
 @media (max-width: 900px) {
     :root {
         --body-bottom-padding: 88px;
+        --bottom-nav-offset: 64px;
     }
 
     #floating-bar {
-        bottom: 58px;
+        bottom: var(--bottom-nav-offset);
     }
 
     #container,
