@@ -37,15 +37,50 @@
         </div>
       </div>
       <div class="hidden-when-connected">
-        <div class="primary-actions">
-          <button id="connect-button" class="scan-button">Scan</button>
-          <a class="button composer-button" href="composer.html">Composer</a>
-        </div>
-        <details class="pin-details">
-          <summary>PIN</summary>
-          <label id="pin-label">PIN:&nbsp;<input name="pincode" id="pincode" type="text" class="pincode" value="0000"
-              inputmode="numeric" maxlength="4"></label>
-        </details>
+        <section class="section section-card scan-card">
+          <div class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Scan</div>
+          <div class="section-card-body">
+            <div class="primary-actions">
+              <button id="connect-button" class="scan-button">Scan</button>
+            </div>
+            <details class="section section-card scan-settings-card">
+              <summary class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Scan settings</summary>
+              <div class="section-card-body">
+                <label class="scan-settings-label" for="device-name-filter">
+                  Device name filter (comma-separated prefixes):
+                  <input
+                    id="device-name-filter"
+                    type="text"
+                    class="scan-filter-input"
+                    placeholder="e.g. SP05, SP06"
+                    autocomplete="off"
+                    spellcheck="false"
+                  />
+                </label>
+                <label class="scan-settings-label pin-row" id="pin-label">
+                  Device PIN:
+                  <input
+                    name="pincode"
+                    id="pincode"
+                    type="text"
+                    class="pincode"
+                    value="0000"
+                    inputmode="numeric"
+                    maxlength="4"
+                  />
+                </label>
+              </div>
+            </details>
+          </div>
+        </section>
+        <section class="section section-card composer-card">
+          <div class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Composer</div>
+          <div class="section-card-body">
+            <div class="composer-actions">
+              <a class="button composer-button" href="composer.html">Composer</a>
+            </div>
+          </div>
+        </section>
       </div>
       <div id="settings-selection" class="hidden-when-disconnected">
         <select id="settings-dropdown" onchange="loadSelectedSettings()"></select>
@@ -1038,13 +1073,46 @@
     }
 
     const connectButton = document.getElementById('connect-button');
+    const deviceNameFilterInput = document.getElementById('device-name-filter');
+
+    function parseDeviceNameFilters(value) {
+      const rawEntries = String(value || '')
+        .split(',')
+        .map(entry => entry.trim())
+        .filter(entry => entry.length > 0);
+
+      return rawEntries.map(entry => {
+        // Be forgiving: treat bare values as prefixes. Use a trailing '*'
+        // explicitly as well (e.g., "SP05*").
+        const normalized = entry.endsWith('*') ? entry.slice(0, -1).trim() : entry;
+        if (!normalized) return null;
+        return { namePrefix: normalized };
+      }).filter(Boolean);
+    }
+
     connectButton.addEventListener('click', async function () {
       const connectLabel = connectButton.textContent;
       try {
         connectButton.disabled = true;
         connectButton.textContent = 'Connecting...';
+
+        const manufacturerFilter = {
+          manufacturerData: [{ companyIdentifier: 0x0A61 }]
+        };
+        const nameFilters = parseDeviceNameFilters(deviceNameFilterInput.value);
+        const filters = nameFilters.length
+          ? nameFilters.map(nameFilter => ({ ...manufacturerFilter, ...nameFilter }))
+          : [manufacturerFilter];
+
+        if (nameFilters.length) {
+          const filterSummary = nameFilters
+            .map(filter => filter.name ? filter.name : `${filter.namePrefix}*`)
+            .join(', ');
+          log(`Applying device name filters: ${filterSummary}`);
+        }
+
         device = await navigator.bluetooth.requestDevice({
-          filters: [{ manufacturerData: [{ companyIdentifier: 0x0A61 }] }],
+          filters,
           optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
         });
 

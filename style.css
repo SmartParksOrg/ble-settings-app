@@ -215,10 +215,10 @@ body {
 
 .primary-actions {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
     gap: 10px;
-    margin-bottom: 6px;
+    margin-bottom: 0;
 }
 
 .primary-actions .button,
@@ -239,6 +239,27 @@ body {
     min-width: 0;
 }
 
+.composer-actions {
+    margin-top: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+}
+
+.composer-actions .button,
+.composer-actions button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    width: 100%;
+    height: 46px;
+    padding: 0 18px;
+    line-height: 1.2;
+}
+
 .scan-button {
     background: linear-gradient(145deg, #1f6feb, #1952b8);
     color: #fff;
@@ -251,9 +272,67 @@ body {
     background: linear-gradient(145deg, #2f7ef0, #184a9b);
 }
 
+.scan-settings-card {
+    margin-top: 6px;
+}
+
+.scan-card .section-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.scan-card .section-card-title::after,
+.composer-card .section-card-title::after {
+    display: none;
+}
+
+.scan-settings-card .section-card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: stretch;
+}
+
+.scan-settings-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    color: rgba(31, 42, 35, 0.7);
+    font-size: 13px;
+    width: 100%;
+}
+
+.scan-settings-label input {
+    width: 100%;
+}
+
+.scan-settings-label.pin-row .pincode {
+    width: 100%;
+    max-width: none;
+}
+
+.scan-settings-card #pin-label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+}
+
 
 .pin-details {
     margin-top: 4px;
+    color: rgba(31, 42, 35, 0.7);
+    font-size: 13px;
+}
+
+.scan-filter-details {
+    margin-top: 8px;
     color: rgba(31, 42, 35, 0.7);
     font-size: 13px;
 }
@@ -270,7 +349,23 @@ body {
     background: rgba(255, 255, 255, 0.8);
 }
 
+.scan-filter-details summary {
+    cursor: pointer;
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(31, 42, 35, 0.15);
+    background: rgba(255, 255, 255, 0.8);
+}
+
 .pin-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.scan-filter-details summary::-webkit-details-marker {
     display: none;
 }
 
@@ -285,7 +380,22 @@ body {
     margin-left: 4px;
 }
 
+.scan-filter-details summary::after {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-right: 2px solid rgba(31, 42, 35, 0.6);
+    border-bottom: 2px solid rgba(31, 42, 35, 0.6);
+    transform: rotate(45deg);
+    transition: transform 0.2s ease;
+    margin-left: 4px;
+}
+
 .pin-details[open] summary::after {
+    transform: rotate(-135deg);
+}
+
+.scan-filter-details[open] summary::after {
     transform: rotate(-135deg);
 }
 
@@ -294,6 +404,29 @@ body {
     align-items: center;
     gap: 6px;
     margin-top: 8px;
+}
+
+.scan-filter-details label {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.scan-filter-input {
+    width: min(420px, 100%);
+    height: 38px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(31, 42, 35, 0.2);
+    background: rgba(255, 255, 255, 0.95);
+}
+
+.scan-filter-input:focus {
+    outline: none;
+    border-color: rgba(31, 111, 235, 0.6);
+    box-shadow: 0 0 0 3px rgba(31, 111, 235, 0.15);
 }
 
 .button-cluster {
@@ -1107,7 +1240,7 @@ body:not(.has-status) .hidden-when-no-status {
 }
 
 .icon.ble-scan {
-    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--!Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2024 Fonticons, Inc.--><path d="M204.6 256l64.7-64.7c9.4-9.4 9.4-24.6 0-33.9l-48-48c-7-7-17.2-9.1-26.4-5.4S179.1 122.8 179.1 133.2l0 72.8-56.6-56.6c-9.4-9.4-24.6-9.4-33.9 0s-9.4 24.6 0 33.9L145.2 240 88.6 296.6c-9.4 9.4-9.4 24.6 0 33.9s24.6 9.4 33.9 0l56.6-56.6 0 72.8c0 10.4 6.2 19.8 15.7 23.7s19.4 1.6 26.4-5.4l48-48c9.4-9.4 9.4-24.6 0-33.9L204.6 256zM197.1 173.1l16 16-16 16V173.1zm0 165.8V306.9l16 16-16 16z"/></svg>');
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc. --><g transform="translate(32 0)"><path d="M292.6 171.1L249.7 214l-.3-86 43.2 43.1m-43.2 219.8l43.1-43.1-42.9-42.9-.2 86zM416 259.4C416 465 344.1 512 230.9 512S32 465 32 259.4 115.4 0 228.6 0 416 53.9 416 259.4zm-158.5 0l79.4-88.6L211.8 36.5v176.9L138 139.6l-27 26.9 92.7 93-92.7 93 26.9 26.9 73.8-73.8 2.3 170 127.4-127.5-83.9-88.7z"/></g></svg>');
 }
 
 .icon.hw-version {
@@ -1317,9 +1450,19 @@ textarea {
 }
 
 .pincode {
-    width: 70px;
-    text-align: center;
+    width: 120px;
+    text-align: left;
+    background: #fff;
+    border: 1px solid rgba(31, 42, 35, 0.15);
     border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pincode:focus {
+    outline: none;
+    border-color: var(--sp-forest);
+    box-shadow: 0 0 0 3px rgba(82, 115, 94, 0.18);
 }
 
 .bottom-nav {
