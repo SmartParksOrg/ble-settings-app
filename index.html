@@ -31,9 +31,11 @@
         <button id="disconnect-button" class="hidden-when-disconnected">Disconnect</button>
         <div class="button-cluster">
           <div class="hidden-when-no-settings">
-            <button id="export-button" onclick="exportToJson()">Export</button>
+            <button id="export-button" class="dfu-hide" onclick="exportToJson()">Export</button>
             <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
           </div>
+          <button id="dfu-button" class="hidden-when-disconnected dfu-hide" onclick="openDfuPage()">DFU</button>
+          <button id="dfu-back-top" class="secondary dfu-only">Back</button>
         </div>
       </div>
       <div class="hidden-when-connected">
@@ -88,6 +90,10 @@
       <div id="container">
         <div class="section hidden-when-no-status" id="status-message"></div>
         <div class="section hidden-when-no-settings" id="main-commands"></div>
+      </div>
+
+      <div id="dfu-container" class="hidden">
+        <div id="dfu-connection-status" class="dfu-connection-status">Not connected</div>
       </div>
     </div>
   </div>
@@ -144,8 +150,6 @@
     <button type="button" onclick="toggleLog()" aria-label="Log" title="Log"><span class="icon toggle-log" aria-hidden="true"></span></button>
   </nav>
 
-  <button class="toggle-button hidden-when-disconnected" id="toggle-button" onclick="toggleLog()"><span class="icon toggle-log"></span></button>
-
   <div class="log-footer hidden-when-disconnected" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
       <span>Log</span>
@@ -186,6 +190,69 @@
 
   <div id="toast"></div>
 
+  <div id="dfu-section" class="page-section hidden">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Connected device</summary>
+      <div class="section-card-body">
+        <div class="dfu-device-grid">
+          <div>
+            <div class="dfu-label">Device</div>
+            <div id="dfu-device-name" class="dfu-value">Unknown</div>
+          </div>
+          <div>
+            <div class="dfu-label">Hardware</div>
+            <div id="dfu-device-hw" class="dfu-value">Unknown</div>
+          </div>
+          <div>
+            <div class="dfu-label">Firmware</div>
+            <div id="dfu-device-fw" class="dfu-value">Unknown</div>
+          </div>
+          <div>
+            <div class="dfu-label">Last status</div>
+            <div id="dfu-device-updated" class="dfu-value">Not available</div>
+          </div>
+        </div>
+        <div id="dfu-device-warning" class="dfu-warning hidden">
+          Device details are missing. Connect to a device and wait for the status to load.
+        </div>
+      </div>
+    </details>
+
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Step 1: Select DFU file</summary>
+      <div class="section-card-body">
+        <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
+        <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
+        <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
+        <button id="dfu-continue" class="dfu-continue" disabled>Continue</button>
+      </div>
+    </details>
+
+    <details class="section section-card hidden" id="dfu-upload-section" open>
+      <summary class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Step 2: Upload firmware</summary>
+      <div class="section-card-body">
+        <div class="dfu-upload-status">
+          <div class="dfu-upload-status-title">Upload status</div>
+          <ul class="dfu-upload-status-list" id="dfu-upload-status-list">
+            <li data-step="file"><span class="status-label">File selected</span><span class="status-detail"></span></li>
+            <li data-step="start"><span class="status-label">Upload started</span><span class="status-detail"></span></li>
+            <li data-step="ack"><span class="status-label">Chunk acknowledged</span><span class="status-detail"></span></li>
+            <li data-step="finish"><span class="status-label">Upload finished</span><span class="status-detail"></span></li>
+            <li data-step="state"><span class="status-label">Image state checked</span><span class="status-detail"></span></li>
+          </ul>
+        </div>
+        <div class="dfu-upload-actions">
+          <button id="dfu-upload" disabled>Start DFU upload</button>
+          <button id="dfu-cancel" class="secondary" disabled>Cancel</button>
+        </div>
+        <div class="dfu-progress">
+          <div class="dfu-progress-bar" id="dfu-progress-bar"></div>
+        </div>
+        <div id="dfu-progress-text" class="dfu-progress-text">Upload progress: 0%</div>
+      </div>
+    </details>
+  </div>
+
 
   <script>
     const CMD_SINGLE_SETTING = 0xA8;
@@ -218,6 +285,7 @@
     let mapMarker = null;
     let mapReady = false;
     let leafletPromise = null;
+    let userRequestedDisconnect = false;
     let flashLogState = {
       active: false,
       lines: [],
@@ -231,7 +299,6 @@
     function toggleLog() {
       const basePadding = getComputedStyle(document.documentElement).getPropertyValue('--body-bottom-padding').trim() || '50px';
       logFooter.classList.toggle('open');
-      document.getElementById('toggle-button').style.display = logFooter.classList.contains('open') ? 'none' : 'block';
       document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : basePadding;
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
@@ -812,6 +879,20 @@
         </div>
       `;
 
+      try {
+        const dfuInfo = {
+          deviceName: device && device.name ? device.name : '',
+          fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
+          hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`,
+          fwType: statusMessage.ver_fw_type,
+          hwType: statusMessage.ver_hw_type,
+          updatedAt: Date.now(),
+        };
+        sessionStorage.setItem('dfuDeviceInfo', JSON.stringify(dfuInfo));
+      } catch (error) {
+        console.warn('Failed to store DFU device info', error);
+      }
+
       await executeBleCommand([0x20, CMD_SEND_POSITION, 0x00]);
 
       if (compareSemanticVersion(statusMessage.ver_fw_major, statusMessage.ver_fw_minor, 6, 11) >= 0) {
@@ -971,6 +1052,72 @@
       });
     }
 
+    async function loadDfuScriptsIfNeeded() {
+      if (window.DfuApp && window.DfuApp.init) {
+        return;
+      }
+
+      const loadScript = (src) => new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.body.appendChild(script);
+      });
+
+      await loadScript('dfu/cbor.js');
+      await loadScript('dfu/mcumgr.js');
+      await loadScript('dfu/dfu.js');
+    }
+
+    function toggleDfuView(showDfu) {
+      const sectionsToHide = [
+        document.getElementById('settings-area'),
+        document.getElementById('other-commands'),
+        document.getElementById('map-area'),
+      ];
+      const container = document.getElementById('container');
+      const dfuContainer = document.getElementById('dfu-container');
+      const dfuSection = document.getElementById('dfu-section');
+      if (showDfu) {
+        sectionsToHide.forEach(section => section && section.classList.add('hidden'));
+        container && container.classList.add('hidden');
+        dfuContainer && dfuContainer.classList.remove('hidden');
+        dfuSection && dfuSection.classList.remove('hidden');
+        document.body.classList.add('dfu-active');
+      } else {
+        sectionsToHide.forEach(section => section && section.classList.remove('hidden'));
+        container && container.classList.remove('hidden');
+        dfuContainer && dfuContainer.classList.add('hidden');
+        dfuSection && dfuSection.classList.add('hidden');
+        document.body.classList.remove('dfu-active');
+      }
+    }
+
+    async function openDfuPage() {
+      if (!document.body.classList.contains('connected')) {
+        showToast('Connect to a device before starting DFU.');
+        return;
+      }
+      try {
+        await loadDfuScriptsIfNeeded();
+        if (window.DfuApp && window.DfuApp.init) {
+          window.DfuApp.init({ device, useExistingConnection: true });
+        }
+        toggleDfuView(true);
+        if (window.DfuApp && window.DfuApp.connect) {
+          window.DfuApp.connect();
+        }
+      } catch (error) {
+        showToast('Failed to load DFU tools.');
+        console.error(error);
+      }
+    }
+
+    document.getElementById('dfu-back-top').addEventListener('click', () => {
+      toggleDfuView(false);
+    });
+
     function sendLocationAndTimeCommand(latitude, longitude) {
       const bytesArray = new Uint8Array(12);
       bytesArray.set(new Uint8Array(new Int32Array([longitude * Math.pow(10, 7)]).buffer), 0);
@@ -1064,6 +1211,14 @@
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
+      if (userRequestedDisconnect) {
+        try {
+          sessionStorage.removeItem('dfuDeviceInfo');
+        } catch (error) {
+          console.warn('Failed to clear DFU device info', error);
+        }
+        userRequestedDisconnect = false;
+      }
       lastPositionMessage = null;
       setMapStatus('Waiting for location...');
       if (mapMarker && mapInstance) {
@@ -1090,32 +1245,14 @@
       }).filter(Boolean);
     }
 
-    connectButton.addEventListener('click', async function () {
+    async function connectToDevice(selectedDevice) {
       const connectLabel = connectButton.textContent;
       try {
         connectButton.disabled = true;
         connectButton.textContent = 'Connecting...';
+        userRequestedDisconnect = false;
 
-        const manufacturerFilter = {
-          manufacturerData: [{ companyIdentifier: 0x0A61 }]
-        };
-        const nameFilters = parseDeviceNameFilters(deviceNameFilterInput.value);
-        const filters = nameFilters.length
-          ? nameFilters.map(nameFilter => ({ ...manufacturerFilter, ...nameFilter }))
-          : [manufacturerFilter];
-
-        if (nameFilters.length) {
-          const filterSummary = nameFilters
-            .map(filter => filter.name ? filter.name : `${filter.namePrefix}*`)
-            .join(', ');
-          log(`Applying device name filters: ${filterSummary}`);
-        }
-
-        device = await navigator.bluetooth.requestDevice({
-          filters,
-          optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
-        });
-
+        device = selectedDevice;
         device.addEventListener('gattserverdisconnected', onDisconnected);
         server = await device.gatt.connect();
 
@@ -1129,9 +1266,7 @@
         document.body.classList.add('connected');
         log(`Connected to device: ${device.name}`);
 
-        // Load available settings files
         loadAvailableSettings();
-
         await checkPin(document.getElementById('pincode').value);
       } catch (error) {
         log(`Error: ${error.message}`, true);
@@ -1139,13 +1274,74 @@
         connectButton.textContent = connectLabel;
         connectButton.disabled = false;
       }
+    }
+
+    connectButton.addEventListener('click', async function () {
+      const manufacturerFilter = {
+        manufacturerData: [{ companyIdentifier: 0x0A61 }]
+      };
+      const nameFilters = parseDeviceNameFilters(deviceNameFilterInput.value);
+      const filters = nameFilters.length
+        ? nameFilters.map(nameFilter => ({ ...manufacturerFilter, ...nameFilter }))
+        : [manufacturerFilter];
+
+      if (nameFilters.length) {
+        const filterSummary = nameFilters
+          .map(filter => filter.name ? filter.name : `${filter.namePrefix}*`)
+          .join(', ');
+        log(`Applying device name filters: ${filterSummary}`);
+      }
+
+      try {
+        const selectedDevice = await navigator.bluetooth.requestDevice({
+          filters,
+          optionalServices: [
+            '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+            '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
+          ]
+        });
+        await connectToDevice(selectedDevice);
+      } catch (error) {
+        log(`Error: ${error.message}`, true);
+      }
     });
 
     document.getElementById('disconnect-button').addEventListener('click', function () {
       if (device && device.gatt.connected) {
+        userRequestedDisconnect = true;
         device.gatt.disconnect();
       }
     });
+
+    async function autoReconnectIfAvailable() {
+      if (!navigator.bluetooth || !navigator.bluetooth.getDevices) {
+        return;
+      }
+      let storedInfo = null;
+      try {
+        const raw = sessionStorage.getItem('dfuDeviceInfo');
+        if (raw) {
+          storedInfo = JSON.parse(raw);
+        }
+      } catch (error) {
+        storedInfo = null;
+      }
+      if (!storedInfo || !storedInfo.deviceName) {
+        return;
+      }
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const matching = devices.find(knownDevice => knownDevice.name === storedInfo.deviceName);
+        if (matching) {
+          log(`Reconnecting to ${matching.name}...`);
+          await connectToDevice(matching);
+        }
+      } catch (error) {
+        console.warn('Auto reconnect failed', error);
+      }
+    }
+
+    autoReconnectIfAvailable();
 
     async function handleNotifications(event) {
       const value = event.target.value;

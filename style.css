@@ -1005,6 +1005,190 @@ body:not(.has-status) .hidden-when-no-status {
     display: none !important;
 }
 
+.dfu-header-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+}
+
+#dfu-back-top {
+    display: none;
+}
+
+.dfu-only {
+    display: none !important;
+}
+
+body.dfu-active .dfu-only {
+    display: inline-flex !important;
+}
+
+body.dfu-active .dfu-hide {
+    display: none !important;
+}
+
+#dfu-section .section-card + .section-card {
+    margin-top: 12px;
+}
+
+.dfu-connection-status {
+    margin-top: 10px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+.dfu-connection-status.success {
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.dfu-connection-status.error {
+    color: #b42318;
+    font-weight: 600;
+}
+
+.dfu-device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px 18px;
+}
+
+.dfu-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: rgba(31, 42, 35, 0.55);
+}
+
+.dfu-value {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1f2a23;
+}
+
+.dfu-warning {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(255, 209, 102, 0.2);
+    color: #8a5800;
+    font-size: 13px;
+}
+
+.dfu-file-input {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.dfu-file-status {
+    font-size: 13px;
+    margin-bottom: 8px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-check-status {
+    font-size: 14px;
+    margin-bottom: 14px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-check-status.success {
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.dfu-check-status.error {
+    color: #b42318;
+    font-weight: 600;
+}
+
+.dfu-continue {
+    margin-top: 6px;
+}
+
+.dfu-upload-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.dfu-upload-status {
+    margin-bottom: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(31, 42, 35, 0.06);
+}
+
+.dfu-upload-status-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-upload-status-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.dfu-upload-status-list li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.7);
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+.dfu-upload-status-list li.active {
+    color: #1f6feb;
+    font-weight: 600;
+}
+
+.dfu-upload-status-list li.completed {
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.dfu-upload-status-list li.error {
+    color: #b42318;
+    font-weight: 600;
+}
+
+.dfu-upload-status-list .status-detail {
+    font-variant-numeric: tabular-nums;
+    color: rgba(31, 42, 35, 0.6);
+}
+
+.dfu-progress {
+    width: 100%;
+    height: 12px;
+    border-radius: 999px;
+    background: rgba(31, 42, 35, 0.12);
+    overflow: hidden;
+}
+
+.dfu-progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #1f6feb, #00b894);
+    transition: width 0.2s ease;
+}
+
+.dfu-progress-text {
+    margin-top: 8px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
 .import-preview-overlay {
     position: fixed;
     inset: 0;
@@ -1365,24 +1549,6 @@ body:not(.has-status) .hidden-when-no-status {
     font-family: monospace;
 }
 
-.toggle-button {
-    position: fixed;
-    bottom: 16px;
-    right: 16px;
-    background: linear-gradient(145deg, #4e7d64, #2f5a44);
-    color: white;
-    border: none;
-    padding: 12px;
-    border-radius: var(--radius-pill);
-    cursor: pointer;
-    z-index: 25;
-    box-shadow: 0 12px 24px rgba(27, 46, 36, 0.25);
-}
-
-.toggle-button:hover {
-    background: linear-gradient(145deg, #5c8d72, #2d5342);
-}
-
 #toast {
     visibility: hidden;
     /* Hidden by default */
@@ -1590,10 +1756,6 @@ textarea {
 
     .bottom-nav.nav-4 {
         grid-template-columns: 1fr;
-    }
-
-    .toggle-button {
-        display: none !important;
     }
 }
 
