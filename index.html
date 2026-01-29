@@ -241,7 +241,11 @@
     <section class="section section-card dfu-card">
       <div class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Step 1: Select DFU file</div>
       <div class="section-card-body">
-        <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
+        <div class="dfu-file-picker">
+          <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
+          <label for="dfu-file" class="button dfu-file-button">Select DFU file</label>
+          <div class="dfu-file-hint">.bin or .zip</div>
+        </div>
         <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
         <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
         <div id="dfu-file-match" class="dfu-file-match hidden"></div>
