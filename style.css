@@ -84,6 +84,10 @@ body {
     margin-bottom: 0;
 }
 
+#dfu-section {
+    padding: 0 16px;
+}
+
 #composer-commands {
     padding-bottom: 60px;
 }
@@ -124,6 +128,14 @@ body {
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
+}
+
+.dfu-card .section-card-title {
+    cursor: default;
+}
+
+.dfu-card .section-card-title::after {
+    display: none;
 }
 
 .section-card-title::-webkit-details-marker {
@@ -1028,6 +1040,28 @@ body.dfu-active .dfu-hide {
     display: none !important;
 }
 
+body.dfu-active .hidden-when-connected {
+    display: none !important;
+}
+
+body.dfu-active .hidden-when-disconnected.dfu-keep-visible {
+    display: block !important;
+}
+
+body.dfu-active .bottom-nav.dfu-keep-visible {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-items: center;
+}
+
+body.dfu-active .bottom-nav .dfu-hide-nav {
+    display: none !important;
+}
+
+body.dfu-active .bottom-nav .dfu-only-nav {
+    display: inline-flex !important;
+}
+
 #dfu-section .section-card + .section-card {
     margin-top: 12px;
 }
@@ -1093,9 +1127,67 @@ body.dfu-active .dfu-hide {
     color: rgba(31, 42, 35, 0.8);
 }
 
+.dfu-file-match {
+    font-size: 13px;
+    margin-bottom: 12px;
+    padding: 8px 10px;
+    border-radius: 10px;
+    background: rgba(31, 42, 35, 0.06);
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-file-match.success {
+    background: rgba(30, 123, 58, 0.12);
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.dfu-file-match.warning {
+    background: rgba(255, 209, 102, 0.2);
+    color: #8a5800;
+    font-weight: 600;
+}
+
+.dfu-file-match.error {
+    background: rgba(180, 35, 24, 0.12);
+    color: #b42318;
+    font-weight: 600;
+}
+
+.dfu-confirmation {
+    margin-top: 8px;
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(31, 42, 35, 0.04);
+    border: 1px solid rgba(31, 42, 35, 0.12);
+    display: grid;
+    gap: 10px;
+}
+
+.dfu-confirmation-text {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
 .dfu-check-status.success {
     color: #1e7b3a;
     font-weight: 600;
+}
+
+.dfu-check-status.warning {
+    color: #8a5800;
+    font-weight: 600;
+}
+
+.dfu-check-status.danger {
+    color: #b42318;
+    font-weight: 700;
 }
 
 .dfu-check-status.error {
@@ -1103,15 +1195,32 @@ body.dfu-active .dfu-hide {
     font-weight: 600;
 }
 
-.dfu-continue {
-    margin-top: 6px;
-}
-
 .dfu-upload-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 12px;
+}
+
+.dfu-upload-settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.dfu-upload-setting {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.dfu-upload-setting input {
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(31, 42, 35, 0.2);
+    font-size: 14px;
 }
 
 .dfu-upload-status {
@@ -1162,9 +1271,134 @@ body.dfu-active .dfu-hide {
     font-weight: 600;
 }
 
+.dfu-upload-status-list li.warning {
+    color: #8a5800;
+    font-weight: 600;
+}
+
+.dfu-upload-status-list li.danger {
+    color: #b42318;
+    font-weight: 700;
+}
+
 .dfu-upload-status-list .status-detail {
     font-variant-numeric: tabular-nums;
     color: rgba(31, 42, 35, 0.6);
+}
+
+.dfu-advanced-card {
+    margin-top: 10px;
+}
+
+.dfu-advanced-card .section-card-title {
+    font-size: 16px;
+}
+
+
+.dfu-image-state {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(31, 42, 35, 0.04);
+}
+
+.dfu-image-state-title {
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-image-state-list {
+    display: grid;
+    gap: 10px;
+}
+
+.dfu-image-slot {
+    border-radius: 10px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid rgba(31, 42, 35, 0.12);
+}
+
+.dfu-image-slot.active {
+    border-color: rgba(30, 123, 58, 0.5);
+    box-shadow: 0 0 0 1px rgba(30, 123, 58, 0.15);
+}
+
+.dfu-image-slot-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-image-slot-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 6px 10px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.dfu-image-slot-grid span {
+    font-weight: 600;
+    color: rgba(31, 42, 35, 0.9);
+}
+
+.dfu-image-state-empty {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.6);
+}
+
+.dfu-waiting-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(15, 24, 19, 0.45);
+    backdrop-filter: blur(2px);
+}
+
+.dfu-waiting-card {
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+    width: min(480px, 90vw);
+    padding: 28px 32px;
+    border-radius: 16px;
+    background: #fff;
+    color: rgba(31, 42, 35, 0.9);
+    font-size: 16px;
+    font-weight: 600;
+    box-shadow: 0 20px 40px rgba(17, 28, 22, 0.25);
+    text-align: center;
+}
+
+.dfu-waiting-countdown {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.dfu-spinner {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 4px solid rgba(31, 42, 35, 0.2);
+    border-top-color: #1f6feb;
+    animation: dfu-spin 1s linear infinite;
+}
+
+@keyframes dfu-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .dfu-progress {
@@ -1526,7 +1760,7 @@ body.dfu-active .dfu-hide {
     color: white;
     transition: transform 0.3s ease;
     transform: translateY(100%);
-    z-index: 30;
+    z-index: 1301;
 }
 
 .log-footer.open {
@@ -1756,6 +1990,11 @@ textarea {
 
     .bottom-nav.nav-4 {
         grid-template-columns: 1fr;
+    }
+
+    body.dfu-active .bottom-nav.dfu-keep-visible {
+        grid-template-columns: 1fr;
+        justify-items: stretch;
     }
 }
 

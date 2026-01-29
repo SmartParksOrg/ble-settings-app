@@ -34,7 +34,7 @@
             <button id="export-button" class="dfu-hide" onclick="exportToJson()">Export</button>
             <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
           </div>
-          <button id="dfu-button" class="hidden-when-disconnected dfu-hide" onclick="openDfuPage()">DFU</button>
+          <button id="dfu-button" class="hidden-when-disconnected dfu-hide scan-button" onclick="openDfuPage()">DFU</button>
           <button id="dfu-back-top" class="secondary dfu-only">Back</button>
         </div>
       </div>
@@ -139,18 +139,19 @@
     </details>
   </div>
 
-  <nav class="bottom-nav hidden-when-disconnected" aria-label="Primary">
+  <nav class="bottom-nav hidden-when-disconnected dfu-keep-visible" aria-label="Primary">
     <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
       <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
     </a>
-    <a href="#header-section" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
-    <a href="#settings-area" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
-    <a href="#other-commands" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
-    <a href="#map-area" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
+    <button type="button" class="dfu-only dfu-only-nav" onclick="toggleDfuView(false)" aria-label="Home" title="Home"><span class="icon house" aria-hidden="true"></span></button>
+    <a href="#header-section" class="dfu-hide-nav" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
+    <a href="#settings-area" class="dfu-hide-nav" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
+    <a href="#other-commands" class="dfu-hide-nav" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
+    <a href="#map-area" class="dfu-hide-nav" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
     <button type="button" onclick="toggleLog()" aria-label="Log" title="Log"><span class="icon toggle-log" aria-hidden="true"></span></button>
   </nav>
 
-  <div class="log-footer hidden-when-disconnected" id="logFooter">
+  <div class="log-footer hidden-when-disconnected dfu-keep-visible" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
       <span>Log</span>
       <span class="icon close"></span>
@@ -190,9 +191,28 @@
 
   <div id="toast"></div>
 
+  <div id="dfu-warning-overlay" class="dfu-waiting-overlay hidden">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text">Warning: The DFU feature is still in development and should not be used.</div>
+      <div class="dfu-confirmation-actions">
+        <button id="dfu-warning-cancel" class="secondary" type="button">Cancel</button>
+        <button id="dfu-warning-proceed" type="button">Proceed</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dfu-section" class="page-section hidden">
-    <details class="section section-card" open>
-      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Connected device</summary>
+    <div id="dfu-waiting-overlay" class="dfu-waiting-overlay hidden">
+      <div class="dfu-waiting-card">
+        <div id="dfu-waiting-spinner" class="dfu-spinner"></div>
+        <div id="dfu-waiting-text" class="dfu-waiting-text">Device is rebooting. Reconnect will be enabled shortly.</div>
+        <div id="dfu-waiting-countdown" class="dfu-waiting-countdown"></div>
+        <button id="dfu-waiting-scan" type="button" class="primary" disabled>Scan and Reconnect</button>
+        <button id="dfu-waiting-continue" type="button" class="primary hidden">Go to device</button>
+      </div>
+    </div>
+    <section class="section section-card dfu-card">
+      <div class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Connected device</div>
       <div class="section-card-body">
         <div class="dfu-device-grid">
           <div>
@@ -216,20 +236,27 @@
           Device details are missing. Connect to a device and wait for the status to load.
         </div>
       </div>
-    </details>
+    </section>
 
-    <details class="section section-card" open>
-      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Step 1: Select DFU file</summary>
+    <section class="section section-card dfu-card">
+      <div class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Step 1: Select DFU file</div>
       <div class="section-card-body">
         <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
         <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
         <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
-        <button id="dfu-continue" class="dfu-continue" disabled>Continue</button>
+        <div id="dfu-file-match" class="dfu-file-match hidden"></div>
+        <div id="dfu-confirmation" class="dfu-confirmation hidden">
+          <div class="dfu-confirmation-text">File checked. Do you want to continue with DFU?</div>
+          <div class="dfu-confirmation-actions">
+            <button id="dfu-confirm-cancel" class="secondary" type="button">Cancel</button>
+            <button id="dfu-confirm-proceed" type="button">Proceed</button>
+          </div>
+        </div>
       </div>
-    </details>
+    </section>
 
-    <details class="section section-card hidden" id="dfu-upload-section" open>
-      <summary class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Step 2: Upload firmware</summary>
+    <section class="section section-card dfu-card hidden" id="dfu-upload-section">
+      <div class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Step 2: Upload firmware</div>
       <div class="section-card-body">
         <div class="dfu-upload-status">
           <div class="dfu-upload-status-title">Upload status</div>
@@ -239,16 +266,50 @@
             <li data-step="ack"><span class="status-label">Chunk acknowledged</span><span class="status-detail"></span></li>
             <li data-step="finish"><span class="status-label">Upload finished</span><span class="status-detail"></span></li>
             <li data-step="state"><span class="status-label">Image state checked</span><span class="status-detail"></span></li>
+            <li data-step="test"><span class="status-label">Marked for test</span><span class="status-detail"></span></li>
+            <li data-step="reboot"><span class="status-label">Device rebooted</span><span class="status-detail"></span></li>
+            <li data-step="reconnect"><span class="status-label">Reconnected</span><span class="status-detail"></span></li>
+            <li data-step="verify"><span class="status-label">Verified active</span><span class="status-detail"></span></li>
+            <li data-step="confirm"><span class="status-label">Confirmed</span><span class="status-detail"></span></li>
           </ul>
         </div>
         <div class="dfu-upload-actions">
           <button id="dfu-upload" disabled>Start DFU upload</button>
           <button id="dfu-cancel" class="secondary" disabled>Cancel</button>
+          <button id="dfu-finish" class="secondary">Finish DFU</button>
+        </div>
+        <div class="dfu-upload-settings">
+          <label class="dfu-upload-setting">
+            MTU budget (bytes)
+            <input id="dfu-upload-mtu" type="number" min="80" step="8" value="240" />
+          </label>
+          <label class="dfu-upload-setting">
+            Chunk timeout (ms)
+            <input id="dfu-upload-timeout" type="number" min="1000" step="500" value="5000" />
+          </label>
         </div>
         <div class="dfu-progress">
           <div class="dfu-progress-bar" id="dfu-progress-bar"></div>
         </div>
         <div id="dfu-progress-text" class="dfu-progress-text">Upload progress: 0%</div>
+      </div>
+    </section>
+
+    <details class="section section-card dfu-card dfu-advanced-card" id="dfu-advanced-card">
+      <summary class="section-card-title"><span class="icon settings" aria-hidden="true"></span>Advanced tools</summary>
+      <div class="section-card-body">
+        <div class="dfu-upload-actions">
+          <button id="dfu-refresh-state" class="secondary">Refresh image state</button>
+          <button id="dfu-test-image" class="secondary">Test uploaded image</button>
+          <button id="dfu-confirm-image" class="secondary">Confirm active image</button>
+          <button id="dfu-reset-session" class="secondary">Reset DFU session</button>
+        </div>
+        <div class="dfu-image-state" id="dfu-image-state">
+          <div class="dfu-image-state-title">Image slots</div>
+          <div class="dfu-image-state-list" id="dfu-image-state-list">
+            <div class="dfu-image-state-empty">No image state loaded.</div>
+          </div>
+        </div>
       </div>
     </details>
   </div>
@@ -278,6 +339,10 @@
     };
 
     let device, server, txCharacteristic, rxCharacteristic;
+    window.device = device;
+    window.server = server;
+    window.txCharacteristic = txCharacteristic;
+    window.rxCharacteristic = rxCharacteristic;
     let readAllSettings = null;
     let autoLoaded = false;
     let lastPositionMessage = null;
@@ -303,6 +368,7 @@
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
     }
+    window.toggleLog = toggleLog;
 
     function loadLeafletIfNeeded() {
       if (leafletPromise) {
@@ -1093,8 +1159,15 @@
         document.body.classList.remove('dfu-active');
       }
     }
+    window.toggleDfuView = toggleDfuView;
 
-    async function openDfuPage() {
+    function setDfuWarningOverlay(visible) {
+      const overlay = document.getElementById('dfu-warning-overlay');
+      if (!overlay) return;
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    async function proceedOpenDfuPage() {
       if (!document.body.classList.contains('connected')) {
         showToast('Connect to a device before starting DFU.');
         return;
@@ -1105,18 +1178,34 @@
           window.DfuApp.init({ device, useExistingConnection: true });
         }
         toggleDfuView(true);
-        if (window.DfuApp && window.DfuApp.connect) {
-          window.DfuApp.connect();
-        }
       } catch (error) {
         showToast('Failed to load DFU tools.');
         console.error(error);
       }
     }
 
+    async function openDfuPage() {
+      setDfuWarningOverlay(true);
+    }
+
     document.getElementById('dfu-back-top').addEventListener('click', () => {
       toggleDfuView(false);
+      if (device && device.gatt && !device.gatt.connected) {
+        connectToDevice(device);
+      }
     });
+
+    const dfuWarningCancel = document.getElementById('dfu-warning-cancel');
+    const dfuWarningProceed = document.getElementById('dfu-warning-proceed');
+    if (dfuWarningCancel) {
+      dfuWarningCancel.addEventListener('click', () => setDfuWarningOverlay(false));
+    }
+    if (dfuWarningProceed) {
+      dfuWarningProceed.addEventListener('click', async () => {
+        setDfuWarningOverlay(false);
+        await proceedOpenDfuPage();
+      });
+    }
 
     function sendLocationAndTimeCommand(latitude, longitude) {
       const bytesArray = new Uint8Array(12);
@@ -1211,6 +1300,14 @@
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
+      if (document.body.classList.contains('dfu-active')) {
+        const awaiting = window.DfuApp && window.DfuApp.isAwaitingReboot && window.DfuApp.isAwaitingReboot();
+        if (awaiting) {
+          showToast('Device rebooted. Waiting to reconnect for DFU.');
+        } else {
+          showToast('Device disconnected. Use Reconnect to continue DFU.');
+        }
+      }
       if (userRequestedDisconnect) {
         try {
           sessionStorage.removeItem('dfuDeviceInfo');
@@ -1245,7 +1342,7 @@
       }).filter(Boolean);
     }
 
-    async function connectToDevice(selectedDevice) {
+    async function connectToDevice(selectedDevice, options = {}) {
       const connectLabel = connectButton.textContent;
       try {
         connectButton.disabled = true;
@@ -1253,13 +1350,26 @@
         userRequestedDisconnect = false;
 
         device = selectedDevice;
+        window.device = device;
+        log(`Connecting to ${device && device.name ? device.name : 'device'}...`);
         device.addEventListener('gattserverdisconnected', onDisconnected);
-        server = await device.gatt.connect();
+        if (options.reuseConnected && device.gatt && device.gatt.connected) {
+          log('Reusing existing GATT connection.');
+          server = device.gatt;
+        } else {
+          log('Opening new GATT connection...');
+          server = await device.gatt.connect();
+        }
+        window.server = server;
 
+        log('Discovering UART service...');
         const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
         txCharacteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
         rxCharacteristic = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
+        window.txCharacteristic = txCharacteristic;
+        window.rxCharacteristic = rxCharacteristic;
 
+        log('Enabling notifications...');
         await txCharacteristic.startNotifications();
         txCharacteristic.addEventListener('characteristicvaluechanged', handleNotifications);
 
@@ -1275,6 +1385,7 @@
         connectButton.disabled = false;
       }
     }
+    window.connectToDevice = connectToDevice;
 
     connectButton.addEventListener('click', async function () {
       const manufacturerFilter = {

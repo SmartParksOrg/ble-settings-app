@@ -60,6 +60,11 @@ class MCUManager {
         this._userRequestedDisconnect = false;
         this._reconnectDelay = di.reconnectDelay || 1000;
         this._debugEnabled = Boolean(di.debug);
+        this._autoReconnect = di.autoReconnect !== undefined ? Boolean(di.autoReconnect) : true;
+        this._writeQueue = Promise.resolve();
+        this._mtuFallbacks = Array.from(new Set((di.mtuFallbacks || [this._mtu, 200, 180, 160, 140, 120, 100, 80]).filter(value => Number.isFinite(value) && value >= 80)));
+        this._mtuFallbackIndex = 0;
+        this._lastAckOffset = null;
     }
     _debug(message, extra = null) {
         if (!this._debugEnabled) return;
@@ -82,6 +87,15 @@ class MCUManager {
     }
     setDebugEnabled(enabled) {
         this._debugEnabled = Boolean(enabled);
+    }
+    getMtu() {
+        return this._mtu;
+    }
+    getChunkTimeout() {
+        return this._chunkTimeout;
+    }
+    getMtuFallbacks() {
+        return this._mtuFallbacks.slice();
     }
     _handleUploadNextError(error) {
         const message = error && error.message ? error.message : String(error);
@@ -112,7 +126,7 @@ class MCUManager {
             this._logger.info(`Connecting to device ${this.name}...`);
             this._device.addEventListener('gattserverdisconnected', async event => {
                 this._logger.info(event);
-                if (!this._userRequestedDisconnect) {
+                if (!this._userRequestedDisconnect && this._autoReconnect && this._device) {
                     this._logger.info('Trying to reconnect');
                     this._connect(this._reconnectDelay);
                 } else {
@@ -135,7 +149,7 @@ class MCUManager {
             this._logger.info(`Connecting to device ${this.name}...`);
             this._device.addEventListener('gattserverdisconnected', async event => {
                 this._logger.info(event);
-                if (!this._userRequestedDisconnect) {
+                if (!this._userRequestedDisconnect && this._autoReconnect && this._device) {
                     this._logger.info('Trying to reconnect');
                     this._connect(this._reconnectDelay);
                 } else {
@@ -144,7 +158,12 @@ class MCUManager {
             });
             if (options.reuseConnection && this._device.gatt && this._device.gatt.connected) {
                 this._logger.info('Using existing GATT connection.');
-                await this._connectToServer(this._device.gatt);
+                try {
+                    await this._connectToServer(this._device.gatt);
+                } catch (error) {
+                    this._logger.error(`Existing GATT reuse failed: ${error && error.message ? error.message : error}`);
+                    this._connect(0);
+                }
             } else {
                 this._connect(0);
             }
@@ -173,6 +192,9 @@ class MCUManager {
     _connect(delay = 1000) {
         setTimeout(async () => {
             try {
+                if (!this._device || !this._device.gatt) {
+                    throw new Error('No GATT device available');
+                }
                 const server = await this._device.gatt.connect();
                 await this._connectToServer(server);
             } catch (error) {
@@ -184,6 +206,7 @@ class MCUManager {
     }
     disconnect() {
         this._userRequestedDisconnect = true;
+        if (!this._device || !this._device.gatt) return;
         return this._device.gatt.disconnect();
     }
     onConnecting(callback) {
@@ -238,6 +261,9 @@ class MCUManager {
         return this._device && this._device.name;
     }
     async _sendMessage(op, group, id, data) {
+        if (!this._characteristic) {
+            throw new Error('GATT characteristic not ready');
+        }
         const _flags = 0;
         let encodedData = [];
         if (typeof data !== 'undefined') {
@@ -249,22 +275,23 @@ class MCUManager {
         const group_hi = group >> 8;
         const message = [op, _flags, length_hi, length_lo, group_hi, group_lo, this._seq, id, ...encodedData];
         // console.log('>'  + message.map(x => x.toString(16).padStart(2, '0')).join(' '));
-        await this._characteristic.writeValueWithoutResponse(Uint8Array.from(message));
+        this._writeQueue = this._writeQueue.then(async () => {
+            try {
+                await this._characteristic.writeValueWithoutResponse(Uint8Array.from(message));
+            } catch (error) {
+                this._logger.error(`GATT write failed: ${error && error.message ? error.message : error}`);
+                throw error;
+            }
+        });
+        await this._writeQueue;
         this._seq = (this._seq + 1) % 256;
     }
     _notification(event) {
-        // console.log('message received');
-        const message = new Uint8Array(event.target.value.buffer);
-        // console.log(message);
-        // console.log('<'  + [...message].map(x => x.toString(16).padStart(2, '0')).join(' '));
+        const value = event.target.value;
+        const message = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
         this._buffer = new Uint8Array([...this._buffer, ...message]);
         if (this._buffer.length < 4) return;
         const messageLength = this._buffer[2] * 256 + this._buffer[3];
-        if (!Number.isFinite(messageLength) || messageLength < 0 || messageLength > 8192) {
-            this._logger.error(`Invalid message length ${messageLength}; dropping buffer.`);
-            this._buffer = new Uint8Array();
-            return;
-        }
         if (this._buffer.length < messageLength + 8) return;
         this._processMessage(this._buffer.slice(0, messageLength + 8));
         this._buffer = this._buffer.slice(messageLength + 8);
@@ -276,6 +303,7 @@ class MCUManager {
             data = CBOR.decode(message.slice(8).buffer);
         } catch (error) {
             this._logger.error(`CBOR decode failed: ${error && error.message ? error.message : error}`);
+            this._buffer = new Uint8Array();
             return;
         }
         const length = length_hi * 256 + length_lo;
@@ -328,6 +356,7 @@ class MCUManager {
             if ((data.rc === 0 || data.rc === undefined) && data.off !== undefined) {
                 // Reset consecutive timeout counter on successful response
                 this._consecutiveTimeouts = 0;
+                this._lastAckOffset = data.off;
                 if (this._imageUploadChunkAckCallback) {
                     this._imageUploadChunkAckCallback({ off: data.off });
                 }
@@ -377,9 +406,32 @@ class MCUManager {
             this._totalTimeouts++;
 
             this._debug(`[MCUManager DEBUG] Upload chunk timeout at offset ${this._uploadOffset} (consecutive: ${this._consecutiveTimeouts}, total: ${this._totalTimeouts})`);
+            this._logger.info(`DFU: Chunk timeout off=${this._uploadOffset} consecutive=${this._consecutiveTimeouts} total=${this._totalTimeouts}`);
 
-            // If we've hit too many total timeouts, give up
+            const noProgress = this._lastAckOffset === this._uploadOffset;
+            if (noProgress && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
+                this._mtuFallbackIndex += 1;
+                this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
+                this._logger.info(`DFU: No progress; retrying with lower MTU (${this._mtu}).`);
+                this._consecutiveTimeouts = 0;
+                this._totalTimeouts = 0;
+                this._chunkTimeout = this._initialChunkTimeout;
+                this._uploadNext().catch(error => this._handleUploadNextError(error));
+                return;
+            }
+
+            // If we've hit too many total timeouts, attempt MTU fallback before giving up
             if (this._totalTimeouts >= this._maxTotalTimeouts) {
+                if (this._uploadOffset === 0 && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
+                    this._mtuFallbackIndex += 1;
+                    this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
+                    this._logger.info(`No upload response; retrying with lower MTU (${this._mtu}).`);
+                    this._consecutiveTimeouts = 0;
+                    this._totalTimeouts = 0;
+                    this._chunkTimeout = this._initialChunkTimeout;
+                    this._uploadNext().catch(error => this._handleUploadNextError(error));
+                    return;
+                }
                 this._uploadIsInProgress = false;
                 const error = `Upload failed: Device not responding after ${this._totalTimeouts} attempts. The device may be too slow or disconnected.`;
                 this._logger.error(error);
@@ -393,6 +445,7 @@ class MCUManager {
             if (this._consecutiveTimeouts >= this._maxConsecutiveTimeouts) {
                 this._chunkTimeout = Math.min(this._chunkTimeout * 2, 15000); // Max 15 seconds
                 this._debug(`[MCUManager DEBUG] Increased chunk timeout to ${this._chunkTimeout}ms`);
+                this._logger.info(`DFU: Timeout adjusted to ${this._chunkTimeout}ms at ${Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100)}%`);
                 // Notify UI about timeout adjustment
                 if (this._imageUploadProgressCallback) {
                     this._imageUploadProgressCallback({
@@ -440,15 +493,28 @@ class MCUManager {
         }
 
         this._debug(`[MCUManager DEBUG] Upload chunk: off=${this._uploadOffset}, dataLen=${dataLen}, packetSize=${packetSize}, budget=${budget}`);
+        this._logger.info(`DFU: Sending chunk off=${this._uploadOffset} len=${dataLen} mtu=${budget}`);
+        if (this._lastAckOffset === null) {
+            this._lastAckOffset = this._uploadOffset;
+        }
 
         // Keep offset for retry
         // this._uploadOffset += dataLen;
 
-        this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message);
+        this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message)
+            .catch(error => this._handleUploadNextError(error));
     }
     async cmdUpload(image, slot = 0) {
         if (this._uploadIsInProgress) {
             this._logger.error('Upload is already in progress.');
+            return;
+        }
+        if (!this._characteristic) {
+            const error = 'Cannot start upload: GATT characteristic not ready.';
+            this._logger.error(error);
+            if (this._imageUploadErrorCallback) {
+                this._imageUploadErrorCallback({ error, consecutiveTimeouts: 0, totalTimeouts: 0 });
+            }
             return;
         }
         this._uploadIsInProgress = true;
@@ -456,6 +522,8 @@ class MCUManager {
         this._uploadOffset = 0;
         this._uploadImage = image;
         this._uploadSlot = slot;
+        this._mtuFallbackIndex = 0;
+        this._lastAckOffset = null;
 
         // Reset timeout tracking
         this._consecutiveTimeouts = 0;
@@ -463,6 +531,7 @@ class MCUManager {
         this._chunkTimeout = this._initialChunkTimeout; // Reset to initial value
 
         this._debug(`[MCUManager DEBUG] Upload config: mtu=${this._mtu} bytes, timeout=${this._chunkTimeout}ms`);
+        this._logger.info(`DFU: Upload begin len=${image.byteLength} mtu=${this._mtu} timeout=${this._chunkTimeout}ms`);
 
         this._uploadNext().catch(error => this._handleUploadNextError(error));
     }
