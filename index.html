@@ -182,6 +182,12 @@
           <input type="checkbox" id="import-preview-changed-only" checked>
           Show changed only
         </label>
+        <div id="import-preview-progress" class="import-preview-progress hidden">
+          <div id="import-preview-progress-text" class="import-preview-progress-text"></div>
+          <div class="import-preview-progress-bar">
+            <div id="import-preview-progress-bar"></div>
+          </div>
+        </div>
         <table class="import-preview-table">
           <thead>
             <tr>
@@ -192,10 +198,6 @@
           </thead>
           <tbody id="import-preview-rows"></tbody>
         </table>
-        <div id="import-preview-progress" class="import-preview-progress hidden">
-          <div id="import-preview-progress-text" class="import-preview-progress-text"></div>
-          <ul id="import-preview-progress-list" class="import-preview-progress-list"></ul>
-        </div>
       </div>
       <div class="import-preview-footer">
         <button id="import-preview-cancel" class="secondary" type="button">Cancel</button>
@@ -710,7 +712,7 @@
         function renderRows() {
           const changedOnly = changedOnlyToggle ? changedOnlyToggle.checked : false;
           rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => `
-          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}">
+          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}" data-setting-id="${row.id}">
             <td>
               <div class="import-preview-setting">${row.name}</div>
               <div class="import-preview-meta">${row.key} (${row.id})</div>
@@ -719,7 +721,7 @@
             <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">${row.current}</td>
             <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">
               ${row.next}
-              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : ''}
+              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : '<div class="import-preview-change-tag">change</div>'}
             </td>
           </tr>
           `).join('');
@@ -757,26 +759,30 @@
       const rowsEl = document.getElementById('import-preview-rows');
       const progressEl = document.getElementById('import-preview-progress');
       const progressText = document.getElementById('import-preview-progress-text');
-      const progressList = document.getElementById('import-preview-progress-list');
+      const progressBar = document.getElementById('import-preview-progress-bar');
       const confirmBtn = document.getElementById('import-preview-confirm');
       const cancelBtn = document.getElementById('import-preview-cancel');
 
       if (titleEl) titleEl.textContent = title || 'Importing settings';
       if (subtitleEl) subtitleEl.textContent = subtitle || '';
-      if (rowsEl) rowsEl.innerHTML = '';
-      if (progressText) progressText.textContent = `Applying settings... (0/${total})`;
-      if (progressList) {
-        progressList.innerHTML = '';
-        if (Array.isArray(items)) {
-          items.forEach((label, idx) => {
-            const item = document.createElement('li');
-            item.className = 'import-preview-progress-item pending';
-            item.setAttribute('data-index', String(idx + 1));
-            item.textContent = label;
-            progressList.appendChild(item);
-          });
-        }
+      if (rowsEl && Array.isArray(items)) {
+        rowsEl.innerHTML = items.map((row) => `
+          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}" data-setting-id="${row.id}">
+            <td>
+              <div class="import-preview-setting">${row.name}</div>
+              <div class="import-preview-meta">${row.key} (${row.id})</div>
+              ${row.description ? `<div class="import-preview-desc">${row.description}</div>` : ''}
+            </td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">${row.current}</td>
+            <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">
+              ${row.next}
+              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : '<div class="import-preview-change-tag">change</div>'}
+            </td>
+          </tr>
+        `).join('');
       }
+      if (progressText) progressText.textContent = `Applying settings... (0/${total})`;
+      if (progressBar) progressBar.style.width = '0%';
       if (progressEl) progressEl.classList.remove('hidden');
       if (confirmBtn) confirmBtn.classList.add('hidden');
       if (cancelBtn) {
@@ -789,25 +795,31 @@
       if (overlay) overlay.classList.remove('hidden');
     }
 
-    function updateImportProgress({ index, total, label, status }) {
+    function updateImportProgress({ index, total, label, status, settingId }) {
       const progressText = document.getElementById('import-preview-progress-text');
-      const progressList = document.getElementById('import-preview-progress-list');
+      const progressBar = document.getElementById('import-preview-progress-bar');
       if (progressText) {
         progressText.textContent = `Applying settings... (${index}/${total})`;
       }
-      if (!progressList) return;
-      const existing = progressList.querySelector(`[data-index="${index}"]`);
-      if (existing) {
-        existing.className = `import-preview-progress-item ${status || 'pending'}`;
-        existing.textContent = label;
-        existing.scrollIntoView({ block: 'nearest' });
-        return;
+      if (progressBar) {
+        const safeTotal = total || 1;
+        progressBar.style.width = `${(index / safeTotal) * 100}%`;
       }
-      const item = document.createElement('li');
-      item.className = `import-preview-progress-item ${status || 'pending'}`;
-      item.textContent = label;
-      progressList.appendChild(item);
-      progressList.scrollTop = progressList.scrollHeight;
+      if (!settingId) return;
+      const row = document.querySelector(`tr[data-setting-id="${settingId}"]`);
+      if (!row) return;
+      const tag = row.querySelector('.import-preview-change-tag');
+      if (!tag) return;
+      if (status === 'success') {
+        tag.textContent = 'updated';
+        tag.classList.add('updated');
+        tag.classList.remove('error');
+      } else if (status === 'error') {
+        tag.textContent = 'error';
+        tag.classList.add('error');
+        tag.classList.remove('updated');
+      }
+      row.scrollIntoView({ block: 'nearest' });
     }
 
     function finishImportProgress({ total, success }) {
@@ -833,8 +845,6 @@
       console.log('Importing settings from file:', file.name);
       const reader = new FileReader();
       reader.onload = async function (event) {
-        const progressContainer = document.getElementById('settings-progress');
-        const progressBar = document.querySelector('#settings-progress div');
         const settingsSection = document.getElementById('settings-section');
         const commandsSection = document.getElementById('other-commands');
         const search = document.getElementById('search');
@@ -859,9 +869,11 @@
             if (!includeCredentials && isCredentialSetting(settingObj)) {
               continue;
             }
-            filteredEntries.push([key, value]);
             const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
             const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
+            if (!unchanged) {
+              filteredEntries.push([key, value]);
+            }
             previewRows.push({
               key,
               id: settingObj.id,
@@ -877,6 +889,10 @@
             showToast('No valid settings found in the import file.');
             return;
           }
+          if (filteredEntries.length === 0) {
+            showToast('All selected settings already match the device.');
+            return;
+          }
 
           const ok = await showImportPreviewModal({
             title: `Import ${previewRows.length} settings`,
@@ -889,20 +905,14 @@
             return;
           }
 
-          const progressItems = filteredEntries.map(([key]) => {
-            const settingObj = getByKey(key);
-            return settingObj ? `${settingObj.display_name || key} (${settingObj.id})` : key;
-          });
           showImportProgress({
             total: filteredEntries.length,
             title: `Importing ${filteredEntries.length} settings`,
             subtitle: `File: ${file.name}`,
-            items: progressItems
+            items: previewRows
           });
 
           search.classList.add('hidden');
-          progressBar.style.width = `0%`;
-          progressContainer.style.display = 'block';
           settingsSection.classList.add('hidden');
           commandsSection.classList.add('hidden');
 
@@ -920,14 +930,12 @@
                 if (remainingSleep > 0) {
                   await sleep(remainingSleep);
                 }
-                updateImportProgress({ index, total: filteredEntries.length, label, status: 'success' });
+                updateImportProgress({ index, total: filteredEntries.length, label, status: 'success', settingId: settingObj.id });
               } catch (error) {
-                updateImportProgress({ index, total: filteredEntries.length, label, status: 'error' });
+                updateImportProgress({ index, total: filteredEntries.length, label, status: 'error', settingId: settingObj.id });
                 throw error;
               }
             }
-            const total = filteredEntries.length || 1;
-            progressBar.style.width = `${(index / total) * 100}%`;
           }
 
           await fetchAllSettings();
@@ -940,7 +948,6 @@
           search.classList.remove('hidden');
           settingsSection.classList.remove('hidden');
           commandsSection.classList.remove('hidden');
-          progressContainer.style.display = 'none';
         }
         fileInput.value = '';
       };

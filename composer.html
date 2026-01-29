@@ -327,9 +327,11 @@
             if (!includeCredentials && isCredentialSetting(settingObj)) {
               continue;
             }
-            filteredEntries.push([key, value]);
             const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
             const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
+            if (!unchanged) {
+              filteredEntries.push([key, value]);
+            }
             previewRows.push({
               key,
               id: settingObj.id,
@@ -343,6 +345,10 @@
 
           if (previewRows.length === 0) {
             showToast('No valid settings found in the import file.');
+            return;
+          }
+          if (filteredEntries.length === 0) {
+            showToast('All selected settings already match the current values.');
             return;
           }
 

@@ -1588,34 +1588,20 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     margin-bottom: 8px;
 }
 
-.import-preview-progress-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    gap: 6px;
-    max-height: 200px;
-    overflow: auto;
+.import-preview-progress-bar {
+    width: 100%;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(31, 42, 35, 0.08);
+    overflow: hidden;
+    margin-bottom: 10px;
 }
 
-.import-preview-progress-item {
-    padding: 6px 10px;
-    border-radius: 10px;
-    background: rgba(31, 42, 35, 0.04);
-    color: rgba(31, 42, 35, 0.8);
-    font-size: 12px;
-}
-
-.import-preview-progress-item.success {
-    background: rgba(30, 123, 58, 0.12);
-    color: #1e7b3a;
-    font-weight: 600;
-}
-
-.import-preview-progress-item.error {
-    background: rgba(180, 35, 24, 0.12);
-    color: #b42318;
-    font-weight: 600;
+.import-preview-progress-bar div {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(145deg, var(--sp-forest), var(--sp-forest-dark));
+    transition: width 0.2s ease;
 }
 
 .import-preview-table {
@@ -1794,6 +1780,29 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     letter-spacing: 0.2px;
     text-transform: uppercase;
     color: rgba(31, 42, 35, 0.6);
+}
+
+.import-preview-change-tag {
+    display: inline-flex;
+    margin-top: 6px;
+    padding: 3px 8px;
+    border-radius: var(--radius-pill);
+    background: rgba(255, 209, 102, 0.22);
+    color: #8a5800;
+    font-size: 11px;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.import-preview-change-tag.updated {
+    background: rgba(30, 123, 58, 0.12);
+    color: #1e7b3a;
+}
+
+.import-preview-change-tag.error {
+    background: rgba(180, 35, 24, 0.12);
+    color: #b42318;
 }
 
 #main-commands button {
