@@ -453,6 +453,25 @@ body {
     margin-bottom: 10px;
 }
 
+.settings-options {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.settings-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+.settings-option input {
+    width: 16px;
+    height: 16px;
+}
+
 .button-cluster .hidden-when-no-settings {
     display: flex;
     align-items: center;
@@ -1529,6 +1548,19 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     font-size: 13px;
 }
 
+.import-preview-note {
+    margin-top: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255, 209, 102, 0.22);
+    color: #8a5800;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .import-preview-body {
     padding: 14px 20px 6px;
     overflow: auto;
@@ -1541,6 +1573,49 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     font-size: 13px;
     color: rgba(31, 42, 35, 0.7);
     margin-bottom: 10px;
+}
+
+.import-preview-progress {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(82, 115, 94, 0.2);
+}
+
+.import-preview-progress-text {
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(31, 42, 35, 0.8);
+    margin-bottom: 8px;
+}
+
+.import-preview-progress-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+    max-height: 200px;
+    overflow: auto;
+}
+
+.import-preview-progress-item {
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(31, 42, 35, 0.04);
+    color: rgba(31, 42, 35, 0.8);
+    font-size: 12px;
+}
+
+.import-preview-progress-item.success {
+    background: rgba(30, 123, 58, 0.12);
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.import-preview-progress-item.error {
+    background: rgba(180, 35, 24, 0.12);
+    color: #b42318;
+    font-weight: 600;
 }
 
 .import-preview-table {

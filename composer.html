@@ -43,6 +43,16 @@
       <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
         <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
+        <div class="settings-options">
+          <label class="settings-option">
+            <input type="checkbox" id="composer-import-credentials-toggle">
+            Include device credentials on import
+          </label>
+          <label class="settings-option">
+            <input type="checkbox" id="composer-export-credentials-toggle">
+            Include device credentials on export
+          </label>
+        </div>
         <div class="search">
           <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
         </div>
@@ -82,6 +92,7 @@
       <div class="import-preview-header">
         <h3 id="import-preview-title">Import preview</h3>
         <p id="import-preview-subtitle"></p>
+        <p id="import-preview-note" class="import-preview-note hidden"></p>
       </div>
       <div class="import-preview-body">
         <label class="import-preview-toggle">
@@ -130,7 +141,15 @@
       updateEncodedMessage(); // Update once shown
     }
 
+    const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     let lastPayloadType = 'none';
+
+    function isCredentialSetting(setting) {
+      if (!setting || !setting.id) {
+        return false;
+      }
+      return credentialSettingIds.has(parseInt(setting.id, 16));
+    }
 
     function sanitizeFilename(name) {
       const cleaned = (name || '').toString().trim().replace(/[^A-Za-z0-9_.-]/g, '');
@@ -152,6 +171,7 @@
 
     function buildSelectedSettingsPayload() {
       const settings = {};
+      const includeCredentials = document.getElementById('composer-export-credentials-toggle')?.checked ?? true;
 
       if (!settingsData || !settingsData.settings) {
         return settings;
@@ -161,6 +181,9 @@
         const checkbox = document.getElementById(`checkbox-${setting.id}`);
         if (!checkbox || !checkbox.checked) {
           continue; // user didn't select it
+        }
+        if (!includeCredentials && isCredentialSetting(setting)) {
+          continue;
         }
 
         const value = getInputValue(setting.id);
@@ -217,11 +240,12 @@
       downloadSettingsJson(settings, safeFilename);
     }
 
-    function showImportPreviewModal({ title, subtitle, rows }) {
+    function showImportPreviewModal({ title, subtitle, rows, note }) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('import-preview-overlay');
         const titleEl = document.getElementById('import-preview-title');
         const subtitleEl = document.getElementById('import-preview-subtitle');
+        const noteEl = document.getElementById('import-preview-note');
         const rowsEl = document.getElementById('import-preview-rows');
         const changedOnlyToggle = document.getElementById('import-preview-changed-only');
         const cancelBtn = document.getElementById('import-preview-cancel');
@@ -229,6 +253,10 @@
 
         titleEl.textContent = title;
         subtitleEl.textContent = subtitle;
+        if (noteEl) {
+          noteEl.textContent = note || '';
+          noteEl.classList.toggle('hidden', !note);
+        }
         function renderRows() {
           const changedOnly = changedOnlyToggle ? changedOnlyToggle.checked : false;
           rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => `
@@ -288,12 +316,18 @@
         try {
           const entries = Object.entries(JSON.parse(event.target.result));
           const previewRows = [];
+          const includeCredentials = document.getElementById('composer-import-credentials-toggle')?.checked ?? false;
+          const filteredEntries = [];
 
           for (const [key, value] of entries) {
             const settingObj = getByKey(key);
             if (!settingObj) {
               continue;
             }
+            if (!includeCredentials && isCredentialSetting(settingObj)) {
+              continue;
+            }
+            filteredEntries.push([key, value]);
             const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
             const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
             previewRows.push({
@@ -315,14 +349,15 @@
           const ok = await showImportPreviewModal({
             title: `Import ${previewRows.length} settings`,
             subtitle: `File: ${file.name}`,
-            rows: previewRows
+            rows: previewRows,
+            note: includeCredentials ? '' : 'Device credentials will be skipped.'
           });
           if (!ok) {
             showToast('Import cancelled');
             return;
           }
 
-          for (const [key, value] of entries) {
+          for (const [key, value] of filteredEntries) {
             const settingObj = getByKey(key);
             if (settingObj) {
               const checkbox = document.getElementById(`checkbox-${settingObj.id}`);

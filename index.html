@@ -31,7 +31,6 @@
         <button id="disconnect-button" class="hidden-when-disconnected">Disconnect</button>
         <div class="button-cluster">
           <div class="hidden-when-no-settings">
-            <button id="export-button" class="dfu-hide" onclick="exportToJson()">Export</button>
             <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
           </div>
           <button id="dfu-button" class="hidden-when-disconnected dfu-hide scan-button" onclick="openDfuPage()">DFU</button>
@@ -102,6 +101,18 @@
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
+        <div class="settings-options">
+          <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
+          <button id="export-button" class="section-action" onclick="exportToJson()">Export settings</button>
+          <label class="settings-option">
+            <input type="checkbox" id="import-credentials-toggle">
+            Include device credentials on import
+          </label>
+          <label class="settings-option">
+            <input type="checkbox" id="export-credentials-toggle" checked>
+            Include device credentials on export
+          </label>
+        </div>
         <div id="search" class="search">
           <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
           <label>
@@ -111,7 +122,6 @@
         <div id="settings-progress">
           <div></div>
         </div>
-        <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
         <div id="settings-section"></div>
       </div>
     </details>
@@ -165,6 +175,7 @@
       <div class="import-preview-header">
         <h3 id="import-preview-title">Import preview</h3>
         <p id="import-preview-subtitle"></p>
+        <p id="import-preview-note" class="import-preview-note hidden"></p>
       </div>
       <div class="import-preview-body">
         <label class="import-preview-toggle">
@@ -181,6 +192,10 @@
           </thead>
           <tbody id="import-preview-rows"></tbody>
         </table>
+        <div id="import-preview-progress" class="import-preview-progress hidden">
+          <div id="import-preview-progress-text" class="import-preview-progress-text"></div>
+          <ul id="import-preview-progress-list" class="import-preview-progress-list"></ul>
+        </div>
       </div>
       <div class="import-preview-footer">
         <button id="import-preview-cancel" class="secondary" type="button">Cancel</button>
@@ -336,7 +351,8 @@
     const LR_UPDATE_FW_MAJOR = 5;
     const LR_UPDATE_FW_MINOR = 0;
 
-    const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
+    const excludeFromImportExport = ['tracker_type', 'ble_adv'];
+    const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     const mainCommands = {
       'cmd_join': 'Join LP1',
       'cmd_send_status_lr': 'Send status to LR1',
@@ -381,6 +397,13 @@
       return statusMessage
         && statusMessage.ver_fw_major === LR_UPDATE_FW_MAJOR
         && statusMessage.ver_fw_minor === LR_UPDATE_FW_MINOR;
+    }
+
+    function isCredentialSetting(setting) {
+      if (!setting || !setting.id) {
+        return false;
+      }
+      return credentialSettingIds.has(parseInt(setting.id, 16));
     }
 
     function setLrUpdateMode(enabled) {
@@ -616,9 +639,13 @@
 
     function exportToJson() {
       const settings = {};
+      const includeCredentials = document.getElementById('export-credentials-toggle')?.checked ?? true;
 
       for (const [key, setting] of Object.entries(settingsData.settings)) {
         if (excludeFromImportExport.includes(key)) {
+          continue;
+        }
+        if (!includeCredentials && isCredentialSetting(setting)) {
           continue;
         }
 
@@ -652,18 +679,34 @@
       URL.revokeObjectURL(url);
     }
 
-    function showImportPreviewModal({ title, subtitle, rows }) {
+    function showImportPreviewModal({ title, subtitle, rows, note }) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('import-preview-overlay');
         const titleEl = document.getElementById('import-preview-title');
         const subtitleEl = document.getElementById('import-preview-subtitle');
+        const noteEl = document.getElementById('import-preview-note');
         const rowsEl = document.getElementById('import-preview-rows');
+        const progressEl = document.getElementById('import-preview-progress');
         const changedOnlyToggle = document.getElementById('import-preview-changed-only');
         const cancelBtn = document.getElementById('import-preview-cancel');
         const confirmBtn = document.getElementById('import-preview-confirm');
 
         titleEl.textContent = title;
         subtitleEl.textContent = subtitle;
+        if (noteEl) {
+          noteEl.textContent = note || '';
+          noteEl.classList.toggle('hidden', !note);
+        }
+        if (progressEl) {
+          progressEl.classList.add('hidden');
+        }
+        if (confirmBtn) {
+          confirmBtn.classList.remove('hidden');
+        }
+        if (cancelBtn) {
+          cancelBtn.textContent = 'Cancel';
+          cancelBtn.onclick = null;
+        }
         function renderRows() {
           const changedOnly = changedOnlyToggle ? changedOnlyToggle.checked : false;
           rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => `
@@ -707,6 +750,77 @@
       });
     }
 
+    function showImportProgress({ total, title, subtitle, items }) {
+      const overlay = document.getElementById('import-preview-overlay');
+      const titleEl = document.getElementById('import-preview-title');
+      const subtitleEl = document.getElementById('import-preview-subtitle');
+      const rowsEl = document.getElementById('import-preview-rows');
+      const progressEl = document.getElementById('import-preview-progress');
+      const progressText = document.getElementById('import-preview-progress-text');
+      const progressList = document.getElementById('import-preview-progress-list');
+      const confirmBtn = document.getElementById('import-preview-confirm');
+      const cancelBtn = document.getElementById('import-preview-cancel');
+
+      if (titleEl) titleEl.textContent = title || 'Importing settings';
+      if (subtitleEl) subtitleEl.textContent = subtitle || '';
+      if (rowsEl) rowsEl.innerHTML = '';
+      if (progressText) progressText.textContent = `Applying settings... (0/${total})`;
+      if (progressList) {
+        progressList.innerHTML = '';
+        if (Array.isArray(items)) {
+          items.forEach((label, idx) => {
+            const item = document.createElement('li');
+            item.className = 'import-preview-progress-item pending';
+            item.setAttribute('data-index', String(idx + 1));
+            item.textContent = label;
+            progressList.appendChild(item);
+          });
+        }
+      }
+      if (progressEl) progressEl.classList.remove('hidden');
+      if (confirmBtn) confirmBtn.classList.add('hidden');
+      if (cancelBtn) {
+        cancelBtn.disabled = true;
+        cancelBtn.textContent = 'Close';
+        cancelBtn.onclick = () => {
+          overlay.classList.add('hidden');
+        };
+      }
+      if (overlay) overlay.classList.remove('hidden');
+    }
+
+    function updateImportProgress({ index, total, label, status }) {
+      const progressText = document.getElementById('import-preview-progress-text');
+      const progressList = document.getElementById('import-preview-progress-list');
+      if (progressText) {
+        progressText.textContent = `Applying settings... (${index}/${total})`;
+      }
+      if (!progressList) return;
+      const existing = progressList.querySelector(`[data-index="${index}"]`);
+      if (existing) {
+        existing.className = `import-preview-progress-item ${status || 'pending'}`;
+        existing.textContent = label;
+        existing.scrollIntoView({ block: 'nearest' });
+        return;
+      }
+      const item = document.createElement('li');
+      item.className = `import-preview-progress-item ${status || 'pending'}`;
+      item.textContent = label;
+      progressList.appendChild(item);
+      progressList.scrollTop = progressList.scrollHeight;
+    }
+
+    function finishImportProgress({ total, success }) {
+      const progressText = document.getElementById('import-preview-progress-text');
+      const cancelBtn = document.getElementById('import-preview-cancel');
+      if (progressText) {
+        progressText.textContent = success
+          ? `Import complete. (${total}/${total})`
+          : `Import stopped. (${total} attempted)`;
+      }
+      if (cancelBtn) cancelBtn.disabled = false;
+    }
+
     async function importFromJson() {
       const fileInput = document.getElementById('import-file');
       const file = fileInput.files[0];
@@ -727,18 +841,25 @@
         document.getElementById('settings-search').value = '';
         filterSettings();
 
+        let filteredEntries = [];
         try {
           const importedSettings = JSON.parse(event.target.result);
           const previewRows = [];
+          const includeCredentials = document.getElementById('import-credentials-toggle')?.checked ?? false;
 
           let index = 0;
           const entries = Object.entries(importedSettings).filter(([key]) => !excludeFromImportExport.includes(key));
+          filteredEntries = [];
 
           for (const [key, value] of entries) {
             const settingObj = getByKey(key);
             if (!settingObj) {
               continue;
             }
+            if (!includeCredentials && isCredentialSetting(settingObj)) {
+              continue;
+            }
+            filteredEntries.push([key, value]);
             const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
             const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
             previewRows.push({
@@ -760,12 +881,24 @@
           const ok = await showImportPreviewModal({
             title: `Import ${previewRows.length} settings`,
             subtitle: `File: ${file.name}`,
-            rows: previewRows
+            rows: previewRows,
+            note: includeCredentials ? '' : 'Device credentials will be skipped.'
           });
           if (!ok) {
             showToast('Import cancelled');
             return;
           }
+
+          const progressItems = filteredEntries.map(([key]) => {
+            const settingObj = getByKey(key);
+            return settingObj ? `${settingObj.display_name || key} (${settingObj.id})` : key;
+          });
+          showImportProgress({
+            total: filteredEntries.length,
+            title: `Importing ${filteredEntries.length} settings`,
+            subtitle: `File: ${file.name}`,
+            items: progressItems
+          });
 
           search.classList.add('hidden');
           progressBar.style.width = `0%`;
@@ -773,26 +906,36 @@
           settingsSection.classList.add('hidden');
           commandsSection.classList.add('hidden');
 
-          for (const [key, value] of entries) {
+          for (const [key, value] of filteredEntries) {
             index++;
 
             const settingObj = getByKey(key);
             if (settingObj) {
-              const start = Date.now();
-              await updateBleSetting(settingObj.id, value);
-              const elapsed = Date.now() - start;
-              const remainingSleep = Math.max(0, 200 - elapsed);
-              if (remainingSleep > 0) {
-                await sleep(remainingSleep);
+              const label = `${settingObj.display_name || key} (${settingObj.id})`;
+              try {
+                const start = Date.now();
+                await updateBleSetting(settingObj.id, value);
+                const elapsed = Date.now() - start;
+                const remainingSleep = Math.max(0, 200 - elapsed);
+                if (remainingSleep > 0) {
+                  await sleep(remainingSleep);
+                }
+                updateImportProgress({ index, total: filteredEntries.length, label, status: 'success' });
+              } catch (error) {
+                updateImportProgress({ index, total: filteredEntries.length, label, status: 'error' });
+                throw error;
               }
             }
-            progressBar.style.width = `${(index / entries.length) * 100}%`;
+            const total = filteredEntries.length || 1;
+            progressBar.style.width = `${(index / total) * 100}%`;
           }
 
           await fetchAllSettings();
+          finishImportProgress({ total: filteredEntries.length, success: true });
         } catch (error) {
           console.error('Error importing settings:', error);
           showToast('Failed to import settings. Please check the file format.');
+          finishImportProgress({ total: filteredEntries.length || 0, success: false });
         } finally {
           search.classList.remove('hidden');
           settingsSection.classList.remove('hidden');
