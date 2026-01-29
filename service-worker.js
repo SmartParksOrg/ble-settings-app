@@ -18,6 +18,7 @@ const STATIC_FILES = [
     toUrl('icon512_rounded.png'),
     toUrl('assets/smart-parks-logo.png'),
     toUrl('settings/settings_testing_1.json'),
+    toUrl('settings/settings-v5.0.1.json'),
     toUrl('settings/settings-v6.15.0.json'),
     toUrl('settings/settings-v6.14.1.json'),
     toUrl('settings/settings-v6.12.1.json'),

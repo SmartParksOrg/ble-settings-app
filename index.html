@@ -145,9 +145,9 @@
     </a>
     <button type="button" class="dfu-only dfu-only-nav" onclick="toggleDfuView(false)" aria-label="Home" title="Home"><span class="icon house" aria-hidden="true"></span></button>
     <a href="#header-section" class="dfu-hide-nav" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
-    <a href="#settings-area" class="dfu-hide-nav" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
-    <a href="#other-commands" class="dfu-hide-nav" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
-    <a href="#map-area" class="dfu-hide-nav" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
+    <a href="#settings-area" class="dfu-hide-nav lr-update-hide" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
+    <a href="#other-commands" class="dfu-hide-nav lr-update-hide" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
+    <a href="#map-area" class="dfu-hide-nav lr-update-hide" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
     <button type="button" onclick="toggleLog()" aria-label="Log" title="Log"><span class="icon toggle-log" aria-hidden="true"></span></button>
   </nav>
 
@@ -329,6 +329,8 @@
     const MSG_TIMESTAMP = 0x97;
     const MSG_CMD_CONFIRM = 0xF3;
     const MSG_LAST_POSITION = 0xFE;
+    const LR_UPDATE_FW_MAJOR = 5;
+    const LR_UPDATE_FW_MINOR = 0;
 
     const excludeFromImportExport = ['app_eui', 'device_pin', 'app_key', 'device_eui', 's_band_app_key', 's_band_network_key', 'tracker_type', 'ble_adv'];
     const mainCommands = {
@@ -351,6 +353,7 @@
     let mapReady = false;
     let leafletPromise = null;
     let userRequestedDisconnect = false;
+    let lrUpdateMode = false;
     let flashLogState = {
       active: false,
       lines: [],
@@ -369,6 +372,17 @@
       logElement.scrollTop = logElement.scrollHeight;
     }
     window.toggleLog = toggleLog;
+
+    function isLrUpdateFirmware(statusMessage) {
+      return statusMessage
+        && statusMessage.ver_fw_major === LR_UPDATE_FW_MAJOR
+        && statusMessage.ver_fw_minor === LR_UPDATE_FW_MINOR;
+    }
+
+    function setLrUpdateMode(enabled) {
+      lrUpdateMode = Boolean(enabled);
+      document.body.classList.toggle('lr-update', lrUpdateMode);
+    }
 
     function loadLeafletIfNeeded() {
       if (leafletPromise) {
@@ -912,14 +926,53 @@
     }
 
     async function displayStatusMessage(statusMessage) {
-      // Display error key only if true
-      const errors = Object.entries(statusMessage)
-        .filter(([key, hasError]) => key.startsWith('err_') && hasError)
-        .map(([key]) => key.slice(4).toUpperCase())
-        .join(', ') || 'no errors'
-
-      // Display decoded values in table
       const statusMessageElement = document.getElementById('status-message');
+      const statusItems = [];
+      let lrUpdateBanner = '';
+
+      if (lrUpdateMode) {
+        statusItems.push(
+          `<div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>`,
+          `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
+          `<div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>`,
+          `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
+          `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`
+        );
+        lrUpdateBanner = `
+          <div class="lr-update-banner">
+            <div>
+              <div class="lr-update-title">Firmware to update the LR chip</div>
+              <div class="lr-update-text">Next step: perform DFU to firmware v5 or higher.</div>
+            </div>
+            <div class="lr-update-actions">
+              <button type="button" class="scan-button" onclick="openDfuPage()">Go to DFU</button>
+            </div>
+          </div>
+        `;
+      } else {
+        const errors = Object.entries(statusMessage)
+          .filter(([key, hasError]) => key.startsWith('err_') && hasError)
+          .map(([key]) => key.slice(4).toUpperCase())
+          .join(', ') || 'no errors';
+
+        statusItems.push(
+          `<div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>`,
+          `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
+          `<div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>`,
+          `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
+          `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
+          `<div class="status-item"><span class="icon messages"></span>${statusMessage.msg}</div>`,
+          `<div class="status-item"><span class="icon battery"></span>${statusMessage.bat}mV</div>`,
+          `<div class="status-item"><span class="icon charging"></span>${statusMessage.chg ? 'charging' : 'discharging'}</div>`,
+          `<div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>`,
+          `<div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>`,
+          `<div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>`,
+          `<div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>`,
+          `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
+          `<div class="status-item"><span class="icon errors"></span>${errors}</div>`
+        );
+      }
+
       statusMessageElement.innerHTML = `
         <div class="status-header">
           <h4>${device.name}</h4>
@@ -927,21 +980,9 @@
             <div class="status-item"><span class="icon refresh"></span>refresh</div>
           </a>
         </div>
+        ${lrUpdateBanner}
         <div class="status-items">
-          <div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>
-          <div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>
-          <div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>
-          <div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>
-          <div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>
-          <div class="status-item"><span class="icon messages"></span>${statusMessage.msg}</div>
-          <div class="status-item"><span class="icon battery"></span>${statusMessage.bat}mV</div>
-          <div class="status-item"><span class="icon charging"></span>${statusMessage.chg ? 'charging' : 'discharging'}</div>
-          <div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>
-          <div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>
-          <div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>
-          <div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>
-          <div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>
-          <div class="status-item"><span class="icon errors"></span>${errors}</div>
+          ${statusItems.join('')}
         </div>
       `;
 
@@ -959,12 +1000,14 @@
         console.warn('Failed to store DFU device info', error);
       }
 
-      await executeBleCommand([0x20, CMD_SEND_POSITION, 0x00]);
+      if (!lrUpdateMode) {
+        await executeBleCommand([0x20, CMD_SEND_POSITION, 0x00]);
 
-      if (compareSemanticVersion(statusMessage.ver_fw_major, statusMessage.ver_fw_minor, 6, 11) >= 0) {
-        await executeBleCommand([0x20, CMD_SEND_TIMESTAMP, 0x00]);
-      } else {
-        await executeBleCommand([0x20, CMD_SEND_SINGLE_VAL, 0x01, VAL_UBLOX_TIME]);
+        if (compareSemanticVersion(statusMessage.ver_fw_major, statusMessage.ver_fw_minor, 6, 11) >= 0) {
+          await executeBleCommand([0x20, CMD_SEND_TIMESTAMP, 0x00]);
+        } else {
+          await executeBleCommand([0x20, CMD_SEND_SINGLE_VAL, 0x01, VAL_UBLOX_TIME]);
+        }
       }
     }
 
@@ -1248,8 +1291,11 @@
 
     function displayMainCommands() {
       const mainCommandsElement = document.getElementById('main-commands');
+      const activeCommands = lrUpdateMode
+        ? { 'cmd_reset': 'Reboot device' }
+        : mainCommands;
 
-      mainCommandsElement.innerHTML = Object.entries(mainCommands).map(([key, label]) => {
+      mainCommandsElement.innerHTML = Object.entries(activeCommands).map(([key, label]) => {
         const command = settingsData.commands[key];
         if (!command) {
           return '';
@@ -1257,10 +1303,12 @@
         return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>`;
       }).join('');
 
-      mainCommandsElement.innerHTML += `
-        <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
-        <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
-      `;
+      if (!lrUpdateMode) {
+        mainCommandsElement.innerHTML += `
+          <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
+          <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
+        `;
+      }
     }
 
     function log(message, isError = false) {
@@ -1294,6 +1342,7 @@
         finishFlashLogCapture('disconnected');
       }
       autoLoaded = false;
+      setLrUpdateMode(false);
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
@@ -1474,18 +1523,28 @@
         } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
           const timestamp = bytesToSetting(settingsData.values['ublox_time'], data.slice(3));
           log(`Decoded: ublox time = ${timestamp}`);
-          document.getElementById('ublox-timestamp').textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
+          const timestampEl = document.getElementById('ublox-timestamp');
+          if (timestampEl) {
+            timestampEl.textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
+          }
         } else if (port === 18 && data[1] === MSG_TIMESTAMP) {
           const timestamp = new DataView(new Uint8Array(data.slice(3)).buffer).getInt32(0, true)
-          document.getElementById('ublox-timestamp').textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
+          const timestampEl = document.getElementById('ublox-timestamp');
+          if (timestampEl) {
+            timestampEl.textContent = new Date(timestamp * 1000).toLocaleString("nl-NL");
+          }
           log(`Decoded: timestamp = ${JSON.stringify(timestamp)}`);
         } else if (port === 31 && data[1] === MSG_LAST_POSITION) {
           lastPositionMessage = decodeLastPositionMessage(data.slice(3));
-          document.getElementById('ublox-location').innerHTML = `<a href="https://maps.google.com/?q=${lastPositionMessage.latitude},${lastPositionMessage.longitude}" target="_blank">${lastPositionMessage.latitude.toFixed(3)},${lastPositionMessage.longitude.toFixed(3)}</a>`;
+          const locationEl = document.getElementById('ublox-location');
+          if (locationEl) {
+            locationEl.innerHTML = `<a href="https://maps.google.com/?q=${lastPositionMessage.latitude},${lastPositionMessage.longitude}" target="_blank">${lastPositionMessage.latitude.toFixed(3)},${lastPositionMessage.longitude.toFixed(3)}</a>`;
+          }
           log(`Decoded: last postion = ${JSON.stringify(lastPositionMessage)}`);
           updateMapLocation();
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
+          setLrUpdateMode(isLrUpdateFirmware(statusMessage));
           await displayStatusMessage(statusMessage);
           document.body.classList.add('has-status');
           if (!autoLoaded) {

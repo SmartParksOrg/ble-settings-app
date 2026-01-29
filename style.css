@@ -991,6 +991,35 @@ h2 {
     margin-right: 5px;
 }
 
+.lr-update-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 10px 0 12px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(255, 196, 112, 0.25);
+    border: 1px solid rgba(197, 121, 0, 0.35);
+}
+
+.lr-update-title {
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.lr-update-text {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.85);
+}
+
+.lr-update-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
 .interval-container,
 .setting-controls,
 #main-commands {
@@ -1014,6 +1043,15 @@ body:not(.connected) .hidden-when-disconnected,
 body.connected .hidden-when-connected,
 body:not(.has-settings) .hidden-when-no-settings,
 body:not(.has-status) .hidden-when-no-status {
+    display: none !important;
+}
+
+body.lr-update #settings-selection,
+body.lr-update .settings-section,
+body.lr-update .commands-section,
+body.lr-update .map-section,
+body.lr-update .lr-update-hide,
+body.lr-update .button-cluster .hidden-when-no-settings {
     display: none !important;
 }
 

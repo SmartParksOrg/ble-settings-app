@@ -53,6 +53,7 @@ const customInputRenderers = {
 // Static list of settings files
 const SETTINGS_FILES = [
     "settings_testing_1.json",
+    "settings-v5.0.1.json",
     "settings-v6.15.0.json",
     "settings-v6.14.1.json",
     "settings-v6.12.1.json",
