@@ -94,6 +94,8 @@ const dfuState = {
 
 let elements = null;
 let lastLoggedProgress = null;
+let lastChunkAckLogAt = 0;
+let lastChunkAckOffset = 0;
 
 const DFU_PENDING_KEY = 'dfuPending';
 
@@ -534,7 +536,7 @@ function setReconnectLock(ms = 40000) {
   }, ms + 100);
 }
 
-function ensureReconnectLock(ms = 35000) {
+function ensureReconnectLock(ms = 40000) {
   const now = Date.now();
   if (dfuState.reconnectUnlockAt && now < dfuState.reconnectUnlockAt) {
     updateUploadButtons();
@@ -1056,8 +1058,13 @@ function setupMcuManager() {
 
   dfuState.mcumgr.onImageUploadChunkAck(({ off }) => {
     if (off !== undefined) {
-      logDfu(`Chunk ack offset=${off}`);
       updateUploadStatus('ack', 'completed', `${off.toLocaleString()} bytes`);
+      const now = Date.now();
+      if (off - lastChunkAckOffset >= 65536 || now - lastChunkAckLogAt >= 1500) {
+        logDfu(`Chunk ack offset=${off}`);
+        lastChunkAckLogAt = now;
+        lastChunkAckOffset = off;
+      }
     }
   });
 

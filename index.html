@@ -1190,9 +1190,6 @@
 
     document.getElementById('dfu-back-top').addEventListener('click', () => {
       toggleDfuView(false);
-      if (device && device.gatt && !device.gatt.connected) {
-        connectToDevice(device);
-      }
     });
 
     const dfuWarningCancel = document.getElementById('dfu-warning-cancel');
