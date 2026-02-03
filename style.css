@@ -70,12 +70,14 @@ body {
 }
 
 #header-section,
+.status-section,
 .settings-section,
 .commands-section,
 .map-section {
     padding: 18px 16px;
 }
 
+.status-section,
 .settings-section,
 .commands-section,
 .map-section {
@@ -103,7 +105,12 @@ body {
 
 .settings-section + .commands-section,
 .commands-section + .map-section,
-.settings-section + .map-section {
+.settings-section + .map-section,
+.status-section + .settings-section,
+.status-section + .commands-section,
+.status-section + .map-section,
+.commands-section + .settings-section,
+.commands-section + .commands-section {
     margin-top: 12px;
 }
 
@@ -1047,6 +1054,13 @@ h2 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.header-cards {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    margin-top: 10px;
+}
+
 .interval-unit-label {
     align-self: center;
     color: rgba(31, 42, 35, 0.75);
@@ -1067,6 +1081,9 @@ body:not(.has-status) .hidden-when-no-status {
 
 body.lr-update #settings-selection,
 body.lr-update .settings-section,
+body.lr-update .status-section,
+body.lr-update #actions-area,
+body.lr-update #logs-area,
 body.lr-update .commands-section,
 body.lr-update .map-section,
 body.lr-update .lr-update-hide,
@@ -1522,6 +1539,16 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     gap: 10px;
     justify-content: center;
     flex-wrap: wrap;
+}
+
+.log-actions {
+    margin-top: 14px;
+    display: flex;
+    justify-content: center;
+}
+
+.log-action-button {
+    width: 100%;
 }
 
 .ublox-fix-map {

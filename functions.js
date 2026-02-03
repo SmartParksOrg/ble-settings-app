@@ -120,6 +120,7 @@ async function loadSettings(selectedFile) {
         settingsMap = new Map();
         registerValues(settingsData.settings, "setting");
         registerValues(settingsData.commands, "command");
+        registerValues(settingsData.values, "value");
     } catch (error) {
         throw new Error(`Error loading settings: ${error.message}`);
     }

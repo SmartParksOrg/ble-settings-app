@@ -86,15 +86,53 @@
       <div id="settings-selection" class="hidden-when-disconnected">
         <select id="settings-dropdown" onchange="loadSelectedSettings()"></select>
       </div>
-      <div id="container">
-        <div class="section hidden-when-no-status" id="status-message"></div>
-        <div class="section hidden-when-no-settings" id="main-commands"></div>
-      </div>
+      <div id="container"></div>
 
       <div id="dfu-container" class="hidden">
         <div id="dfu-connection-status" class="dfu-connection-status">Not connected</div>
       </div>
     </div>
+  </div>
+
+  <div id="status-area" class="status-section page-section hidden-when-no-status">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon square-poll-horizontal" aria-hidden="true"></span>Status</summary>
+      <div class="section-card-body" id="status-message"></div>
+    </details>
+  </div>
+
+  <div id="actions-area" class="commands-section page-section hidden-when-no-settings">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Actions</summary>
+      <div class="section-card-body">
+        <div id="main-commands"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Logs</summary>
+      <div class="section-card-body">
+        <div class="status-header">
+          <div class="status-item"><span class="icon messages"></span>Flash log</div>
+          <a href="#" onclick="requestFlashLogCount()">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
+        </div>
+        <div class="data-item">
+          <span>Flash messages</span>
+          <span id="flash-log-count">Not loaded</span>
+        </div>
+        <div class="data-item">
+          <span>Status</span>
+          <span id="flash-log-status">Waiting for settings...</span>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button" onclick="executeCommand(settingsData?.commands?.cmd_flash_get_all?.id)">Flash get all</button>
+        </div>
+      </div>
+    </details>
   </div>
 
   <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
@@ -154,7 +192,7 @@
       <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
     </a>
     <button type="button" class="dfu-only dfu-only-nav" onclick="toggleDfuView(false)" aria-label="Home" title="Home"><span class="icon house" aria-hidden="true"></span></button>
-    <a href="#header-section" class="dfu-hide-nav" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
+    <a href="#status-area" class="dfu-hide-nav" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
     <a href="#settings-area" class="dfu-hide-nav lr-update-hide" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
     <a href="#other-commands" class="dfu-hide-nav lr-update-hide" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
     <a href="#map-area" class="dfu-hide-nav lr-update-hide" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
@@ -654,6 +692,7 @@
         displayCommands();
         document.body.classList.add('has-settings');
         await fetchAllSettings();
+        requestFlashLogCount();
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
@@ -1911,6 +1950,35 @@
       }
     }
 
+    function setFlashLogStatus(message) {
+      const statusEl = document.getElementById('flash-log-status');
+      if (statusEl) {
+        statusEl.textContent = message;
+      }
+    }
+
+    function updateFlashLogCount(value) {
+      const countEl = document.getElementById('flash-log-count');
+      if (countEl) {
+        countEl.textContent = Number.isFinite(value) ? String(value) : 'N/A';
+      }
+      setFlashLogStatus('Updated');
+    }
+
+    function requestFlashLogCount() {
+      const flashValue = settingsData && settingsData.values ? settingsData.values.flash_nr_msg : null;
+      if (!flashValue) {
+        setFlashLogStatus('Flash log count not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        setFlashLogStatus('Connect to a device to read flash log count.');
+        return;
+      }
+      setFlashLogStatus('Requesting flash log count...');
+      requestBleValue(flashValue.id, CMD_SEND_SINGLE_VAL);
+    }
+
     function getColdFixTimeoutSeconds() {
       const setting = settingsData && settingsData.settings ? settingsData.settings.cold_fix_timeout : null;
       if (!setting) {
@@ -2080,6 +2148,10 @@
 
       const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port);
       if (portName) {
+        if (portName === 'port_values') {
+          decodeBleValueResponse(data.slice(1));
+          return;
+        }
         const id = data[1];
         const message = Object.entries(settingsData.messages).find(([key, msg]) => msg.port === portName && msg.id.toUpperCase() === `0x${id.toString(16)}`.toUpperCase());
         if (message) {
@@ -2116,7 +2188,13 @@
         const [key, setting] = getById(id);
         let value = bytesToSetting(setting, valueBytes);
         log(`Decoded setting response: ${key} = ${value}`);
-        updateSettingDisplay(setting.id, value);
+        const inputContainer = document.getElementById(`input-container-${setting.id}`);
+        if (inputContainer) {
+          updateSettingDisplay(setting.id, value);
+        }
+        if (key === 'flash_nr_msg') {
+          updateFlashLogCount(value);
+        }
         i += len;
       }
     }
