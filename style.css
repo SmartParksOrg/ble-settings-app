@@ -1481,6 +1481,57 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     animation: dfu-spin 1s linear infinite;
 }
 
+.ublox-fix-card {
+    width: min(540px, 92vw);
+}
+
+.ublox-fix-results {
+    width: 100%;
+    display: grid;
+    gap: 6px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.85);
+    text-align: left;
+}
+
+.ublox-fix-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(144, 174, 155, 0.18);
+}
+
+.ublox-fix-row span:first-child {
+    font-weight: 600;
+    color: rgba(31, 42, 35, 0.9);
+}
+
+.ublox-fix-raw {
+    width: 100%;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.65);
+    word-break: break-all;
+    text-align: left;
+}
+
+.ublox-fix-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.ublox-fix-map {
+    width: 100%;
+    height: 180px;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(31, 42, 35, 0.12);
+}
+
 @keyframes dfu-spin {
     to {
         transform: rotate(360deg);

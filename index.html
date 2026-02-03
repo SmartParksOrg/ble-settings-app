@@ -208,6 +208,21 @@
 
   <div id="toast"></div>
 
+  <div id="ublox-fix-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card ublox-fix-card">
+      <div id="ublox-fix-spinner" class="dfu-spinner"></div>
+      <div id="ublox-fix-title" class="dfu-waiting-text">Waiting for UBLOX fix...</div>
+      <div id="ublox-fix-results" class="ublox-fix-results hidden"></div>
+      <div id="ublox-fix-map" class="ublox-fix-map hidden"></div>
+      <div id="ublox-fix-raw" class="ublox-fix-raw hidden"></div>
+      <div class="ublox-fix-actions">
+        <button id="ublox-fix-retry" type="button" class="primary hidden">Retry</button>
+        <button id="ublox-fix-cancel" type="button" class="secondary hidden">Cancel</button>
+        <button id="ublox-fix-ok" type="button" class="primary hidden">OK</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dfu-warning-overlay" class="dfu-waiting-overlay hidden">
     <div class="dfu-waiting-card">
       <div class="dfu-waiting-text">Warning: The DFU feature is still in development and should not be used.</div>
@@ -376,6 +391,12 @@
     let leafletPromise = null;
     let userRequestedDisconnect = false;
     let lrUpdateMode = false;
+    let ubloxFixPending = false;
+    let ubloxFixTimeoutId = null;
+    let ubloxFixCountdownId = null;
+    let ubloxBusyStatus = false;
+    let ubloxFixMapInstance = null;
+    let ubloxFixMapMarker = null;
     let flashLogState = {
       active: false,
       lines: [],
@@ -1046,6 +1067,8 @@
       if (err & 32) err_ublox_fix = 1;
       var err_flash = 0;
       if (err & 64) err_flash = 1;
+      var ublox_busy = 0;
+      if (err & 128) ublox_busy = 1;
       return {
         reset: reset,
         bat: bat,
@@ -1066,6 +1089,7 @@
         err_bat: err_bat,
         err_ublox_fix: err_ublox_fix,
         err_flash: err_flash,
+        ublox_busy: ublox_busy,
         ver_fw_major: ver_fw_major,
         ver_fw_minor: ver_fw_minor,
         ver_hw_major: ver_hw_major,
@@ -1085,6 +1109,7 @@
       let lrUpdateBanner = '';
 
       if (lrUpdateMode) {
+        ubloxBusyStatus = Boolean(statusMessage.ublox_busy);
         statusItems.push(
           `<div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>`,
           `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
@@ -1120,6 +1145,7 @@
           `<div class="status-item"><span class="icon charging"></span>${statusMessage.chg ? 'charging' : 'discharging'}</div>`,
           `<div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>`,
           `<div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>`,
+          `<div class="status-item"><span class="icon ublox-location"></span>${statusMessage.ublox_busy ? 'UBLOX busy' : 'UBLOX idle'}</div>`,
           `<div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>`,
           `<div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>`,
           `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
@@ -1139,6 +1165,8 @@
           ${statusItems.join('')}
         </div>
       `;
+
+      displayMainCommands();
 
       try {
         const dfuInfo = {
@@ -1445,6 +1473,9 @@
 
     function displayMainCommands() {
       const mainCommandsElement = document.getElementById('main-commands');
+      if (!mainCommandsElement || !settingsData || !settingsData.commands) {
+        return;
+      }
       const activeCommands = lrUpdateMode
         ? { 'cmd_reset': 'Reboot device' }
         : mainCommands;
@@ -1454,7 +1485,11 @@
         if (!command) {
           return '';
         }
-        return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>`;
+        const isUbloxFix = key === 'cmd_get_ublox_fix';
+        const isDisabled = isUbloxFix && ubloxBusyStatus;
+        const disabledAttr = isDisabled ? ' disabled' : '';
+        const titleAttr = isDisabled ? ' title="UBLOX is busy. Please wait."' : '';
+        return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${disabledAttr}${titleAttr}>${label}</button>`;
       }).join('');
 
       if (!lrUpdateMode) {
@@ -1495,6 +1530,10 @@
       if (flashLogState.active) {
         finishFlashLogCapture('disconnected');
       }
+      setUbloxFixOverlayVisible(false);
+      ubloxFixPending = false;
+      clearUbloxFixTimeout();
+      clearUbloxFixCountdown();
       autoLoaded = false;
       setLrUpdateMode(false);
       document.body.classList.remove('connected');
@@ -1714,6 +1753,312 @@
       }
     }
 
+    function decodeUbloxFixMessage(bytes) {
+      const payload = new Uint8Array(bytes);
+      if (payload.length < 30) {
+        throw new Error(`UBLOX fix payload too short (${payload.length} bytes)`);
+      }
+      const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+      const success = view.getUint8(0) !== 0;
+      const hot_retry = view.getUint8(1);
+      const cold_retry = view.getUint8(2);
+      const ttf = view.getUint8(3);
+      const latitude = view.getInt32(5, true) / 1e7;
+      const longitude = view.getInt32(9, true) / 1e7;
+      const altitude = view.getInt32(13, true) / 1000;
+      const fix_type = view.getUint8(17);
+      const siv = view.getUint8(18);
+      const h_acc_est = view.getUint16(19, true);
+      const pDOP = view.getUint8(21);
+      const fix_timestamp = view.getUint32(22, true);
+      const active_tracking = view.getUint8(26) !== 0;
+
+      return {
+        altitude,
+        cold_retry,
+        hot_retry,
+        latitude,
+        longitude,
+        success,
+        ttf,
+        fix_type,
+        siv,
+        h_acc_est,
+        pDOP,
+        fix_timestamp,
+        active_tracking,
+      };
+    }
+
+    function formatUbloxFixValue(value, decimals = null) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return decimals === null ? String(value) : value.toFixed(decimals);
+      }
+      return String(value);
+    }
+
+    function formatUbloxFixTimestamp(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        return 'N/A';
+      }
+      return new Date(seconds * 1000).toLocaleString("nl-NL");
+    }
+
+    function buildUbloxFixRow(label, value, isHtml = false) {
+      const safeLabel = escapeHtml(label);
+      const safeValue = isHtml ? value : escapeHtml(value);
+      return `<div class="ublox-fix-row"><span>${safeLabel}</span><span>${safeValue}</span></div>`;
+    }
+
+    function renderUbloxFixResults(result) {
+      const hasCoords = Number.isFinite(result.latitude) && Number.isFinite(result.longitude);
+      const locationLink = hasCoords
+        ? `<a href="https://maps.google.com/?q=${result.latitude},${result.longitude}" target="_blank">${formatUbloxFixValue(result.latitude, 3)},${formatUbloxFixValue(result.longitude, 3)}</a>`
+        : 'N/A';
+
+      const rows = [
+        buildUbloxFixRow('Success', result.success ? 'Yes' : 'No'),
+        buildUbloxFixRow('Location', locationLink, true),
+        buildUbloxFixRow('Latitude', hasCoords ? formatUbloxFixValue(result.latitude, 6) : 'N/A'),
+        buildUbloxFixRow('Longitude', hasCoords ? formatUbloxFixValue(result.longitude, 6) : 'N/A'),
+        buildUbloxFixRow('Altitude (m)', formatUbloxFixValue(result.altitude, 2)),
+        buildUbloxFixRow('TTF (s)', result.ttf),
+        buildUbloxFixRow('Fix time (s)', result.fix_timestamp),
+        buildUbloxFixRow('Fix time (local)', formatUbloxFixTimestamp(result.fix_timestamp)),
+        buildUbloxFixRow('Fix type', result.fix_type),
+        buildUbloxFixRow('Satellites', result.siv),
+        buildUbloxFixRow('HDOP est', result.h_acc_est),
+        buildUbloxFixRow('PDOP', result.pDOP),
+        buildUbloxFixRow('Cold retry', result.cold_retry),
+        buildUbloxFixRow('Hot retry', result.hot_retry),
+        buildUbloxFixRow('Active tracking', result.active_tracking ? 'Yes' : 'No'),
+      ];
+      return rows.join('');
+    }
+
+    function setUbloxFixOverlayVisible(visible) {
+      const overlay = document.getElementById('ublox-fix-overlay');
+      if (!overlay) return;
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function showUbloxFixOverlayWaiting(timeoutSeconds = null) {
+      const overlay = document.getElementById('ublox-fix-overlay');
+      const spinner = document.getElementById('ublox-fix-spinner');
+      const title = document.getElementById('ublox-fix-title');
+      const results = document.getElementById('ublox-fix-results');
+      const map = document.getElementById('ublox-fix-map');
+      const raw = document.getElementById('ublox-fix-raw');
+      const retryButton = document.getElementById('ublox-fix-retry');
+      const cancelButton = document.getElementById('ublox-fix-cancel');
+      const okButton = document.getElementById('ublox-fix-ok');
+      if (!overlay || !spinner || !title || !results || !map || !raw || !retryButton || !cancelButton || !okButton) return;
+
+      title.textContent = 'Waiting for UBLOX fix...';
+      spinner.classList.remove('hidden');
+      results.classList.add('hidden');
+      map.classList.add('hidden');
+      raw.classList.add('hidden');
+      retryButton.classList.add('hidden');
+      cancelButton.classList.add('hidden');
+      okButton.classList.add('hidden');
+      if (Number.isFinite(timeoutSeconds) && timeoutSeconds > 0) {
+        const rounded = Math.round(timeoutSeconds);
+        results.innerHTML = [
+          buildUbloxFixRow('Max wait', `${rounded} seconds`),
+          buildUbloxFixRow('Time remaining', `${rounded} seconds`)
+        ].join('');
+        results.classList.remove('hidden');
+      }
+      setUbloxFixOverlayVisible(true);
+    }
+
+    function showUbloxFixOverlayTimeout() {
+      const overlay = document.getElementById('ublox-fix-overlay');
+      const spinner = document.getElementById('ublox-fix-spinner');
+      const title = document.getElementById('ublox-fix-title');
+      const results = document.getElementById('ublox-fix-results');
+      const map = document.getElementById('ublox-fix-map');
+      const raw = document.getElementById('ublox-fix-raw');
+      const retryButton = document.getElementById('ublox-fix-retry');
+      const cancelButton = document.getElementById('ublox-fix-cancel');
+      const okButton = document.getElementById('ublox-fix-ok');
+      if (!overlay || !spinner || !title || !results || !map || !raw || !retryButton || !cancelButton || !okButton) return;
+
+      title.textContent = 'UBLOX fix timed out.';
+      spinner.classList.add('hidden');
+      results.innerHTML = buildUbloxFixRow('Status', 'Timed out');
+      results.classList.remove('hidden');
+      map.classList.add('hidden');
+      raw.classList.add('hidden');
+      retryButton.classList.remove('hidden');
+      cancelButton.classList.remove('hidden');
+      okButton.classList.add('hidden');
+      setUbloxFixOverlayVisible(true);
+    }
+
+    function clearUbloxFixTimeout() {
+      if (ubloxFixTimeoutId) {
+        clearTimeout(ubloxFixTimeoutId);
+        ubloxFixTimeoutId = null;
+      }
+    }
+
+    function clearUbloxFixCountdown() {
+      if (ubloxFixCountdownId) {
+        clearInterval(ubloxFixCountdownId);
+        ubloxFixCountdownId = null;
+      }
+    }
+
+    function getColdFixTimeoutSeconds() {
+      const setting = settingsData && settingsData.settings ? settingsData.settings.cold_fix_timeout : null;
+      if (!setting) {
+        return 0;
+      }
+      const currentValue = getInputValue(setting.id);
+      const parsed = Number.parseFloat(currentValue);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+      const fallback = Number.parseFloat(setting.default);
+      return Number.isFinite(fallback) ? fallback : 0;
+    }
+
+    function scheduleUbloxFixTimeout() {
+      clearUbloxFixTimeout();
+      clearUbloxFixCountdown();
+      const timeoutSeconds = getColdFixTimeoutSeconds() + 10;
+      const timeoutMs = Math.max(10, Math.round(timeoutSeconds * 1000));
+      showUbloxFixOverlayWaiting(timeoutSeconds);
+      startUbloxFixCountdown(Math.max(1, Math.round(timeoutSeconds)));
+      ubloxFixTimeoutId = setTimeout(() => {
+        if (!ubloxFixPending) {
+          return;
+        }
+        ubloxFixPending = false;
+        clearUbloxFixCountdown();
+        showUbloxFixOverlayTimeout();
+      }, timeoutMs);
+    }
+
+    function startUbloxFixCountdown(totalSeconds) {
+      const results = document.getElementById('ublox-fix-results');
+      if (!results || !Number.isFinite(totalSeconds) || totalSeconds <= 0) {
+        return;
+      }
+      let remaining = totalSeconds;
+      const updateRow = () => {
+        const rows = results.querySelectorAll('.ublox-fix-row');
+        if (!rows || rows.length < 2) return;
+        const valueEl = rows[1].querySelector('span:last-child');
+        if (valueEl) {
+          valueEl.textContent = `${Math.max(0, remaining)} seconds`;
+        }
+      };
+      updateRow();
+      ubloxFixCountdownId = setInterval(() => {
+        if (!ubloxFixPending) {
+          clearUbloxFixCountdown();
+          return;
+        }
+        remaining -= 1;
+        updateRow();
+        if (remaining <= 0) {
+          clearUbloxFixCountdown();
+        }
+      }, 1000);
+    }
+
+    async function updateUbloxFixMap(latitude, longitude) {
+      const mapEl = document.getElementById('ublox-fix-map');
+      if (!mapEl) return;
+      if (!navigator.onLine) {
+        mapEl.classList.add('hidden');
+        return;
+      }
+      try {
+        await loadLeafletIfNeeded();
+        mapEl.classList.remove('hidden');
+        if (!ubloxFixMapInstance) {
+          ubloxFixMapInstance = L.map(mapEl, {
+            zoomControl: true,
+            attributionControl: false,
+          }).setView([latitude, longitude], 14);
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; OpenStreetMap'
+          }).addTo(ubloxFixMapInstance);
+        }
+        if (!ubloxFixMapMarker) {
+          ubloxFixMapMarker = L.marker([latitude, longitude]).addTo(ubloxFixMapInstance);
+        } else {
+          ubloxFixMapMarker.setLatLng([latitude, longitude]);
+        }
+        ubloxFixMapInstance.setView([latitude, longitude], 14, { animate: false });
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (ubloxFixMapInstance) {
+              ubloxFixMapInstance.invalidateSize();
+            }
+          });
+        });
+      } catch (error) {
+        console.warn('Failed to load UBLOX map', error);
+        mapEl.classList.add('hidden');
+      }
+    }
+
+    function showUbloxFixOverlayResult(result, rawHex) {
+      const overlay = document.getElementById('ublox-fix-overlay');
+      const spinner = document.getElementById('ublox-fix-spinner');
+      const title = document.getElementById('ublox-fix-title');
+      const results = document.getElementById('ublox-fix-results');
+      const map = document.getElementById('ublox-fix-map');
+      const raw = document.getElementById('ublox-fix-raw');
+      const retryButton = document.getElementById('ublox-fix-retry');
+      const cancelButton = document.getElementById('ublox-fix-cancel');
+      const okButton = document.getElementById('ublox-fix-ok');
+      if (!overlay || !spinner || !title || !results || !map || !raw || !retryButton || !cancelButton || !okButton) return;
+
+      const noSignalAbort = result && !result.success && Number.isFinite(result.ttf) && result.ttf < 35;
+      const isSuccess = Boolean(result && result.success);
+      title.textContent = isSuccess ? 'UBLOX fix completed.' : 'UBLOX fix completed (no fix).';
+      spinner.classList.add('hidden');
+      if (noSignalAbort) {
+        results.innerHTML = buildUbloxFixRow('No GPS signal', 'Fix stopped early to save power.');
+      } else {
+        results.innerHTML = result ? renderUbloxFixResults(result) : '';
+      }
+      results.classList.remove('hidden');
+      raw.textContent = rawHex ? `Raw: ${rawHex}` : '';
+      raw.classList.toggle('hidden', !rawHex);
+      retryButton.classList.toggle('hidden', isSuccess);
+      cancelButton.classList.toggle('hidden', isSuccess);
+      okButton.classList.toggle('hidden', !isSuccess);
+      setUbloxFixOverlayVisible(true);
+
+      if (isSuccess && Number.isFinite(result.latitude) && Number.isFinite(result.longitude)) {
+        updateUbloxFixMap(result.latitude, result.longitude);
+      } else {
+        map.classList.add('hidden');
+      }
+    }
+
+    function handleUbloxFixResponse(rawBytes, valueBytes) {
+      const rawHex = bytesToHex(rawBytes);
+      try {
+        const result = decodeUbloxFixMessage(valueBytes);
+        showUbloxFixOverlayResult(result, rawHex);
+      } catch (error) {
+        showUbloxFixOverlayResult(null, rawHex);
+        log(`Failed to decode UBLOX fix response: ${error.message}`, true);
+      }
+      ubloxFixPending = false;
+      clearUbloxFixTimeout();
+      clearUbloxFixCountdown();
+    }
+
     function decodeLastPositionMessage(bytes) {
       let val = (bytes[3] << 24) | (bytes[2] << 16) | (bytes[1] << 8) | bytes[0];
       const longitude = val / 10000000; // gps latitude, units: °
@@ -1744,6 +2089,13 @@
           if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
+          } else if (key === 'msg_ublox_location') {
+            if (ubloxFixPending) {
+              const rawBytes = data.slice(1);
+              handleUbloxFixResponse(rawBytes, valueBytes);
+            } else {
+              log(`Decoded message: ${key} = ${bytesToSetting(msg, valueBytes)}`);
+            }
           } else {
             log(`Decoded message: ${key} = ${bytesToSetting(msg, valueBytes)}`);
           }
@@ -1815,7 +2167,15 @@
       }
 
       const [key, commandMeta] = getById(cmd);
+      if (key === 'cmd_get_ublox_fix' && ubloxBusyStatus) {
+        showToast('UBLOX is busy. Please wait before starting another fix.');
+        return;
+      }
       showToast(`Executing command: ${key}`);
+      if (key === 'cmd_get_ublox_fix') {
+        ubloxFixPending = true;
+        scheduleUbloxFixTimeout();
+      }
       if (key === 'cmd_flash_get_all') {
         startFlashLogCapture();
       }
@@ -1861,6 +2221,39 @@
 
     async function requestStatusMessage() {
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
+    }
+
+    const ubloxFixOkButton = document.getElementById('ublox-fix-ok');
+    if (ubloxFixOkButton) {
+      ubloxFixOkButton.addEventListener('click', () => {
+        setUbloxFixOverlayVisible(false);
+        ubloxFixPending = false;
+        clearUbloxFixTimeout();
+        clearUbloxFixCountdown();
+      });
+    }
+
+    const ubloxFixRetryButton = document.getElementById('ublox-fix-retry');
+    if (ubloxFixRetryButton) {
+      ubloxFixRetryButton.addEventListener('click', () => {
+        const command = settingsData && settingsData.commands ? settingsData.commands.cmd_get_ublox_fix : null;
+        if (!command) {
+          showToast('UBLOX fix command not available.');
+          return;
+        }
+        ubloxFixPending = true;
+        executeCommand(command.id);
+      });
+    }
+
+    const ubloxFixCancelButton = document.getElementById('ublox-fix-cancel');
+    if (ubloxFixCancelButton) {
+      ubloxFixCancelButton.addEventListener('click', () => {
+        setUbloxFixOverlayVisible(false);
+        ubloxFixPending = false;
+        clearUbloxFixTimeout();
+        clearUbloxFixCountdown();
+      });
     }
 
     async function checkPin(pin_in) {
