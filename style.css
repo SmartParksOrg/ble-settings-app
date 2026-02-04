@@ -1683,6 +1683,28 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     flex-wrap: wrap;
 }
 
+@media (max-width: 600px) {
+    .ublox-fix-card {
+        gap: 10px;
+        padding: 18px 16px;
+    }
+
+    .ublox-fix-results {
+        gap: 4px;
+        font-size: 12px;
+    }
+
+    .ublox-fix-row {
+        gap: 8px;
+        padding: 4px 8px;
+        border-radius: 10px;
+    }
+
+    .ublox-fix-actions {
+        gap: 8px;
+    }
+}
+
 .log-actions {
     margin-top: 14px;
     display: flex;
