@@ -888,6 +888,13 @@ h2 {
     color: rgba(31, 42, 35, 0.7);
 }
 
+.app-version {
+    font-size: 12px;
+    letter-spacing: 0.2px;
+    color: rgba(31, 42, 35, 0.6);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
 /* Floating bar at the bottom */
 #floating-bar {
     position: fixed;

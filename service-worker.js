@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v3';
+const CACHE_NAME = 'app-cache-v4';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const STATIC_FILES = [
@@ -12,6 +12,7 @@ const STATIC_FILES = [
     toUrl('dfu/mcumgr.js'),
     toUrl('manifest.json'),
     toUrl('composer-manifest.json'),
+    toUrl('version.json'),
     toUrl('settings-meta.json'),
     toUrl('favicon.ico'),
     toUrl('icon512_maskable.png'),

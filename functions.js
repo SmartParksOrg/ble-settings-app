@@ -64,8 +64,46 @@ const SETTINGS_FILES = [
     "settings-v4.4.2.json"
 ];
 const SETTINGS_META_FILE = "settings-meta.json";
+const APP_VERSION_FILE = "version.json";
 
 const dangerousCommands = [/_th$/, /set_hibernation_mode/, /almanac_update/];
+
+function formatBuildTime(buildTime) {
+    if (!buildTime) {
+        return '';
+    }
+    const parsed = new Date(buildTime);
+    if (Number.isNaN(parsed.getTime())) {
+        return '';
+    }
+    return parsed.toISOString().slice(0, 10);
+}
+
+async function updateAppVersionBadge() {
+    const versionElement = document.getElementById('app-version');
+    if (!versionElement) {
+        return;
+    }
+
+    try {
+        const response = await fetch(APP_VERSION_FILE, { cache: 'no-store' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const versionInfo = await response.json();
+        const version = versionInfo.version || 'unknown';
+        const commit = versionInfo.commit ? ` (${String(versionInfo.commit).slice(0, 7)})` : '';
+        const buildDate = formatBuildTime(versionInfo.built_at);
+        versionElement.textContent = `Version: ${version}${commit}${buildDate ? ` - ${buildDate}` : ''}`;
+    } catch (error) {
+        versionElement.textContent = 'Version: unavailable';
+        console.warn('Failed to load app version:', error);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    updateAppVersionBadge();
+});
 
 const minMaxValues = {
     'uint8': { min: 0, max: 255 },
