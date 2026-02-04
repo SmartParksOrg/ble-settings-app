@@ -868,7 +868,7 @@
       mapTrackState.points = [];
       mapTrackState.pendingPlans = buildTrackPayloadPlans(port, startIndex);
       mapTrackState.flashBuffer = new Uint8Array(0);
-      log(`Track request start: phase=${mode}, port=${port}, startIndex(from head)=${startIndex}, count=${TRACK_POINTS_LIMIT}, payloads=${mapTrackState.pendingPlans.length}`);
+      log(`Track request start: phase=${mode}, strategy=single, port=${port}, startIndex(from head)=${startIndex}, count=${TRACK_POINTS_LIMIT}, payloads=${mapTrackState.pendingPlans.length}`);
       if (!executeNextTrackPlan()) {
         mapTrackState.active = false;
         showMapTracksOverlay({
