@@ -77,6 +77,10 @@ body {
     padding: 18px 16px;
 }
 
+body.connected #header-section {
+    padding-bottom: 4px;
+}
+
 .status-section,
 .settings-section,
 .commands-section,
