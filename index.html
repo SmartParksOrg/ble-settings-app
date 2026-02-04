@@ -189,8 +189,12 @@
       <div class="section-card-body">
         <div id="map-status" class="map-status">Waiting for location...</div>
         <div class="map-frame">
+          <button id="map-view-toggle" class="map-view-toggle" type="button" onclick="toggleMapFullscreen()" aria-label="Toggle fullscreen map" title="Fullscreen map">Fullscreen</button>
           <div id="device-map" class="map-canvas"></div>
           <div id="map-overlay" class="map-overlay hidden">Offline: map unavailable</div>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button" onclick="getTracks()">Get tracks</button>
         </div>
       </div>
     </details>
@@ -254,6 +258,17 @@
   </div>
 
   <div id="toast"></div>
+
+  <div id="map-tracks-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div id="map-tracks-spinner" class="dfu-spinner hidden"></div>
+      <div id="map-tracks-title" class="dfu-waiting-text">Tracks</div>
+      <div id="map-tracks-text" class="dfu-waiting-countdown"></div>
+      <div class="ublox-fix-actions">
+        <button id="map-tracks-ok" type="button" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
 
   <div id="flash-log-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card flash-log-card">
@@ -440,6 +455,8 @@
     const CMD_SEND_SINGLE_VAL = 0xA3;
     const CMD_SEND_TIMESTAMP = 0xCE;
     const CMD_FLASH_CLEAR = 0xBA;
+    const CMD_FLASH_GET_FROM_HEAD = 0xBC;
+    const TRACK_POINTS_LIMIT = 25;
     const VAL_UBLOX_TIME = 0xD8;
     const MSG_TIMESTAMP = 0x97;
     const MSG_CMD_CONFIRM = 0xF3;
@@ -466,7 +483,10 @@
     let lastPositionMessage = null;
     let mapInstance = null;
     let mapMarker = null;
+    let mapTrackLayer = null;
+    let mapTrackLatestMarker = null;
     let mapReady = false;
+    let mapFullscreen = false;
     let leafletPromise = null;
     let userRequestedDisconnect = false;
     let lrUpdateMode = false;
@@ -476,6 +496,13 @@
     let ubloxBusyStatus = false;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
+    let mapTrackState = {
+      active: false,
+      phase: null,
+      points: [],
+      pendingPlans: [],
+      flashBuffer: new Uint8Array(0),
+    };
     let flashLogState = {
       active: false,
       lines: [],
@@ -556,6 +583,15 @@
       }
     }
 
+    function getLatestPositionIcon() {
+      return L.divIcon({
+        className: 'latest-position-marker-wrapper',
+        html: '<span class="latest-position-marker"></span>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10],
+      });
+    }
+
     function updateMapOverlay() {
       const overlay = document.getElementById('map-overlay');
       if (!overlay) {
@@ -619,11 +655,379 @@
       setMapStatus(`Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
       const coords = [latitude, longitude];
       if (!mapMarker) {
-        mapMarker = L.marker(coords).addTo(mapInstance);
+        mapMarker = L.marker(coords, { icon: getLatestPositionIcon() }).addTo(mapInstance);
       } else {
         mapMarker.setLatLng(coords);
       }
+      const latestTimestamp = Number.isFinite(lastPositionMessage.timestamp) && lastPositionMessage.timestamp > 0
+        ? formatUbloxFixTimestamp(lastPositionMessage.timestamp)
+        : 'N/A';
+      mapMarker.bindPopup(`Latest known position: ${latestTimestamp}`);
       mapInstance.setView(coords, 14, { animate: false });
+    }
+
+    function toggleMapFullscreen() {
+      mapFullscreen = !mapFullscreen;
+      document.body.classList.toggle('map-fullscreen', mapFullscreen);
+      const button = document.getElementById('map-view-toggle');
+      if (button) {
+        button.textContent = mapFullscreen ? 'Exit fullscreen' : 'Fullscreen';
+        button.setAttribute('title', mapFullscreen ? 'Exit fullscreen map' : 'Fullscreen map');
+      }
+      if (mapInstance) {
+        setTimeout(() => mapInstance.invalidateSize(), 0);
+      }
+    }
+    window.toggleMapFullscreen = toggleMapFullscreen;
+
+    function setMapTracksOverlayVisible(visible) {
+      const overlay = document.getElementById('map-tracks-overlay');
+      if (!overlay) {
+        return;
+      }
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function showMapTracksOverlay({ title, text, loading = false }) {
+      const titleEl = document.getElementById('map-tracks-title');
+      const textEl = document.getElementById('map-tracks-text');
+      const spinner = document.getElementById('map-tracks-spinner');
+      const okButton = document.getElementById('map-tracks-ok');
+      if (!titleEl || !textEl || !spinner || !okButton) {
+        return;
+      }
+      titleEl.textContent = title;
+      textEl.textContent = text;
+      spinner.classList.toggle('hidden', !loading);
+      okButton.classList.toggle('hidden', loading);
+      setMapTracksOverlayVisible(true);
+    }
+
+    function decodeTrackPointFromFullMessage(bytes) {
+      if (!bytes || bytes.length < 30) {
+        return null;
+      }
+      try {
+        const decoded = decodeUbloxFixMessage(bytes);
+        return {
+          latitude: decoded.latitude,
+          longitude: decoded.longitude,
+          timestamp: decoded.fix_timestamp || 0
+        };
+      } catch (error) {
+        return null;
+      }
+    }
+
+    function decodeTrackPointFromShortMessage(bytes) {
+      if (!bytes || bytes.length < 12) {
+        return null;
+      }
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const first = view.getInt32(0, true) / 1e7;
+      const second = view.getInt32(4, true) / 1e7;
+      const timestamp = view.getUint32(8, true);
+
+      const lonFirstCandidate = {
+        latitude: second,
+        longitude: first,
+        timestamp,
+      };
+      const latFirstCandidate = {
+        latitude: first,
+        longitude: second,
+        timestamp,
+      };
+      const isValid = (point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)
+        && point.latitude >= -90 && point.latitude <= 90
+        && point.longitude >= -180 && point.longitude <= 180;
+
+      if (isValid(lonFirstCandidate)) {
+        return lonFirstCandidate;
+      }
+      if (isValid(latFirstCandidate)) {
+        return latFirstCandidate;
+      }
+      return null;
+    }
+
+    function filterAndSortTrackPoints(points) {
+      return points
+        .filter((point) => Number.isFinite(point.latitude) && Number.isFinite(point.longitude))
+        .filter((point) => point.latitude !== 0 && point.longitude !== 0)
+        .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+    }
+
+    async function renderTrackOnMap(points) {
+      const ready = await ensureMapReady();
+      if (!ready || !mapInstance) {
+        showMapTracksOverlay({
+          title: 'Map unavailable',
+          text: 'Could not load map tiles. Please check your connection and try again.',
+          loading: false,
+        });
+        return;
+      }
+
+      if (mapTrackLayer) {
+        mapInstance.removeLayer(mapTrackLayer);
+        mapTrackLayer = null;
+      }
+      if (mapTrackLatestMarker) {
+        mapInstance.removeLayer(mapTrackLatestMarker);
+        mapTrackLatestMarker = null;
+      }
+
+      const coords = points.map((point) => [point.latitude, point.longitude]);
+      mapTrackLayer = L.layerGroup();
+      L.polyline(coords, {
+        color: '#1f6feb',
+        weight: 3,
+        opacity: 0.85
+      }).addTo(mapTrackLayer);
+      points.forEach((point) => {
+        const marker = L.circleMarker([point.latitude, point.longitude], {
+          radius: 4,
+          color: '#1f6feb',
+          weight: 1,
+          fillColor: '#7bb1ff',
+          fillOpacity: 0.9
+        }).addTo(mapTrackLayer);
+        marker.bindPopup(`Time: ${formatUbloxFixTimestamp(point.timestamp)}`);
+      });
+      mapTrackLayer.addTo(mapInstance);
+
+      const latest = points.reduce((current, point) => ((point.timestamp || 0) >= (current.timestamp || 0) ? point : current), points[0]);
+      mapTrackLatestMarker = L.marker([latest.latitude, latest.longitude]).addTo(mapInstance);
+      mapTrackLatestMarker.bindPopup(`Latest track point: ${formatUbloxFixTimestamp(latest.timestamp)}`);
+
+      const bounds = L.latLngBounds(coords);
+      if (bounds.isValid()) {
+        mapInstance.fitBounds(bounds, { padding: [24, 24] });
+      } else {
+        mapInstance.setView([latest.latitude, latest.longitude], 14, { animate: false });
+      }
+      setMapStatus(`Track loaded: ${points.length} point(s).`);
+    }
+
+    function buildTrackPayloadPlans(port, startIndex) {
+      const startIndexFromHead = Math.max(0, startIndex);
+      const plans = [];
+      for (let offset = 0; offset < TRACK_POINTS_LIMIT; offset++) {
+        const payload12 = new Uint8Array(12);
+        const view12 = new DataView(payload12.buffer);
+        view12.setUint32(0, port, true);
+        view12.setUint32(4, startIndexFromHead + offset, true);
+        view12.setUint32(8, 1, true);
+        plans.push({
+          key: `u32-port,u32-index=${startIndexFromHead + offset},u32-count=1`,
+          bytes: payload12
+        });
+      }
+      return plans;
+    }
+
+    function executeNextTrackPlan() {
+      if (!mapTrackState.active || !mapTrackState.pendingPlans.length) {
+        return false;
+      }
+      const cmd = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+      if (!cmd) {
+        return false;
+      }
+      const plan = mapTrackState.pendingPlans.shift();
+      showMapTracksOverlay({
+        title: mapTrackState.phase === 'full' ? 'Loading UBLOX tracks...' : 'Loading UBLOX short tracks...',
+        text: `Reading up to ${TRACK_POINTS_LIMIT} points from device flash.`,
+        loading: true,
+      });
+      executeBleCommand([0x20, parseInt(cmd.id, 16), plan.bytes.length, ...plan.bytes]);
+      return true;
+    }
+
+    function startTrackRequest(mode) {
+      const cmd = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+      if (!cmd) {
+        showToast('Flash get from head command not available.');
+        return;
+      }
+
+      const fullPort = settingsData && settingsData.ports ? settingsData.ports.port_ublox_gps : null;
+      const shortPort = settingsData && settingsData.ports ? settingsData.ports.port_ublox_short_message : null;
+      const port = mode === 'full' ? fullPort : shortPort;
+      if (!Number.isFinite(port)) {
+        showToast('Required UBLOX port not available in this firmware.');
+        return;
+      }
+      // Device uses "from head" indexing where 0 means newest entry (look back from latest).
+      // To fetch the latest N points, always start from 0.
+      const startIndex = 0;
+
+      mapTrackState.active = true;
+      mapTrackState.phase = mode;
+      mapTrackState.points = [];
+      mapTrackState.pendingPlans = buildTrackPayloadPlans(port, startIndex);
+      mapTrackState.flashBuffer = new Uint8Array(0);
+      log(`Track request start: phase=${mode}, port=${port}, startIndex(from head)=${startIndex}, count=${TRACK_POINTS_LIMIT}, payloads=${mapTrackState.pendingPlans.length}`);
+      if (!executeNextTrackPlan()) {
+        mapTrackState.active = false;
+        showMapTracksOverlay({
+          title: 'Track request failed',
+          text: 'Could not prepare request payload.',
+          loading: false,
+        });
+      }
+    }
+
+    function getTracks() {
+      if (!settingsData || !settingsData.messages) {
+        showToast('Load settings first.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      if (mapTrackState.active) {
+        showToast('Track request already in progress.');
+        return;
+      }
+      startTrackRequest('full');
+    }
+    window.getTracks = getTracks;
+
+    function handleTrackCommandConfirm(status) {
+      if (!mapTrackState.active) {
+        return;
+      }
+      log(`Track request confirm: phase=${mapTrackState.phase}, status=0x${status.toString(16).padStart(2, '0')}, decodedPoints=${mapTrackState.points.length}, bufferedBytes=${mapTrackState.flashBuffer.length}`);
+
+      if (status !== 0x01) {
+        if (executeNextTrackPlan()) {
+          return;
+        }
+        if (mapTrackState.points.length > 0) {
+          // Some firmwares signal end-of-window with non-success when the requested
+          // range extends beyond available records. Keep already decoded points.
+        } else if (mapTrackState.phase === 'full') {
+          startTrackRequest('short');
+          return;
+        } else {
+          mapTrackState.active = false;
+          showMapTracksOverlay({
+            title: 'Track request failed',
+            text: `Device returned status 0x${status.toString(16).padStart(2, '0')}.`,
+            loading: false,
+          });
+          return;
+        }
+      }
+
+      if (executeNextTrackPlan()) {
+        return;
+      }
+
+      const rawCount = mapTrackState.points.length;
+      const filtered = filterAndSortTrackPoints(mapTrackState.points);
+      log(`Track decode summary: phase=${mapTrackState.phase}, rawPoints=${rawCount}, filteredPoints=${filtered.length}`);
+      if (filtered.length && lastPositionMessage && Number.isFinite(lastPositionMessage.timestamp)) {
+        const newestTrack = filtered[filtered.length - 1];
+        const deltaSeconds = (lastPositionMessage.timestamp || 0) - (newestTrack.timestamp || 0);
+        log(`Track vs last-known timestamp delta: ${deltaSeconds}s (last_known=${lastPositionMessage.timestamp}, newest_track=${newestTrack.timestamp || 0})`);
+      }
+      if (mapTrackState.phase === 'full' && rawCount === 0) {
+        startTrackRequest('short');
+        return;
+      }
+
+      mapTrackState.active = false;
+      if (!filtered.length) {
+        showMapTracksOverlay({
+          title: 'No track logs available',
+          text: mapTrackState.phase === 'short'
+            ? 'No msg_ublox_location or msg_ublox_location_short logs were found.'
+            : 'No msg_ublox_location logs were found.',
+          loading: false,
+        });
+        return;
+      }
+
+      setMapTracksOverlayVisible(false);
+      renderTrackOnMap(filtered);
+    }
+
+    function tryHandleTrackResponse(data) {
+      if (!mapTrackState.active || !settingsData) {
+        return false;
+      }
+
+      const port = data[0];
+      const id = data[1];
+      const flashLogPort = settingsData.ports ? settingsData.ports.port_flash_log : null;
+      const messagesPort = settingsData.ports ? settingsData.ports.port_messages : null;
+      if (port === messagesPort && id === MSG_CMD_CONFIRM && data.length >= 5 && data[3] === CMD_FLASH_GET_FROM_HEAD) {
+        handleTrackCommandConfirm(data[4]);
+        return true;
+      }
+
+      const messageKey = mapTrackState.phase === 'full' ? 'msg_ublox_location' : 'msg_ublox_location_short';
+      const messageMeta = settingsData.messages[messageKey];
+      if (!messageMeta || !settingsData.ports) {
+        return false;
+      }
+      const expectedPort = settingsData.ports[messageMeta.port];
+      const expectedId = parseInt(messageMeta.id, 16);
+      if (Number.isFinite(flashLogPort) && port === flashLogPort) {
+        const incoming = data.slice(1);
+        const merged = new Uint8Array(mapTrackState.flashBuffer.length + incoming.length);
+        merged.set(mapTrackState.flashBuffer, 0);
+        merged.set(incoming, mapTrackState.flashBuffer.length);
+
+        let index = 0;
+        while (index + 2 < merged.length) {
+          const nestedPort = merged[index];
+          const nestedId = merged[index + 1];
+          const nestedLen = merged[index + 2];
+          const frameStart = index + 3;
+          const frameEnd = frameStart + nestedLen;
+          const metadataLen = 4;
+          const recordEnd = frameEnd + metadataLen;
+          if (recordEnd > merged.length) {
+            break;
+          }
+          const nestedPayload = merged.slice(frameStart, frameEnd);
+          index = recordEnd;
+
+          if (nestedPort !== expectedPort || nestedId !== expectedId) {
+            continue;
+          }
+          const point = mapTrackState.phase === 'full'
+            ? decodeTrackPointFromFullMessage(nestedPayload)
+            : decodeTrackPointFromShortMessage(nestedPayload);
+          if (point) {
+            mapTrackState.points.push(point);
+          }
+        }
+        mapTrackState.flashBuffer = merged.slice(index);
+        return true;
+      }
+
+      if (port !== expectedPort || id !== expectedId) {
+        return false;
+      }
+
+      let payloadLength = data.length >= 3 ? data[2] : 0;
+      if (payloadLength <= 0 || payloadLength > data.length - 3) {
+        payloadLength = data.length - 3;
+      }
+      const payload = data.slice(3, 3 + payloadLength);
+      const point = mapTrackState.phase === 'full'
+        ? decodeTrackPointFromFullMessage(payload)
+        : decodeTrackPointFromShortMessage(payload);
+      if (point) {
+        mapTrackState.points.push(point);
+      }
+      return true;
     }
 
     function handleConnectivityChange() {
@@ -1829,6 +2233,15 @@
       if (flashLogState.active) {
         showFlashLogFailure('Connection lost during log download.');
       }
+      mapFullscreen = false;
+      document.body.classList.remove('map-fullscreen');
+      const mapViewToggle = document.getElementById('map-view-toggle');
+      if (mapViewToggle) {
+        mapViewToggle.textContent = 'Fullscreen';
+        mapViewToggle.setAttribute('title', 'Fullscreen map');
+      }
+      mapTrackState.active = false;
+      setMapTracksOverlayVisible(false);
       setUbloxFixOverlayVisible(false);
       ubloxFixPending = false;
       clearUbloxFixTimeout();
@@ -2000,6 +2413,9 @@
 
       const port = data[0];
       try {
+        if (tryHandleTrackResponse(data)) {
+          return;
+        }
         const flashLogPort = settingsData && settingsData.ports ? settingsData.ports.port_flash_log : null;
         if (flashLogPort && port === flashLogPort) {
           handleFlashLogChunk(data);
@@ -2731,6 +3147,13 @@
     if (flashLogOkButton) {
       flashLogOkButton.addEventListener('click', () => {
         setFlashLogOverlayVisible(false);
+      });
+    }
+
+    const mapTracksOkButton = document.getElementById('map-tracks-ok');
+    if (mapTracksOkButton) {
+      mapTracksOkButton.addEventListener('click', () => {
+        setMapTracksOverlayVisible(false);
       });
     }
 
