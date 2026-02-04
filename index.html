@@ -129,7 +129,16 @@
           <span id="flash-log-status">Waiting for settings...</span>
         </div>
         <div class="log-actions">
-          <button type="button" class="log-action-button" onclick="executeCommand(settingsData?.commands?.cmd_flash_get_all?.id)">Flash get all</button>
+          <button type="button" class="log-action-button" onclick="executeCommand(settingsData?.commands?.cmd_flash_get_all?.id)">Download all logs</button>
+        </div>
+        <div class="log-actions">
+          <select id="flash-log-type-select" class="log-type-select" aria-label="Flash log message type">
+            <option value="">Load settings to choose a message type</option>
+          </select>
+          <button type="button" class="log-action-button" onclick="downloadFlashLogsByType()">Download selected message type</button>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button secondary" onclick="requestEraseAllLogs()">Erase all logs</button>
         </div>
       </div>
     </details>
@@ -245,6 +254,34 @@
   </div>
 
   <div id="toast"></div>
+
+  <div id="flash-log-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card flash-log-card">
+      <div id="flash-log-overlay-spinner" class="dfu-spinner"></div>
+      <div id="flash-log-overlay-title" class="dfu-waiting-text">Downloading logs...</div>
+      <div id="flash-log-overlay-progress-text" class="dfu-progress-text">Preparing download...</div>
+      <div id="flash-log-overlay-progress" class="flash-log-progress">
+        <div id="flash-log-overlay-progress-bar"></div>
+      </div>
+      <div id="flash-log-overlay-message" class="flash-log-overlay-message hidden"></div>
+      <div class="ublox-fix-actions">
+        <button id="flash-log-retry" type="button" class="primary hidden">Retry</button>
+        <button id="flash-log-cancel" type="button" class="secondary">Cancel</button>
+        <button id="flash-log-erase" type="button" class="secondary hidden">Erase all logs</button>
+        <button id="flash-log-ok" type="button" class="primary hidden">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash-log-erase-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text">Warning: this will permanently erase all logs from device flash.</div>
+      <div class="dfu-confirmation-actions">
+        <button id="flash-log-erase-cancel" class="secondary" type="button">Cancel</button>
+        <button id="flash-log-erase-confirm" type="button">Erase all logs</button>
+      </div>
+    </div>
+  </div>
 
   <div id="ublox-fix-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card ublox-fix-card">
@@ -402,6 +439,7 @@
     const CMD_CHECK_PIN = 0xC2;
     const CMD_SEND_SINGLE_VAL = 0xA3;
     const CMD_SEND_TIMESTAMP = 0xCE;
+    const CMD_FLASH_CLEAR = 0xBA;
     const VAL_UBLOX_TIME = 0xD8;
     const MSG_TIMESTAMP = 0x97;
     const MSG_CMD_CONFIRM = 0xF3;
@@ -443,8 +481,17 @@
       lines: [],
       buffer: '',
       startedAt: null,
-      deviceName: ''
+      deviceName: '',
+      logTypeLabel: 'all',
+      requestMode: 'all',
+      requestedPort: 0,
+      expectedTotal: null,
+      inactivityTimeoutId: null,
+      lastFilename: '',
+      lastError: '',
+      lastRequest: null
     };
+    let flashLogCountTotal = null;
 
     const logFooter = document.getElementById('logFooter');
 
@@ -607,21 +654,209 @@
       return (value || 'device').toString().replace(/[^A-Za-z0-9_-]+/g, '') || 'device';
     }
 
-    function startFlashLogCapture() {
+    function setFlashLogOverlayVisible(visible) {
+      const overlay = document.getElementById('flash-log-overlay');
+      if (!overlay) {
+        return;
+      }
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function clearFlashLogInactivityTimeout() {
+      if (flashLogState.inactivityTimeoutId) {
+        clearTimeout(flashLogState.inactivityTimeoutId);
+        flashLogState.inactivityTimeoutId = null;
+      }
+    }
+
+    function scheduleFlashLogInactivityTimeout() {
+      clearFlashLogInactivityTimeout();
+      flashLogState.inactivityTimeoutId = setTimeout(() => {
+        if (!flashLogState.active) {
+          return;
+        }
+        showFlashLogFailure('No new log data received for 12 seconds.');
+      }, 12000);
+    }
+
+    function setFlashLogProgress({ title, detail, received, total, knownTotal, showSpinner = true }) {
+      const spinner = document.getElementById('flash-log-overlay-spinner');
+      const titleEl = document.getElementById('flash-log-overlay-title');
+      const detailEl = document.getElementById('flash-log-overlay-progress-text');
+      const progressEl = document.getElementById('flash-log-overlay-progress');
+      const barEl = document.getElementById('flash-log-overlay-progress-bar');
+      const messageEl = document.getElementById('flash-log-overlay-message');
+      const retryBtn = document.getElementById('flash-log-retry');
+      const cancelBtn = document.getElementById('flash-log-cancel');
+      const eraseBtn = document.getElementById('flash-log-erase');
+      const okBtn = document.getElementById('flash-log-ok');
+      if (!spinner || !titleEl || !detailEl || !progressEl || !barEl || !messageEl || !retryBtn || !cancelBtn || !eraseBtn || !okBtn) {
+        return;
+      }
+
+      titleEl.textContent = title;
+      detailEl.textContent = detail;
+      spinner.classList.toggle('hidden', !showSpinner);
+      progressEl.classList.remove('hidden');
+      progressEl.classList.toggle('indeterminate', !knownTotal);
+      if (knownTotal && Number.isFinite(total) && total > 0) {
+        const percent = Math.max(0, Math.min(100, Math.round((received / total) * 100)));
+        barEl.style.width = `${percent}%`;
+      } else {
+        barEl.style.width = '35%';
+      }
+      messageEl.classList.add('hidden');
+      messageEl.classList.remove('warning');
+      retryBtn.classList.add('hidden');
+      cancelBtn.classList.remove('hidden');
+      eraseBtn.classList.add('hidden');
+      okBtn.classList.add('hidden');
+      setFlashLogOverlayVisible(true);
+    }
+
+    function buildFlashLogFilename() {
+      const startedAt = flashLogState.startedAt || new Date();
+      const deviceName = sanitizeFilenamePart(flashLogState.deviceName);
+      const logType = sanitizeFilenamePart(flashLogState.logTypeLabel || 'all');
+      const timestamp = formatFilenameTimestamp(startedAt);
+      return `raw_logs-${logType}-${deviceName}_${timestamp}.txt`;
+    }
+
+    function showFlashLogSuccess(filename) {
+      const spinner = document.getElementById('flash-log-overlay-spinner');
+      const titleEl = document.getElementById('flash-log-overlay-title');
+      const detailEl = document.getElementById('flash-log-overlay-progress-text');
+      const progressEl = document.getElementById('flash-log-overlay-progress');
+      const barEl = document.getElementById('flash-log-overlay-progress-bar');
+      const messageEl = document.getElementById('flash-log-overlay-message');
+      const retryBtn = document.getElementById('flash-log-retry');
+      const cancelBtn = document.getElementById('flash-log-cancel');
+      const eraseBtn = document.getElementById('flash-log-erase');
+      const okBtn = document.getElementById('flash-log-ok');
+      if (!spinner || !titleEl || !detailEl || !progressEl || !barEl || !messageEl || !retryBtn || !cancelBtn || !eraseBtn || !okBtn) {
+        return;
+      }
+
+      spinner.classList.add('hidden');
+      titleEl.textContent = 'Log download complete';
+      detailEl.textContent = `Downloaded file: ${filename}`;
+      progressEl.classList.remove('hidden');
+      progressEl.classList.remove('indeterminate');
+      barEl.style.width = '100%';
+      messageEl.innerHTML = `
+        Use the <a href="https://smartparksorg.github.io/raw_logs_decoder/" target="_blank" rel="noopener noreferrer">Smart Parks - Log File Decoder</a>
+        to decode this log file.
+      `;
+      messageEl.classList.remove('hidden');
+      messageEl.classList.remove('warning');
+      retryBtn.classList.add('hidden');
+      cancelBtn.classList.add('hidden');
+      eraseBtn.classList.remove('hidden');
+      okBtn.classList.remove('hidden');
+      setFlashLogOverlayVisible(true);
+    }
+
+    function showFlashLogNoData() {
+      const spinner = document.getElementById('flash-log-overlay-spinner');
+      const titleEl = document.getElementById('flash-log-overlay-title');
+      const detailEl = document.getElementById('flash-log-overlay-progress-text');
+      const progressEl = document.getElementById('flash-log-overlay-progress');
+      const messageEl = document.getElementById('flash-log-overlay-message');
+      const retryBtn = document.getElementById('flash-log-retry');
+      const cancelBtn = document.getElementById('flash-log-cancel');
+      const eraseBtn = document.getElementById('flash-log-erase');
+      const okBtn = document.getElementById('flash-log-ok');
+      if (!spinner || !titleEl || !detailEl || !progressEl || !messageEl || !retryBtn || !cancelBtn || !eraseBtn || !okBtn) {
+        return;
+      }
+
+      const isAll = flashLogState.requestMode === 'all';
+      const scopeLabel = isAll ? 'for this device' : `for "${flashLogState.logTypeLabel}"`;
+      spinner.classList.add('hidden');
+      titleEl.textContent = 'No logs available';
+      detailEl.textContent = `The device has no stored log messages ${scopeLabel}.`;
+      progressEl.classList.add('hidden');
+      messageEl.textContent = 'No file was downloaded.';
+      messageEl.classList.remove('hidden');
+      messageEl.classList.remove('warning');
+      retryBtn.classList.add('hidden');
+      cancelBtn.classList.add('hidden');
+      eraseBtn.classList.remove('hidden');
+      okBtn.classList.remove('hidden');
+      setFlashLogOverlayVisible(true);
+    }
+
+    function showFlashLogFailure(reason = 'Log download stopped prematurely.') {
+      clearFlashLogInactivityTimeout();
+      flashLogState.active = false;
+      flashLogState.lastError = reason;
+
+      const spinner = document.getElementById('flash-log-overlay-spinner');
+      const titleEl = document.getElementById('flash-log-overlay-title');
+      const detailEl = document.getElementById('flash-log-overlay-progress-text');
+      const messageEl = document.getElementById('flash-log-overlay-message');
+      const retryBtn = document.getElementById('flash-log-retry');
+      const cancelBtn = document.getElementById('flash-log-cancel');
+      const eraseBtn = document.getElementById('flash-log-erase');
+      const okBtn = document.getElementById('flash-log-ok');
+      if (!spinner || !titleEl || !detailEl || !messageEl || !retryBtn || !cancelBtn || !eraseBtn || !okBtn) {
+        return;
+      }
+
+      spinner.classList.add('hidden');
+      titleEl.textContent = 'Log download failed';
+      detailEl.textContent = reason;
+      const progressEl = document.getElementById('flash-log-overlay-progress');
+      if (progressEl) {
+        progressEl.classList.remove('hidden');
+      }
+      messageEl.textContent = 'You can retry the download or cancel.';
+      messageEl.classList.remove('hidden');
+      messageEl.classList.add('warning');
+      retryBtn.classList.remove('hidden');
+      cancelBtn.classList.remove('hidden');
+      eraseBtn.classList.add('hidden');
+      okBtn.classList.add('hidden');
+      setFlashLogOverlayVisible(true);
+      log(`Flash log download failed: ${reason}`, true);
+    }
+
+    function startFlashLogCapture({ logTypeLabel = 'all', requestMode = 'all', requestedPort = 0, expectedTotal = null } = {}) {
+      clearFlashLogInactivityTimeout();
       flashLogState = {
         active: true,
         lines: [],
         buffer: '',
         startedAt: new Date(),
-        deviceName: device && device.name ? device.name : ''
+        deviceName: device && device.name ? device.name : '',
+        logTypeLabel,
+        requestMode,
+        requestedPort,
+        expectedTotal,
+        inactivityTimeoutId: null,
+        lastFilename: '',
+        lastError: '',
+        lastRequest: { logTypeLabel, requestMode, requestedPort, expectedTotal }
       };
-      log('Starting flash log download...');
+      const detail = Number.isFinite(expectedTotal) && expectedTotal > 0
+        ? `Received 0/${expectedTotal} messages (0%)`
+        : 'Received 0 messages';
+      setFlashLogProgress({
+        title: `Downloading logs (${logTypeLabel})...`,
+        detail,
+        received: 0,
+        total: expectedTotal,
+        knownTotal: Number.isFinite(expectedTotal) && expectedTotal > 0
+      });
+      scheduleFlashLogInactivityTimeout();
+      log(`Starting flash log download (${logTypeLabel})...`);
     }
 
     function finishFlashLogCapture(reason) {
       if (!flashLogState.active) {
         return;
       }
+      clearFlashLogInactivityTimeout();
 
       if (flashLogState.buffer) {
         flashLogState.lines.push(flashLogState.buffer);
@@ -629,10 +864,14 @@
       }
 
       const lines = flashLogState.lines;
-      const startedAt = flashLogState.startedAt || new Date();
-      const deviceName = sanitizeFilenamePart(flashLogState.deviceName);
-      const timestamp = formatFilenameTimestamp(startedAt);
-      const filename = `raw_logs-${deviceName}_${timestamp}.txt`;
+      if (lines.length === 0 && reason === 'device confirm') {
+        flashLogState.active = false;
+        showFlashLogNoData();
+        log(`Flash log download finished with no data (${flashLogState.logTypeLabel}).`);
+        return;
+      }
+      const filename = buildFlashLogFilename();
+      flashLogState.lastFilename = filename;
 
       const contents = lines.join('\n');
       const blob = new Blob([contents], { type: 'text/plain' });
@@ -645,6 +884,7 @@
 
       log(`Flash log download complete (${lines.length} lines). File: ${filename}${reason ? ` (${reason})` : ''}`);
       flashLogState.active = false;
+      showFlashLogSuccess(filename);
     }
 
     function bytesToBase64(bytes) {
@@ -656,13 +896,17 @@
     }
 
     function handleFlashLogChunk(data) {
+      if (!flashLogState.active) {
+        return;
+      }
+      scheduleFlashLogInactivityTimeout();
       let payloadLength = data.length >= 3 ? data[2] : 0;
       if (payloadLength === 0 || payloadLength > data.length - 3) {
         payloadLength = data.length - 3;
       }
 
       if (payloadLength <= 0 && data.length <= 3) {
-        finishFlashLogCapture('empty payload');
+        showFlashLogFailure('Device returned an empty payload.');
         return;
       }
 
@@ -672,9 +916,21 @@
       }
 
       const base64Line = bytesToBase64(payload);
-      if (flashLogState.active) {
-        flashLogState.lines.push(base64Line);
-      }
+      flashLogState.lines.push(base64Line);
+      const receivedCount = flashLogState.lines.length;
+      const elapsedSeconds = Math.max(1, Math.round((Date.now() - flashLogState.startedAt.getTime()) / 1000));
+      const rate = (receivedCount / elapsedSeconds).toFixed(1);
+      const hasTotal = Number.isFinite(flashLogState.expectedTotal) && flashLogState.expectedTotal > 0;
+      const detail = hasTotal
+        ? `Received ${receivedCount}/${flashLogState.expectedTotal} messages (${Math.min(100, Math.round((receivedCount / flashLogState.expectedTotal) * 100))}%)`
+        : `Received ${receivedCount} messages (${rate}/s)`;
+      setFlashLogProgress({
+        title: `Downloading logs (${flashLogState.logTypeLabel})...`,
+        detail,
+        received: receivedCount,
+        total: flashLogState.expectedTotal,
+        knownTotal: hasTotal
+      });
       log(`Flash log: ${base64Line}`);
     }
 
@@ -693,6 +949,7 @@
         displaySettings();
         displayMainCommands();
         displayCommands();
+        populateFlashLogTypeOptions();
         document.body.classList.add('has-settings');
         await fetchAllSettings();
         requestFlashLogCount();
@@ -1570,7 +1827,7 @@
     function onDisconnected() {
       log('Disconnected from device');
       if (flashLogState.active) {
-        finishFlashLogCapture('disconnected');
+        showFlashLogFailure('Connection lost during log download.');
       }
       setUbloxFixOverlayVisible(false);
       ubloxFixPending = false;
@@ -1751,8 +2008,21 @@
         if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_CHECK_PIN && data[4] === 0x01) {
           log(`PIN OK`);
           await requestStatusMessage();
-        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB && data[4] === 0x01) {
-          finishFlashLogCapture('device confirm');
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_CLEAR) {
+          if (data[4] === 0x01) {
+            showToast('All logs erased.');
+            setFlashLogStatus('Logs erased');
+            requestFlashLogCount();
+          } else {
+            showToast(`Failed to erase logs (status 0x${data[4].toString(16).padStart(2, '0')}).`);
+            setFlashLogStatus('Erase failed');
+          }
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB) {
+          if (data[4] === 0x01) {
+            finishFlashLogCapture('device confirm');
+          } else if (flashLogState.active) {
+            showFlashLogFailure(`Device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
+          }
         } else if (port === 3) {
           decodeBleValueResponse(data.slice(1));
         } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
@@ -1965,6 +2235,7 @@
       if (countEl) {
         countEl.textContent = Number.isFinite(value) ? String(value) : 'N/A';
       }
+      flashLogCountTotal = Number.isFinite(value) ? Number(value) : null;
       setFlashLogStatus('Updated');
     }
 
@@ -1980,6 +2251,148 @@
       }
       setFlashLogStatus('Requesting flash log count...');
       requestBleValue(flashValue.id, CMD_SEND_SINGLE_VAL);
+    }
+
+    function populateFlashLogTypeOptions() {
+      const select = document.getElementById('flash-log-type-select');
+      if (!select) {
+        return;
+      }
+
+      const ports = settingsData && settingsData.ports ? settingsData.ports : null;
+      const messages = settingsData && settingsData.messages ? settingsData.messages : null;
+      if (!ports || !messages) {
+        select.innerHTML = '<option value="">Message type list unavailable</option>';
+        return;
+      }
+
+      const options = Array.from(new Set(
+        Object.values(messages)
+          .map((message) => message.port)
+          .filter((portName) => typeof portName === 'string' && Number.isFinite(ports[portName]))
+      ))
+        .map((portName) => ({
+          name: portName.replace(/^port_/, ''),
+          port: ports[portName]
+        }))
+        .sort((a, b) => a.port - b.port);
+
+      if (!options.length) {
+        select.innerHTML = '<option value="">No message types found</option>';
+        return;
+      }
+
+      select.innerHTML = options
+        .map((option) => `<option value="${option.port}">${option.name} - port ${option.port}</option>`)
+        .join('');
+    }
+
+    function downloadFlashLogsByType() {
+      if (flashLogState.active) {
+        showToast('A log download is already in progress.');
+        return;
+      }
+      const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
+      if (!flashCommand) {
+        showToast('Flash log command not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+
+      const select = document.getElementById('flash-log-type-select');
+      if (!select || !select.value) {
+        showToast('Select a message type first.');
+        return;
+      }
+
+      const selectedPort = Number.parseInt(select.value, 10);
+      if (!Number.isFinite(selectedPort)) {
+        showToast('Invalid message type selection.');
+        return;
+      }
+
+      const selectedLabel = select.options[select.selectedIndex]?.text || `port ${selectedPort}`;
+      startFlashLogCapture({
+        logTypeLabel: selectedLabel,
+        requestMode: 'type',
+        requestedPort: selectedPort,
+        expectedTotal: null
+      });
+      executeBleCommand([0x20, parseInt(flashCommand.id, 16), 0x01, selectedPort]);
+    }
+
+    function cancelFlashLogDownload() {
+      if (flashLogState.active) {
+        clearFlashLogInactivityTimeout();
+        flashLogState.active = false;
+        log('Flash log download cancelled by user.');
+      }
+      setFlashLogOverlayVisible(false);
+    }
+
+    function retryFlashLogDownload() {
+      if (flashLogState.active) {
+        showToast('A log download is already in progress.');
+        return;
+      }
+      const request = flashLogState.lastRequest;
+      if (!request) {
+        showToast('No previous log download to retry.');
+        return;
+      }
+      const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
+      if (!flashCommand) {
+        showToast('Flash log command not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+
+      startFlashLogCapture(request);
+      executeBleCommand([0x20, parseInt(flashCommand.id, 16), 0x01, request.requestedPort]);
+    }
+
+    function setFlashLogEraseConfirmVisible(visible) {
+      const overlay = document.getElementById('flash-log-erase-confirm-overlay');
+      if (!overlay) {
+        return;
+      }
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function requestEraseAllLogs() {
+      if (flashLogState.active) {
+        showToast('Cancel the current log download first.');
+        return;
+      }
+      const flashClear = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_clear : null;
+      if (!flashClear) {
+        showToast('Flash clear command not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      setFlashLogEraseConfirmVisible(true);
+    }
+
+    function eraseAllLogs() {
+      const flashClear = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_clear : null;
+      if (!flashClear) {
+        showToast('Flash clear command not available in this firmware.');
+        setFlashLogEraseConfirmVisible(false);
+        return;
+      }
+      executeCommand(flashClear.id);
+      setFlashLogEraseConfirmVisible(false);
+      setFlashLogOverlayVisible(false);
+      setFlashLogStatus('Erasing logs...');
     }
 
     function getColdFixTimeoutSeconds() {
@@ -2252,13 +2665,23 @@
         showToast('UBLOX is busy. Please wait before starting another fix.');
         return;
       }
+      if (key === 'cmd_flash_get_all' && flashLogState.active) {
+        showToast('A log download is already in progress.');
+        return;
+      }
       showToast(`Executing command: ${key}`);
       if (key === 'cmd_get_ublox_fix') {
         ubloxFixPending = true;
         scheduleUbloxFixTimeout();
       }
       if (key === 'cmd_flash_get_all') {
-        startFlashLogCapture();
+        const expectedTotal = Number.isFinite(flashLogCountTotal) && flashLogCountTotal >= 0 ? flashLogCountTotal : null;
+        startFlashLogCapture({
+          logTypeLabel: 'all',
+          requestMode: 'all',
+          requestedPort: 0,
+          expectedTotal
+        });
       }
         if (commandMeta && commandMeta.length === 1) {
           const selectEl = document.getElementById(`command-select-${commandMeta.id}`);
@@ -2302,6 +2725,48 @@
 
     async function requestStatusMessage() {
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
+    }
+
+    const flashLogOkButton = document.getElementById('flash-log-ok');
+    if (flashLogOkButton) {
+      flashLogOkButton.addEventListener('click', () => {
+        setFlashLogOverlayVisible(false);
+      });
+    }
+
+    const flashLogCancelButton = document.getElementById('flash-log-cancel');
+    if (flashLogCancelButton) {
+      flashLogCancelButton.addEventListener('click', () => {
+        cancelFlashLogDownload();
+      });
+    }
+
+    const flashLogRetryButton = document.getElementById('flash-log-retry');
+    if (flashLogRetryButton) {
+      flashLogRetryButton.addEventListener('click', () => {
+        retryFlashLogDownload();
+      });
+    }
+
+    const flashLogEraseButton = document.getElementById('flash-log-erase');
+    if (flashLogEraseButton) {
+      flashLogEraseButton.addEventListener('click', () => {
+        requestEraseAllLogs();
+      });
+    }
+
+    const flashLogEraseCancelButton = document.getElementById('flash-log-erase-cancel');
+    if (flashLogEraseCancelButton) {
+      flashLogEraseCancelButton.addEventListener('click', () => {
+        setFlashLogEraseConfirmVisible(false);
+      });
+    }
+
+    const flashLogEraseConfirmButton = document.getElementById('flash-log-erase-confirm');
+    if (flashLogEraseConfirmButton) {
+      flashLogEraseConfirmButton.addEventListener('click', () => {
+        eraseAllLogs();
+      });
     }
 
     const ubloxFixOkButton = document.getElementById('ublox-fix-ok');
