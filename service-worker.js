@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v2';
+const CACHE_NAME = 'app-cache-v3';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const STATIC_FILES = [
@@ -17,7 +17,7 @@ const STATIC_FILES = [
     toUrl('icon512_maskable.png'),
     toUrl('icon512_rounded.png'),
     toUrl('assets/smart-parks-logo.png'),
-    toUrl('settings/settings_testing_1.json'),
+    toUrl('settings/settings_v7.0.0.json'),
     toUrl('settings/settings-v5.0.1.json'),
     toUrl('settings/settings-v6.15.0.json'),
     toUrl('settings/settings-v6.14.1.json'),
