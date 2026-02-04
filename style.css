@@ -889,10 +889,16 @@ h2 {
 }
 
 .app-version {
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.2px;
-    color: rgba(31, 42, 35, 0.6);
+    color: rgba(31, 42, 35, 0.5);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.app-version-footer {
+    text-align: center;
+    padding: 18px 12px 92px;
+    opacity: 0.85;
 }
 
 /* Floating bar at the bottom */
