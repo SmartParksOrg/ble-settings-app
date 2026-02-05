@@ -1960,8 +1960,28 @@
     function displayCommands() {
       const commandsSection = document.getElementById('commands-buttons-section');
       commandsSection.innerHTML = '';
+
+      function getKnownPortOptions() {
+        const options = [{ label: 'all ports', value: 0 }];
+        const ports = settingsData && settingsData.ports ? settingsData.ports : null;
+        if (ports) {
+          Object.entries(ports)
+            .filter(([_, portNum]) => Number.isFinite(portNum))
+            .map(([portName, portNum]) => ({
+              label: portName.replace(/^port_/, ''),
+              value: portNum
+            }))
+            .sort((a, b) => a.value - b.value)
+            .forEach(option => options.push(option));
+        }
+        return options
+          .map(option => `<option value="${option.value}">${option.label} (port ${option.value})</option>`)
+          .join('');
+      }
+
       for (const [key, command] of Object.entries(settingsData.commands)) {
-        if ((command.length !== 0 && command.length !== 1) || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
+        const allowComplex = key === 'cmd_flash_get_from_head';
+        if (((command.length !== 0 && command.length !== 1) && !allowComplex) || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
           continue;
         }
 
@@ -1987,6 +2007,17 @@
             <select id="command-select-${command.id}" class="command-helper-input">
               ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
+          `;
+        } else if (key === 'cmd_flash_get_from_head') {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}-port">Port</label>
+            <select id="command-select-${command.id}-port" class="command-helper-input">
+              ${getKnownPortOptions()}
+            </select>
+            <label class="command-helper-label" for="command-input-${command.id}-start">Start</label>
+            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" />
+            <label class="command-helper-label" for="command-input-${command.id}-count">How many</label>
+            <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" />
           `;
         } else if (commandInputMeta && commandInputMeta.options) {
           helperHtml = `
@@ -3089,6 +3120,42 @@
       if (key === 'cmd_get_ublox_fix') {
         ubloxFixPending = true;
         scheduleUbloxFixTimeout();
+      }
+      if (key === 'cmd_flash_get_from_head') {
+        const portEl = document.getElementById(`command-select-${commandMeta.id}-port`);
+        const startEl = document.getElementById(`command-input-${commandMeta.id}-start`);
+        const countEl = document.getElementById(`command-input-${commandMeta.id}-count`);
+        const parseUint32 = (el, label) => {
+          if (!el) {
+            return 0;
+          }
+          const rawValue = el.value.trim();
+          if (!rawValue) {
+            return 0;
+          }
+          const parsed = rawValue.startsWith('0x') ? parseInt(rawValue, 16) : parseInt(rawValue, 10);
+          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0xFFFFFFFF) {
+            throw new Error(`Invalid ${label} (uint32)`);
+          }
+          return parsed >>> 0;
+        };
+        let port = 0;
+        let start = 0;
+        let count = 0;
+        try {
+          port = parseUint32(portEl, 'port');
+          start = parseUint32(startEl, 'start index');
+          count = parseUint32(countEl, 'count');
+        } catch (error) {
+          showToast(error.message);
+          return;
+        }
+        const payload = new Uint8Array(12);
+        const view = new DataView(payload.buffer);
+        view.setUint32(0, port, true);
+        view.setUint32(4, start, true);
+        view.setUint32(8, count, true);
+        return executeBleCommand([0x20, cmd, payload.length, ...payload]);
       }
       if (key === 'cmd_flash_get_all') {
         const expectedTotal = Number.isFinite(flashLogCountTotal) && flashLogCountTotal >= 0 ? flashLogCountTotal : null;

@@ -437,6 +437,24 @@
       const commandsSection = document.getElementById('commands-section');
       commandsSection.innerHTML = '';
 
+      function getKnownPortOptions() {
+        const options = [{ label: 'all ports', value: 0 }];
+        const ports = settingsData && settingsData.ports ? settingsData.ports : null;
+        if (ports) {
+          Object.entries(ports)
+            .filter(([_, portNum]) => Number.isFinite(portNum))
+            .map(([portName, portNum]) => ({
+              label: portName.replace(/^port_/, ''),
+              value: portNum
+            }))
+            .sort((a, b) => a.value - b.value)
+            .forEach(option => options.push(option));
+        }
+        return options
+          .map(option => `<option value="${option.value}">${option.label} (port ${option.value})</option>`)
+          .join('');
+      }
+
       for (const [key, command] of Object.entries(settingsData.commands)) {
         if (dangerousCommands.some(rx => rx.test(key))) {
           continue;
@@ -467,6 +485,32 @@
             <select id="command-select-${command.id}" class="command-helper-input">
               ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
+          `;
+        } else if (key === 'cmd_flash_get_from_head') {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}-port">Port</label>
+            <select id="command-select-${command.id}-port" class="command-helper-input">
+              ${getKnownPortOptions()}
+            </select>
+            <label class="command-helper-label" for="command-input-${command.id}-start">Start</label>
+            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" />
+            <label class="command-helper-label" for="command-input-${command.id}-count">How many</label>
+            <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" />
+          `;
+        } else if (commandInputMeta && commandInputMeta.options) {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Value</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${commandInputMeta.options.map(option => `<option value="${option.value}">${option.label}</option>`).join('')}
+            </select>
+          `;
+        } else if (commandInputMeta && commandInputMeta.input) {
+          const placeholder = commandInputMeta.input.placeholder || '';
+          const labelText = commandInputMeta.input.label || 'Value';
+          const dataFormat = commandInputMeta.input.format || 'uint8';
+          helperHtml = `
+            <label class="command-helper-label" for="command-input-${command.id}">${labelText}</label>
+            <input id="command-input-${command.id}" class="command-helper-input" type="text" placeholder="${placeholder}" data-format="${dataFormat}" />
           `;
         }
         row.innerHTML = `
@@ -610,13 +654,61 @@
         try {
           if (settingObj.type === 'command' && settingObj.length === 1) {
             const selectEl = document.getElementById(`command-select-${settingObj.id}`);
+            const inputEl = document.getElementById(`command-input-${settingObj.id}`);
+            let value = 0;
             if (selectEl) {
               const selected = selectEl.value;
-              const parsed = selected && selected.startsWith('0x') ? parseInt(selected, 16) : parseInt(selected, 10);
-              valueBytes = settingToBytes(settingKey, settingObj, parsed.toString());
-            } else {
-              valueBytes = settingToBytes(settingKey, settingObj, getInputValue(settingObj.id));
+              value = selected && selected.startsWith('0x') ? parseInt(selected, 16) : parseInt(selected, 10);
+            } else if (inputEl) {
+              const rawValue = inputEl.value.trim();
+              const format = inputEl.getAttribute('data-format') || 'uint8';
+              if (rawValue.length === 0) {
+                value = 0;
+              } else if (format === 'hex8') {
+                const cleaned = rawValue.replace(/^0x/i, '');
+                const parsed = parseInt(cleaned, 16);
+                if (Number.isNaN(parsed)) {
+                  throw new Error('Invalid hex value');
+                }
+                value = parsed;
+              } else {
+                const parsed = parseInt(rawValue, 10);
+                if (Number.isNaN(parsed)) {
+                  throw new Error('Invalid numeric value');
+                }
+                value = parsed;
+              }
+            } else if (settingObj.value !== undefined) {
+              value = settingObj.value;
             }
+            valueBytes = settingToBytes(settingKey, settingObj, value.toString());
+          } else if (settingObj.type === 'command' && settingKey === 'cmd_flash_get_from_head') {
+            const portEl = document.getElementById(`command-select-${settingObj.id}-port`);
+            const startEl = document.getElementById(`command-input-${settingObj.id}-start`);
+            const countEl = document.getElementById(`command-input-${settingObj.id}-count`);
+            const parseUint32 = (el, label) => {
+              if (!el) {
+                return 0;
+              }
+              const rawValue = el.value.trim();
+              if (!rawValue) {
+                return 0;
+              }
+              const parsed = rawValue.startsWith('0x') ? parseInt(rawValue, 16) : parseInt(rawValue, 10);
+              if (!Number.isFinite(parsed) || parsed < 0 || parsed > 0xFFFFFFFF) {
+                throw new Error(`Invalid ${label} (uint32)`);
+              }
+              return parsed >>> 0;
+            };
+            const port = parseUint32(portEl, 'port');
+            const start = parseUint32(startEl, 'start index');
+            const count = parseUint32(countEl, 'count');
+            const payload = new Uint8Array(12);
+            const view = new DataView(payload.buffer);
+            view.setUint32(0, port, true);
+            view.setUint32(4, start, true);
+            view.setUint32(8, count, true);
+            valueBytes = payload;
           } else {
             valueBytes = settingToBytes(settingKey, settingObj, getInputValue(settingObj.id));
           }
