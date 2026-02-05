@@ -1,0 +1,51 @@
+{
+  "notes": [
+    {
+      "id": "flash-get-from-head-offset",
+      "title": "Flash logs: CMD_FLASH_GET_FROM_HEAD start offset bug",
+      "appliesTo": {
+        "fwVersions": [
+          "4.4.2",
+          "5.0.1",
+          "6.8.1",
+          "6.9.0",
+          "6.10.0",
+          "6.11.0",
+          "6.12.1",
+          "6.14.1",
+          "6.15.0"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "Bug: the start index is shifted by the requested count.",
+        "Impact: a request for start X and count N is treated as start X+N.",
+        "Workaround: for the latest N entries, use start=0 and count=N."
+      ]
+    },
+    {
+      "id": "firmware-test-warning",
+      "title": "Firmware status: test build",
+      "appliesTo": {
+        "fwVersions": [
+          "7.0.0"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "This firmware is a test build.",
+        "Expect incomplete or unstable behavior."
+      ]
+    }
+  ]
+}

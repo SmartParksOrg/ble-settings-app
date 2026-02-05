@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v4';
+const CACHE_NAME = 'app-cache-v8';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const STATIC_FILES = [
@@ -14,6 +14,7 @@ const STATIC_FILES = [
     toUrl('composer-manifest.json'),
     toUrl('version.json'),
     toUrl('settings-meta.json'),
+    toUrl('device-version-notes.json'),
     toUrl('favicon.ico'),
     toUrl('icon512_maskable.png'),
     toUrl('icon512_rounded.png'),

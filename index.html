@@ -144,6 +144,13 @@
     </details>
   </div>
 
+  <div id="firmware-notes-area" class="commands-section page-section hidden">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Firmware Notes</summary>
+      <div class="section-card-body" id="firmware-notes-body"></div>
+    </details>
+  </div>
+
   <div id="messenger-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Messenger</summary>
@@ -1615,11 +1622,190 @@
         requestFlashLogCount();
         updateMessengerMeta();
         startMessengerPolling();
+        updateFirmwareNotes(selectedFile);
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
       }
     };
+
+    let deviceVersionNotes = null;
+    let deviceVersionNotesLoading = null;
+    let deviceVersionNotesError = null;
+    let lastStatusInfo = null;
+
+    function extractSettingsVersion(fileName) {
+      if (!fileName) {
+        return null;
+      }
+      const base = fileName.split('/').pop();
+      const match = base.match(/v(\d+\.\d+\.\d+)/i) || base.match(/(\d+\.\d+\.\d+)/);
+      return match ? match[1] : null;
+    }
+
+    function parseVersionString(version) {
+      if (!version) {
+        return null;
+      }
+      const parts = String(version).split('.').map((val) => parseInt(val, 10));
+      if (!parts.length || parts.some((val) => Number.isNaN(val))) {
+        return null;
+      }
+      return [
+        parts[0] || 0,
+        parts[1] || 0,
+        parts[2] || 0
+      ];
+    }
+
+    function compareVersionStrings(a, b) {
+      const av = parseVersionString(a);
+      const bv = parseVersionString(b);
+      if (!av || !bv) {
+        return 0;
+      }
+      for (let i = 0; i < 3; i++) {
+        if (av[i] > bv[i]) return 1;
+        if (av[i] < bv[i]) return -1;
+      }
+      return 0;
+    }
+
+    function loadDeviceVersionNotes() {
+      if (deviceVersionNotes) {
+        return Promise.resolve(deviceVersionNotes);
+      }
+      if (deviceVersionNotesLoading) {
+        return deviceVersionNotesLoading;
+      }
+      deviceVersionNotesError = null;
+      deviceVersionNotesLoading = fetch('device-version-notes.json', { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Failed to load device-version-notes.json (${response.status})`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          deviceVersionNotes = data && Array.isArray(data.notes) ? data : { notes: [] };
+          return deviceVersionNotes;
+        })
+        .catch((error) => {
+          console.warn('Device version notes unavailable', error);
+          deviceVersionNotesError = error;
+          deviceVersionNotes = { notes: [] };
+          return deviceVersionNotes;
+        })
+        .finally(() => {
+          deviceVersionNotesLoading = null;
+        });
+      return deviceVersionNotesLoading;
+    }
+
+    function matchesDeviceNote(note, context) {
+      const applies = note.appliesTo || {};
+      const fwVersions = Array.isArray(applies.fwVersions) ? applies.fwVersions : [];
+      const hwVersions = Array.isArray(applies.hwVersions) ? applies.hwVersions : [];
+      const hwTypes = Array.isArray(applies.hwTypes) ? applies.hwTypes : [];
+      const fwVersionMin = applies.fwVersionMin || null;
+      const fwVersionMax = applies.fwVersionMax || null;
+      const hwVersionMin = applies.hwVersionMin || null;
+      const hwVersionMax = applies.hwVersionMax || null;
+
+      if (fwVersions.length) {
+        if (!context.fwVersion) {
+          return false;
+        }
+        const fwMatch = fwVersions.some((val) => compareVersionStrings(context.fwVersion, val) === 0);
+        if (!fwMatch) {
+          return false;
+        }
+      }
+      if (fwVersionMin && (!context.fwVersion || compareVersionStrings(context.fwVersion, fwVersionMin) < 0)) {
+        return false;
+      }
+      if (fwVersionMax && (!context.fwVersion || compareVersionStrings(context.fwVersion, fwVersionMax) > 0)) {
+        return false;
+      }
+      if (hwVersions.length && (!context.hwVersion || !hwVersions.includes(context.hwVersion))) {
+        return false;
+      }
+      if (hwVersionMin && (!context.hwVersion || compareVersionStrings(context.hwVersion, hwVersionMin) < 0)) {
+        return false;
+      }
+      if (hwVersionMax && (!context.hwVersion || compareVersionStrings(context.hwVersion, hwVersionMax) > 0)) {
+        return false;
+      }
+      if (hwTypes.length) {
+        if (context.hwType == null) {
+          return false;
+        }
+        const hwTypeStr = String(context.hwType);
+        const hwTypeMatch = hwTypes.some((val) => String(val) === hwTypeStr);
+        if (!hwTypeMatch) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function updateFirmwareNotes(selectedFile) {
+      const notesArea = document.getElementById('firmware-notes-area');
+      const notesBody = document.getElementById('firmware-notes-body');
+      if (!notesArea || !notesBody) {
+        return;
+      }
+      if (!selectedFile) {
+        notesArea.classList.add('hidden');
+        notesBody.innerHTML = '';
+        return;
+      }
+      const settingsVersion = extractSettingsVersion(selectedFile);
+      const statusFw = lastStatusInfo?.fwVersion || null;
+      const statusFwParts = statusFw ? statusFw.split('.') : [];
+      const settingsFwParts = settingsVersion ? settingsVersion.split('.') : [];
+      const preferredFw = (settingsFwParts.length >= 3 && statusFwParts.length < 3) ? settingsVersion : (statusFw || settingsVersion);
+      const context = {
+        fwVersion: preferredFw,
+        hwVersion: lastStatusInfo?.hwVersion || null,
+        hwType: lastStatusInfo?.hwType ?? null
+      };
+
+      loadDeviceVersionNotes().then((data) => {
+        const matching = data.notes.filter(note => matchesDeviceNote(note, context));
+        if (!matching.length) {
+          if (deviceVersionNotesError && context.fwVersion) {
+            notesBody.innerHTML = `
+              <div class="data-item">
+                <div>
+                  <strong>Firmware notes unavailable</strong>
+                  <div>Could not load \`device-version-notes.json\`.</div>
+                  <div class="muted">Check that the file is served from the site root.</div>
+                </div>
+              </div>
+            `;
+            notesArea.classList.remove('hidden');
+            return;
+          }
+          notesArea.classList.add('hidden');
+          notesBody.innerHTML = '';
+          return;
+        }
+        const versionLabel = context.fwVersion ? `v${context.fwVersion}` : 'unknown';
+        const hwLabel = context.hwVersion ? `HW ${context.hwVersion}` : 'HW unknown';
+        const notesHtml = matching.map(note => `
+          <div class="data-item">
+            <div>
+              <strong>${note.title}</strong>
+              <div>${note.body.map(line => `<div>${line}</div>`).join('')}</div>
+              <div class="muted">Applies to settings: ${versionLabel} · ${hwLabel}</div>
+            </div>
+          </div>
+        `).join('');
+        notesBody.innerHTML = notesHtml;
+        notesArea.classList.remove('hidden');
+      });
+    }
 
     function exportToJson() {
       const settings = {};
@@ -2068,6 +2254,12 @@
       const statusMessageElement = document.getElementById('status-message');
       const statusItems = [];
       let lrUpdateBanner = '';
+      lastStatusInfo = {
+        fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
+        hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`,
+        fwType: statusMessage.ver_fw_type,
+        hwType: statusMessage.ver_hw_type
+      };
 
       if (lrUpdateMode) {
         ubloxBusyStatus = Boolean(statusMessage.ublox_busy);
@@ -2152,6 +2344,7 @@
           await executeBleCommand([0x20, CMD_SEND_SINGLE_VAL, 0x01, VAL_UBLOX_TIME]);
         }
       }
+      updateFirmwareNotes(document.getElementById('settings-dropdown')?.value);
     }
 
     function compareSemanticVersion(major1, minor1, major2, minor2) {
@@ -2538,6 +2731,8 @@
       autoLoaded = false;
       setLrUpdateMode(false);
       document.body.classList.remove('connected');
+      lastStatusInfo = null;
+      updateFirmwareNotes(null);
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
       stopMessengerPolling();

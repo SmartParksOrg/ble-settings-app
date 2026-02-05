@@ -90,6 +90,13 @@
     </details>
   </div>
 
+  <div id="composer-firmware-notes" class="commands-section page-section hidden">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Firmware Notes</summary>
+      <div class="section-card-body" id="composer-firmware-notes-body"></div>
+    </details>
+  </div>
+
   <div id="floating-bar">
     <select id="payload-type" onchange="updateEncodedMessage()">
       <option value="none">Payload type</option>
@@ -159,17 +166,163 @@
     // ---------------------------------------------
     async function loadSelectedFile() {
       const selectedFile = document.getElementById('settings-dropdown').value;
-      await loadSettings(selectedFile);
-      displaySettings();
-      displayCommands();
-      updateComposerMessengerMeta();
-      updateComposerMessengerPayload();
-      updateEncodedMessage(); // Update once shown
+      try {
+        await loadSettings(selectedFile);
+        displaySettings();
+        displayCommands();
+        updateComposerMessengerMeta();
+        updateComposerMessengerPayload();
+        updateEncodedMessage(); // Update once shown
+      } catch (error) {
+        console.error(error);
+        showToast(error.message || 'Failed to load settings file.');
+      } finally {
+        updateComposerFirmwareNotes(selectedFile);
+      }
     }
 
     const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     let lastPayloadType = 'none';
     const COMPOSER_MESSAGING_MAX_LEN = 46;
+
+    let composerDeviceVersionNotes = null;
+    let composerDeviceVersionNotesLoading = null;
+    let composerDeviceVersionNotesError = null;
+
+    function extractSettingsVersion(fileName) {
+      if (!fileName) {
+        return null;
+      }
+      const base = fileName.split('/').pop();
+      const match = base.match(/v(\d+\.\d+\.\d+)/i) || base.match(/(\d+\.\d+\.\d+)/);
+      return match ? match[1] : null;
+    }
+
+    function parseVersionString(version) {
+      if (!version) {
+        return null;
+      }
+      const parts = String(version).split('.').map((val) => parseInt(val, 10));
+      if (!parts.length || parts.some((val) => Number.isNaN(val))) {
+        return null;
+      }
+      return [
+        parts[0] || 0,
+        parts[1] || 0,
+        parts[2] || 0
+      ];
+    }
+
+    function compareVersionStrings(a, b) {
+      const av = parseVersionString(a);
+      const bv = parseVersionString(b);
+      if (!av || !bv) {
+        return 0;
+      }
+      for (let i = 0; i < 3; i++) {
+        if (av[i] > bv[i]) return 1;
+        if (av[i] < bv[i]) return -1;
+      }
+      return 0;
+    }
+
+    function loadDeviceVersionNotes() {
+      if (composerDeviceVersionNotes) {
+        return Promise.resolve(composerDeviceVersionNotes);
+      }
+      if (composerDeviceVersionNotesLoading) {
+        return composerDeviceVersionNotesLoading;
+      }
+      composerDeviceVersionNotesError = null;
+      composerDeviceVersionNotesLoading = fetch('device-version-notes.json', { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) {
+            throw new Error(`Failed to load device-version-notes.json (${response.status})`);
+          }
+          return response.json();
+        })
+        .then((data) => {
+          composerDeviceVersionNotes = data && Array.isArray(data.notes) ? data : { notes: [] };
+          return composerDeviceVersionNotes;
+        })
+        .catch((error) => {
+          console.warn('Device version notes unavailable', error);
+          composerDeviceVersionNotesError = error;
+          composerDeviceVersionNotes = { notes: [] };
+          return composerDeviceVersionNotes;
+        })
+        .finally(() => {
+          composerDeviceVersionNotesLoading = null;
+        });
+      return composerDeviceVersionNotesLoading;
+    }
+
+    function matchesDeviceNote(note, context) {
+      const applies = note.appliesTo || {};
+      const fwVersions = Array.isArray(applies.fwVersions) ? applies.fwVersions : [];
+      const fwVersionMin = applies.fwVersionMin || null;
+      const fwVersionMax = applies.fwVersionMax || null;
+      if (fwVersions.length && (!context.fwVersion || !fwVersions.includes(context.fwVersion))) {
+        return false;
+      }
+      if (fwVersionMin && (!context.fwVersion || compareVersionStrings(context.fwVersion, fwVersionMin) < 0)) {
+        return false;
+      }
+      if (fwVersionMax && (!context.fwVersion || compareVersionStrings(context.fwVersion, fwVersionMax) > 0)) {
+        return false;
+      }
+      return true;
+    }
+
+    function updateComposerFirmwareNotes(selectedFile) {
+      const notesArea = document.getElementById('composer-firmware-notes');
+      const notesBody = document.getElementById('composer-firmware-notes-body');
+      if (!notesArea || !notesBody) {
+        return;
+      }
+      if (!selectedFile) {
+        notesArea.classList.add('hidden');
+        notesBody.innerHTML = '';
+        return;
+      }
+      const version = extractSettingsVersion(selectedFile);
+      const context = { fwVersion: version };
+      loadDeviceVersionNotes().then((data) => {
+        const matching = data.notes.filter(note => matchesDeviceNote(note, context));
+        if (!matching.length) {
+          if (composerDeviceVersionNotesError && context.fwVersion) {
+            notesBody.innerHTML = `
+              <div class="data-item">
+                <div>
+                  <strong>Firmware notes unavailable</strong>
+                  <div>Could not load \`device-version-notes.json\`.</div>
+                  <div class="muted">Check that the file is served from the site root.</div>
+                </div>
+              </div>
+            `;
+            notesArea.classList.remove('hidden');
+            return;
+          }
+          notesArea.classList.add('hidden');
+          notesBody.innerHTML = '';
+          document.body.classList.remove('composer-notes-visible');
+          return;
+        }
+        const versionLabel = version ? `v${version}` : 'unknown';
+        const notesHtml = matching.map(note => `
+          <div class="data-item">
+            <div>
+              <strong>${note.title}</strong>
+              <div>${note.body.map(line => `<div>${line}</div>`).join('')}</div>
+              <div class="muted">Applies to settings: ${versionLabel}</div>
+            </div>
+          </div>
+        `).join('');
+        notesBody.innerHTML = notesHtml;
+        notesArea.classList.remove('hidden');
+        document.body.classList.add('composer-notes-visible');
+      });
+    }
 
     function isCredentialSetting(setting) {
       if (!setting || !setting.id) {
