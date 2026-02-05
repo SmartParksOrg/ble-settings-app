@@ -111,7 +111,7 @@
   </div>
 
   <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
-    <details class="section section-card" open>
+    <details class="section section-card">
       <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Logs</summary>
       <div class="section-card-body">
         <div class="status-header">
@@ -139,6 +139,38 @@
         </div>
         <div class="log-actions">
           <button type="button" class="log-action-button secondary" onclick="requestEraseAllLogs()">Erase all logs</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="messenger-area" class="commands-section page-section hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Messenger</summary>
+      <div class="section-card-body messenger-card">
+        <div class="status-header messenger-header">
+          <div class="status-item"><span class="icon messages"></span>Chat</div>
+          <a href="#" onclick="messengerCheckNow()">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
+        </div>
+        <div class="messenger-meta">
+          <span id="messenger-send-flag" class="messenger-pill">LoRa send: unknown</span>
+          <span id="messenger-unread" class="messenger-pill">Unread: -</span>
+          <span id="messenger-retry" class="messenger-pill">Retry: -</span>
+        </div>
+        <div id="messenger-messages" class="messenger-messages">
+          <div class="messenger-empty">No messages yet.</div>
+        </div>
+        <div class="messenger-input">
+          <textarea id="messenger-text" rows="2" placeholder="Type a message (ASCII, max 46)"></textarea>
+          <span id="messenger-limit" class="messenger-limit messenger-limit-centered">0 / 46</span>
+          <div class="messenger-send-row">
+            <button type="button" class="log-action-button messenger-send-button" onclick="messengerSend()">Send</button>
+          </div>
+          <div class="messenger-actions messenger-actions-bottom">
+            <button type="button" class="log-action-button" onclick="requestMessengerDownlink()">Ping LR1</button>
+          </div>
         </div>
       </div>
     </details>
@@ -456,16 +488,29 @@
     const CMD_SEND_TIMESTAMP = 0xCE;
     const CMD_FLASH_CLEAR = 0xBA;
     const CMD_FLASH_GET_FROM_HEAD = 0xBC;
+    const CMD_SEND_LR_MESSAGE = 0xC4;
+    const CMD_READ_ALL_LR_MESSAGES = 0xC5;
     const TRACK_POINTS_LIMIT = 25;
     const VAL_UBLOX_TIME = 0xD8;
+    const VAL_N_MES = 0xEB;
     const MSG_TIMESTAMP = 0x97;
     const MSG_CMD_CONFIRM = 0xF3;
     const MSG_LAST_POSITION = 0xFE;
+    const MSG_LR_MESSAGING = 0x90;
+    const MSG_LR_MESSAGING_TIMESTAMP = 0xF0;
     const LR_UPDATE_FW_MAJOR = 5;
     const LR_UPDATE_FW_MINOR = 0;
+    const LR_MESSAGING_MAX_LEN = 46;
+    const MESSENGER_POLL_MS = 30000;
 
     const excludeFromImportExport = ['tracker_type', 'ble_adv'];
     const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
+    const messengerState = {
+      messages: [],
+      unread: null,
+      pollId: null,
+      pendingUnreadCheck: false
+    };
     const mainCommands = {
       'cmd_join': 'Join LP1',
       'cmd_send_status_lr': 'Send status to LR1',
@@ -580,6 +625,217 @@
       const statusEl = document.getElementById('map-status');
       if (statusEl) {
         statusEl.textContent = message;
+      }
+    }
+
+    function updateMessengerLimit() {
+      const input = document.getElementById('messenger-text');
+      const limitEl = document.getElementById('messenger-limit');
+      if (!input || !limitEl) return;
+      const length = new TextEncoder().encode(input.value).length;
+      limitEl.textContent = `${length} / ${LR_MESSAGING_MAX_LEN}`;
+      limitEl.style.color = length > LR_MESSAGING_MAX_LEN ? '#b42318' : '#7c8797';
+    }
+
+    function updateMessengerMeta() {
+      const unreadEl = document.getElementById('messenger-unread');
+      if (unreadEl) {
+        unreadEl.textContent = `Unread: ${Number.isFinite(messengerState.unread) ? messengerState.unread : '-'}`;
+      }
+      const sendFlagEl = document.getElementById('messenger-send-flag');
+      if (sendFlagEl) {
+        sendFlagEl.textContent = `LoRa send: ${getMessengerSendFlagLabel()}`;
+      }
+      const retryEl = document.getElementById('messenger-retry');
+      if (retryEl) {
+        retryEl.textContent = `Retry: ${getMessengerRetryLabel()}`;
+      }
+    }
+
+    function getMessengerSendFlagLabel() {
+      if (!settingsData || !settingsData.settings || !settingsData.settings.lr_send_flag) {
+        return 'unknown';
+      }
+      const value = getInputValue(settingsData.settings.lr_send_flag.id);
+      const port = settingsData && settingsData.ports ? settingsData.ports.port_lr_messaging : null;
+      if (value == null || !Number.isFinite(port)) {
+        return 'unknown';
+      }
+      const normalized = value.toString().trim().toLowerCase();
+      let bitmask = 0;
+      if (normalized.startsWith('0x')) {
+        bitmask = parseInt(normalized, 16);
+      } else if (normalized === 'true') {
+        bitmask = 1;
+      } else if (normalized === 'false') {
+        bitmask = 0;
+      } else {
+        bitmask = parseInt(normalized, 10);
+      }
+      if (!Number.isFinite(bitmask)) {
+        return 'unknown';
+      }
+      const mask = 1 << (port - 1);
+      const enabled = (bitmask & mask) !== 0;
+      return enabled ? 'on' : 'off';
+    }
+
+    function getMessengerRetryLabel() {
+      if (!settingsData || !settingsData.settings) {
+        return '-';
+      }
+      const intervalSetting = settingsData.settings.lr_messaging_retry_interval;
+      const countSetting = settingsData.settings.lr_messaging_retry_count;
+      if (!intervalSetting || !countSetting) {
+        return '-';
+      }
+      const interval = getInputValue(intervalSetting.id);
+      const count = getInputValue(countSetting.id);
+      if (!interval || !count) {
+        return '-';
+      }
+      return `${interval}s x${count}`;
+    }
+
+    function renderMessengerMessages() {
+      const container = document.getElementById('messenger-messages');
+      if (!container) return;
+      if (!messengerState.messages.length) {
+        container.innerHTML = `<div class="messenger-empty">No messages yet.</div>`;
+        return;
+      }
+      const sorted = messengerState.messages
+        .slice()
+        .sort((a, b) => a.timestamp - b.timestamp);
+      container.innerHTML = sorted.map(msg => `
+        <div class="messenger-message ${msg.direction}">
+          <div>${escapeHtml(msg.text)}</div>
+          <div class="messenger-meta-line">
+            <span>${new Date(msg.timestamp * 1000).toLocaleString('nl-NL')}</span>
+            ${msg.seq != null ? `<span>#${msg.seq}</span>` : ''}
+            ${msg.retry != null ? `<span>retry ${msg.retry}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function addMessengerMessage(message) {
+      messengerState.messages.push(message);
+      renderMessengerMessages();
+    }
+
+    function decodeLrMessagingPayload(valueBytes, hasTimestamp) {
+      const dataLen = valueBytes[0] || 0;
+      const dataStart = 1;
+      const dataEnd = Math.min(valueBytes.length, dataStart + dataLen);
+      const dataBytes = valueBytes.slice(dataStart, dataEnd);
+      const decoded = new TextDecoder().decode(dataBytes).replace(/\u0000+$/g, '');
+      const seqIdx = dataEnd;
+      const retryIdx = dataEnd + 1;
+      const seq = valueBytes[seqIdx];
+      const retry = valueBytes[retryIdx];
+      let timestamp = Math.floor(Date.now() / 1000);
+      if (hasTimestamp && valueBytes.length >= retryIdx + 5) {
+        const view = new DataView(new Uint8Array(valueBytes.slice(retryIdx + 1, retryIdx + 5)).buffer);
+        timestamp = view.getUint32(0, true);
+      }
+      return {
+        text: decoded,
+        seq: Number.isFinite(seq) ? seq : null,
+        retry: Number.isFinite(retry) ? retry : null,
+        timestamp
+      };
+    }
+
+    function requestMessengerMessages() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        return;
+      }
+      if (!settingsData || !settingsData.commands || !settingsData.commands.cmd_read_all_lr_messages) {
+        return;
+      }
+      return executeBleCommand([0x20, CMD_READ_ALL_LR_MESSAGES, 0x00]);
+    }
+
+    function requestMessengerDownlink() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        return;
+      }
+      const cmd = settingsData && settingsData.commands ? settingsData.commands.cmd_send_status_lr : null;
+      if (!cmd) {
+        showToast('Status-to-LR1 not available in this firmware.');
+        return;
+      }
+      executeCommand(cmd.id);
+      showToast('Sent status to LR1.');
+    }
+
+    function requestMessengerUnreadCount() {
+      if (!settingsData || !settingsData.values || !settingsData.values.n_mes) {
+        return;
+      }
+      messengerState.pendingUnreadCheck = true;
+      requestBleValue(settingsData.values.n_mes.id, CMD_SEND_SINGLE_VAL);
+    }
+
+    function messengerCheckNow() {
+      messengerState.pendingUnreadCheck = true;
+      requestMessengerUnreadCount();
+      requestMessengerMessages();
+      updateMessengerMeta();
+    }
+
+    function messengerSend() {
+      const input = document.getElementById('messenger-text');
+      if (!input) return;
+      if (!settingsData || !settingsData.commands || !settingsData.commands.cmd_send_lr_message) {
+        showToast('Messaging not available in this firmware.');
+        return;
+      }
+      const text = input.value.trim();
+      if (!text) {
+        showToast('Message is empty.');
+        return;
+      }
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(text);
+      if (bytes.length > LR_MESSAGING_MAX_LEN) {
+        showToast(`Message too long (max ${LR_MESSAGING_MAX_LEN}).`);
+        return;
+      }
+      if (bytes.some(b => b > 0x7F)) {
+        showToast('Only ASCII is supported.');
+        return;
+      }
+      const payload = new Uint8Array(1 + bytes.length);
+      payload[0] = bytes.length;
+      payload.set(bytes, 1);
+      executeBleCommand([0x20, CMD_SEND_LR_MESSAGE, payload.length, ...payload]);
+      addMessengerMessage({
+        direction: 'outgoing',
+        text,
+        timestamp: Math.floor(Date.now() / 1000)
+      });
+      input.value = '';
+      updateMessengerLimit();
+    }
+
+    function startMessengerPolling() {
+      stopMessengerPolling();
+      messengerState.pollId = setInterval(() => {
+        if (!document.body.classList.contains('connected')) {
+          return;
+        }
+        requestMessengerUnreadCount();
+        requestMessengerMessages();
+      }, MESSENGER_POLL_MS);
+    }
+
+    function stopMessengerPolling() {
+      if (messengerState.pollId) {
+        clearInterval(messengerState.pollId);
+        messengerState.pollId = null;
       }
     }
 
@@ -1357,6 +1613,8 @@
         document.body.classList.add('has-settings');
         await fetchAllSettings();
         requestFlashLogCount();
+        updateMessengerMeta();
+        startMessengerPolling();
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
@@ -2282,6 +2540,7 @@
       document.body.classList.remove('connected');
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
+      stopMessengerPolling();
       if (document.body.classList.contains('dfu-active')) {
         const awaiting = window.DfuApp && window.DfuApp.isAwaitingReboot && window.DfuApp.isAwaitingReboot();
         if (awaiting) {
@@ -3021,6 +3280,21 @@
           const [key, msg] = message;
           const valueBytes = data.slice(3, 3 + msg.length);
 
+          if (portName === 'port_lr_messaging') {
+            const hasTimestamp = id === MSG_LR_MESSAGING_TIMESTAMP;
+            const decoded = decodeLrMessagingPayload(valueBytes, hasTimestamp);
+            addMessengerMessage({
+              direction: 'incoming',
+              text: decoded.text,
+              timestamp: decoded.timestamp,
+              seq: decoded.seq,
+              retry: decoded.retry
+            });
+            messengerState.unread = Math.max(0, Number.isFinite(messengerState.unread) ? messengerState.unread - 1 : 0);
+            updateMessengerMeta();
+            return;
+          }
+
           if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
@@ -3058,6 +3332,14 @@
         if (key === 'flash_nr_msg') {
           updateFlashLogCount(value);
         }
+        if (key === 'n_mes') {
+          messengerState.unread = Number(value);
+          updateMessengerMeta();
+          if (messengerState.pendingUnreadCheck && messengerState.unread > 0) {
+            requestMessengerMessages();
+          }
+          messengerState.pendingUnreadCheck = false;
+        }
         i += len;
       }
     }
@@ -3082,6 +3364,10 @@
 
     function updateSettingDisplay(settingId, value) {
       setInputValue(settingId, value);
+      const [key] = getById(settingId);
+      if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
+        updateMessengerMeta();
+      }
 
       const rowElement = document.getElementById(`setting-${settingId}`);
       if (rowElement) {
@@ -3314,15 +3600,18 @@
       return characteristic.writeValue(buffer);
     }
 
+    let bleWriteQueue = Promise.resolve();
+
     async function executeBleCommand(command) {
       log(`Sending command ${bytesToHex(command)}`);
 
       const commandBuffer = new Uint8Array(command).buffer;
-      try {
-        await writeGattValue(rxCharacteristic, commandBuffer);
-      } catch (error) {
-        log(`Error sending command: ${error.message}`, true);
-      }
+      bleWriteQueue = bleWriteQueue
+        .then(() => writeGattValue(rxCharacteristic, commandBuffer))
+        .catch((error) => {
+          log(`Error sending command: ${error.message}`, true);
+        });
+      return bleWriteQueue;
     }
 
     async function fetchAllSettings() {
@@ -3359,6 +3648,18 @@
       } finally {
         rowElement.classList.remove('disabled');
       }
+    }
+
+    const messengerInput = document.getElementById('messenger-text');
+    if (messengerInput) {
+      messengerInput.addEventListener('input', updateMessengerLimit);
+      messengerInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          messengerSend();
+        }
+      });
+      updateMessengerLimit();
     }
   </script>
 </body>
