@@ -95,6 +95,10 @@ body.connected #header-section {
 }
 
 #composer-commands {
+    padding-bottom: 0;
+}
+
+#composer-messenger {
     padding-bottom: 60px;
 }
 
@@ -982,6 +986,21 @@ body.connected #commands-section {
     align-items: center;
     justify-content: flex-end;
     gap: 12px;
+}
+
+.messenger-payload-output {
+    width: 100%;
+    height: 40px;
+    padding: 0 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid rgba(31, 42, 35, 0.2);
+    background: #fff;
+    color: #000;
+    font-family: monospace;
+}
+
+.messenger-payload-output.invalid {
+    border-color: #b42318;
 }
 
 .messenger-limit {

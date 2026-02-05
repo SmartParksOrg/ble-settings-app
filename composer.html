@@ -70,6 +70,26 @@
     </details>
   </div>
 
+  <div id="composer-messenger" class="commands-section page-section">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Messenger</summary>
+      <div class="section-card-body messenger-card">
+        <div class="messenger-meta">
+          <span id="composer-messenger-port" class="messenger-pill">Port: -</span>
+          <span class="messenger-pill">Payload: length + ASCII bytes</span>
+        </div>
+        <div class="messenger-input">
+          <textarea id="composer-messenger-text" rows="2" placeholder="Type a message (ASCII, max 46)" oninput="updateComposerMessengerPayload()"></textarea>
+          <span id="composer-messenger-count" class="messenger-limit messenger-limit-centered">0 / 46</span>
+          <div class="messenger-send-row">
+            <input type="text" id="composer-messenger-hex" class="messenger-payload-output" readonly value="(no message)" />
+          </div>
+          <div id="composer-messenger-error" class="input-helper"></div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="floating-bar">
     <select id="payload-type" onchange="updateEncodedMessage()">
       <option value="none">Payload type</option>
@@ -142,11 +162,14 @@
       await loadSettings(selectedFile);
       displaySettings();
       displayCommands();
+      updateComposerMessengerMeta();
+      updateComposerMessengerPayload();
       updateEncodedMessage(); // Update once shown
     }
 
     const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     let lastPayloadType = 'none';
+    const COMPOSER_MESSAGING_MAX_LEN = 46;
 
     function isCredentialSetting(setting) {
       if (!setting || !setting.id) {
@@ -242,6 +265,99 @@
 
       const safeFilename = ensureJsonExtension(sanitizeFilename(filename));
       downloadSettingsJson(settings, safeFilename);
+    }
+
+    function updateComposerMessengerMeta() {
+      const portEl = document.getElementById('composer-messenger-port');
+      if (!portEl) {
+        return;
+      }
+      const port = settingsData && settingsData.ports ? settingsData.ports.port_lr_messaging : null;
+      portEl.textContent = `Port: ${Number.isFinite(port) ? port : '-'}`;
+    }
+
+    function setComposerMessengerError(message) {
+      const errorEl = document.getElementById('composer-messenger-error');
+      const outputEl = document.getElementById('composer-messenger-hex');
+      if (errorEl) {
+        errorEl.textContent = message || '';
+      }
+      if (!outputEl) {
+        return;
+      }
+      if (message) {
+        outputEl.classList.add('invalid');
+      } else {
+        outputEl.classList.remove('invalid');
+      }
+    }
+
+    function getComposerMessengerPayload() {
+      const input = document.getElementById('composer-messenger-text');
+      if (!input) {
+        return { empty: true, error: null, payload: null };
+      }
+      const text = (input.value || '').trim();
+      if (!text) {
+        return { empty: true, error: null, payload: null };
+      }
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(text);
+      if (bytes.some((b) => b > 0x7F)) {
+        return { empty: false, error: 'Only ASCII characters are supported.', payload: null };
+      }
+      if (bytes.length > COMPOSER_MESSAGING_MAX_LEN) {
+        return { empty: false, error: `Message too long (max ${COMPOSER_MESSAGING_MAX_LEN}).`, payload: null };
+      }
+      const payload = new Uint8Array(1 + bytes.length);
+      payload[0] = bytes.length;
+      payload.set(bytes, 1);
+      return { empty: false, error: null, payload };
+    }
+
+    function updateComposerMessengerPayload() {
+      const input = document.getElementById('composer-messenger-text');
+      const output = document.getElementById('composer-messenger-hex');
+      const countEl = document.getElementById('composer-messenger-count');
+
+      if (!input || !output || !countEl) {
+        return;
+      }
+
+      const text = input.value || '';
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(text);
+
+      countEl.textContent = `${bytes.length} / ${COMPOSER_MESSAGING_MAX_LEN}`;
+      countEl.style.color = bytes.length > COMPOSER_MESSAGING_MAX_LEN ? '#b42318' : '#7c8797';
+
+      if (!text.trim()) {
+        output.value = '(no message)';
+        setComposerMessengerError('');
+        updateEncodedMessage();
+        return;
+      }
+
+      if (bytes.some((b) => b > 0x7F)) {
+        output.value = '(invalid payload)';
+        setComposerMessengerError('Only ASCII characters are supported.');
+        updateEncodedMessage();
+        return;
+      }
+
+      if (bytes.length > COMPOSER_MESSAGING_MAX_LEN) {
+        output.value = '(invalid payload)';
+        setComposerMessengerError(`Message too long (max ${COMPOSER_MESSAGING_MAX_LEN}).`);
+        updateEncodedMessage();
+        return;
+      }
+
+      const payload = new Uint8Array(1 + bytes.length);
+      payload[0] = bytes.length;
+      payload.set(bytes, 1);
+      output.value = bytesToHex(payload);
+      setComposerMessengerError('');
+      updateEncodedMessage();
     }
 
     function showImportPreviewModal({ title, subtitle, rows, note }) {
@@ -629,6 +745,7 @@
 
       const encodedBytes = [];
       hexOutput.classList.remove('invalid');
+      const messengerPayload = getComposerMessengerPayload();
 
       const types = new Set();
       // Iterate each known setting
@@ -727,7 +844,21 @@
 
       // If nothing is selected
       if (encodedBytes.length === 0) {
-        hexOutput.value = '(no settings selected)';
+        if (!messengerPayload.empty) {
+          if (messengerPayload.error) {
+            hexOutput.value = `Error (messenger): ${messengerPayload.error}`;
+            hexOutput.classList.add('invalid');
+            return;
+          }
+          encodedBytes.push(...messengerPayload.payload);
+          types.add('messenger');
+        } else {
+          hexOutput.value = '(no settings selected)';
+          return;
+        }
+      } else if (!messengerPayload.empty) {
+        hexOutput.value = 'Error: Messenger payload cannot be combined with settings or commands';
+        hexOutput.classList.add('invalid');
         return;
       }
 
@@ -736,6 +867,13 @@
         port = 3;
       } else if (types.has("command")) {
         port = 32;
+      } else if (types.has("messenger")) {
+        port = settingsData && settingsData.ports ? settingsData.ports.port_lr_messaging : null;
+        if (!Number.isFinite(port)) {
+          hexOutput.value = 'Error: No LoRaWAN messaging port found';
+          hexOutput.classList.add('invalid');
+          return;
+        }
       } else {
         hexOutput.value = 'Error: Unknown type ' + types;
         hexOutput.classList.add('invalid');
