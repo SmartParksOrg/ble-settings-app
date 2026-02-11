@@ -1374,7 +1374,8 @@ h2 {
     color: white;
     padding: 10px;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
     gap: 8px;
     justify-content: center;
     font-family: monospace;
@@ -1392,6 +1393,7 @@ h2 {
 }
 
 #payload-type {
+    width: 100%;
     height: 40px;
     padding: 0 10px;
     border-radius: var(--radius-sm);
@@ -1402,7 +1404,7 @@ h2 {
 }
 
 #hex-output {
-    width: 70%;
+    width: 100%;
     height: 40px;
     padding: 0 10px;
     font-family: monospace;
@@ -1410,6 +1412,17 @@ h2 {
     border-radius: var(--radius-sm);
     background: #fff;
     color: #000;
+}
+
+.payload-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.payload-row #hex-output {
+    flex: 1;
 }
 
 #copy-button {
@@ -2640,6 +2653,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 
 .icon.book {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M480%20576L192%20576C139%20576%2096%20533%2096%20480L96%20160C96%20107%20139%2064%20192%2064L496%2064C522.5%2064%20544%2085.5%20544%20112L544%20400C544%20420.9%20530.6%20438.7%20512%20445.3L512%20512C529.7%20512%20544%20526.3%20544%20544C544%20561.7%20529.7%20576%20512%20576L480%20576zM192%20448C174.3%20448%20160%20462.3%20160%20480C160%20497.7%20174.3%20512%20192%20512L448%20512L448%20448L192%20448zM224%20216C224%20229.3%20234.7%20240%20248%20240L424%20240C437.3%20240%20448%20229.3%20448%20216C448%20202.7%20437.3%20192%20424%20192L248%20192C234.7%20192%20224%20202.7%20224%20216zM248%20288C234.7%20288%20224%20298.7%20224%20312C224%20325.3%20234.7%20336%20248%20336L424%20336C437.3%20336%20448%20325.3%20448%20312C448%20298.7%20437.3%20288%20424%20288L248%20288z%22/%3E%3C/svg%3E');
+}
+
+.icon.circle-info {
+    background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20512%20512%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20fill=%22black%22%20d=%22M256%20512C114.6%20512%200%20397.4%200%20256S114.6%200%20256%200s256%20114.6%20256%20256S397.4%20512%20256%20512zm0-384c-26.5%200-48%2021.5-48%2048s21.5%2048%2048%2048%2048-21.5%2048-48-21.5-48-48-48zm64%20264c0%208.8-7.2%2016-16%2016h-32v-96c0-8.8-7.2-16-16-16h-32c-8.8%200-16%207.2-16%2016s7.2%2016%2016%2016h16v80h-16c-8.8%200-16%207.2-16%2016s7.2%2016%2016%2016h80c8.8%200%2016-7.2%2016-16z%22/%3E%3C/svg%3E');
 }
 
 .icon.envelope {

@@ -48,6 +48,15 @@
     </div>
   </div>
 
+  <div id="composer-instructions" class="commands-section page-section">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon circle-info" aria-hidden="true"></span>Instructions</summary>
+      <div class="section-card-body">
+        <p>Select a settings file, review or adjust values, then choose a payload type at the bottom to copy/export the payload.</p>
+      </div>
+    </details>
+  </div>
+
   <div id="settings-area" class="settings-section page-section">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>Settings</summary>
@@ -115,12 +124,14 @@
       <option value="ble">BLE custom command</option>
       <option value="file_export">File export</option>
     </select>
-    <input type="text" id="hex-output" readonly value="(no settings selected)" />
-    <button id="copy-button" onclick="copyToClipboard()" aria-label="Copy or export">
-      <svg id="payload-icon" class="payload-icon" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
-        <path d="M224 0c-35.3 0-64 28.7-64 64l0 224c0 35.3 28.7 64 64 64l160 0c35.3 0 64-28.7 64-64l0-224c0-35.3-28.7-64-64-64L224 0zM64 128l64 0 0 64-64 0c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l192 0c17.7 0 32-14.3 32-32l0-64 64 0 0 64c0 53-43 96-96 96L64 576c-53 0-96-43-96-96l0-256c0-53 43-96 96-96z"/>
-      </svg>
-    </button>
+    <div class="payload-row">
+      <input type="text" id="hex-output" readonly value="(no settings selected)" />
+      <button id="copy-button" onclick="copyToClipboard()" aria-label="Copy or export">
+        <svg id="payload-icon" class="payload-icon" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet" aria-hidden="true" focusable="false">
+          <path d="M224 0c-35.3 0-64 28.7-64 64l0 224c0 35.3 28.7 64 64 64l160 0c35.3 0 64-28.7 64-64l0-224c0-35.3-28.7-64-64-64L224 0zM64 128l64 0 0 64-64 0c-17.7 0-32 14.3-32 32l0 256c0 17.7 14.3 32 32 32l192 0c17.7 0 32-14.3 32-32l0-64 64 0 0 64c0 53-43 96-96 96L64 576c-53 0-96-43-96-96l0-256c0-53 43-96 96-96z"/>
+        </svg>
+      </button>
+    </div>
   </div>
 
   <div id="import-preview-overlay" class="import-preview-overlay hidden" role="dialog" aria-modal="true"
