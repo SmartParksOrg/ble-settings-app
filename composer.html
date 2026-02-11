@@ -17,7 +17,7 @@
   <script src="functions.js"></script>
 </head>
 
-<body>
+<body class="composer-page">
   <div id="header-section" class="page-section">
     <div class="header-top">
       <div class="brand">
@@ -29,14 +29,11 @@
       </div>
       <div class="app-menu">
         <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
-          <span class="icon bars" aria-hidden="true"></span>
+          <svg class="menu-toggle-icon" viewBox="0 0 448 512" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M0 80C0 62.3 14.3 48 32 48l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 112C14.3 112 0 97.7 0 80zM0 240c0-17.7 14.3-32 32-32l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 272c-17.7 0-32-14.3-32-32zM448 400c0 17.7-14.3 32-32 32L32 432c-17.7 0-32-14.3-32-32s14.3-32 32-32l384 0c17.7 0 32 14.3 32 32z"/>
+          </svg>
         </button>
         <div id="app-menu-panel" class="menu-panel" role="menu" aria-label="App menu">
-          <a href="#header-section" role="menuitem"><span class="icon square-caret-up" aria-hidden="true"></span><span>Top</span></a>
-          <a href="#settings-area" role="menuitem"><span class="icon hw-version" aria-hidden="true"></span><span>Settings</span></a>
-          <a href="#composer-commands" role="menuitem"><span class="icon messages" aria-hidden="true"></span><span>Commands</span></a>
-          <a href="#composer-messenger" role="menuitem"><span class="icon envelope" aria-hidden="true"></span><span>Messenger</span></a>
-          <a href="#composer-firmware-notes" role="menuitem"><span class="icon book" aria-hidden="true"></span><span>Firmware Notes</span></a>
           <a href="index.html" role="menuitem"><span class="icon house" aria-hidden="true"></span><span>Home</span></a>
         </div>
       </div>

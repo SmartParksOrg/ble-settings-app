@@ -44,21 +44,18 @@
           <span class="brand-subtitle">OpenCollar Edge BLE Web Connect</span>
         </div>
       </div>
-      <div class="app-menu">
+      <div class="app-menu hidden">
         <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
-          <span class="icon bars" aria-hidden="true"></span>
+          <svg class="menu-toggle-icon" viewBox="0 0 448 512" aria-hidden="true" focusable="false">
+            <path fill="currentColor" d="M0 80C0 62.3 14.3 48 32 48l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 112C14.3 112 0 97.7 0 80zM0 240c0-17.7 14.3-32 32-32l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 272c-17.7 0-32-14.3-32-32zM448 400c0 17.7-14.3 32-32 32L32 432c-17.7 0-32-14.3-32-32s14.3-32 32-32l384 0c17.7 0 32 14.3 32 32z"/>
+          </svg>
         </button>
         <div id="app-menu-panel" class="menu-panel" role="menu" aria-label="App menu">
-          <a href="#header-section" role="menuitem"><span class="icon square-caret-up" aria-hidden="true"></span><span>Top</span></a>
-          <a href="#status-area" class="hidden-when-disconnected" role="menuitem"><span class="icon square-poll-horizontal" aria-hidden="true"></span><span>Status</span></a>
-          <a href="#actions-area" class="hidden-when-disconnected" role="menuitem"><span class="icon power-off" aria-hidden="true"></span><span>Actions</span></a>
-          <a href="#settings-area" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon hw-version" aria-hidden="true"></span><span>Settings</span></a>
-          <a href="#other-commands" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon messages" aria-hidden="true"></span><span>Commands</span></a>
-          <a href="#logs-area" class="hidden-when-disconnected" role="menuitem"><span class="icon bug" aria-hidden="true"></span><span>Logs</span></a>
-          <a href="#map-area" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon ublox-location" aria-hidden="true"></span><span>Map</span></a>
-          <button type="button" class="hidden-when-disconnected dfu-hide" role="menuitem" onclick="openDfuPage()"><span class="icon screwdriver-wrench" aria-hidden="true"></span><span>DFU</span></button>
-          <button type="button" class="hidden-when-disconnected" role="menuitem" onclick="toggleLog()"><span class="icon toggle-log" aria-hidden="true"></span><span>Debug Log</span></button>
+          <a href="#header-section" role="menuitem"><span class="icon house" aria-hidden="true"></span><span>Home</span></a>
           <a href="composer.html" role="menuitem"><span class="icon keyboard" aria-hidden="true"></span><span>Composer</span></a>
+          <button type="button" id="menu-debug-toggle" class="hidden-when-disconnected menu-debug-toggle" role="menuitem" onclick="toggleLog()">
+            <span class="icon toggle-log" aria-hidden="true"></span><span>Debug</span>
+          </button>
         </div>
       </div>
     </div>
@@ -321,6 +318,10 @@
   </div>
 
   <div id="toast"></div>
+
+  <button id="debug-toggle-fab" class="debug-toggle-fab hidden hidden-when-disconnected dfu-keep-visible" type="button" onclick="toggleLog()" aria-label="Toggle debug log">
+    <span class="icon toggle-log" aria-hidden="true"></span>
+  </button>
 
   <div id="map-tracks-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card">
@@ -646,6 +647,27 @@
     let flashLogCountTotal = null;
 
     const logFooter = document.getElementById('logFooter');
+    const menuDebugToggle = document.getElementById('menu-debug-toggle');
+    const debugFab = document.getElementById('debug-toggle-fab');
+
+    function updateMenuDebugState() {
+      if (!menuDebugToggle || !logFooter) {
+        return;
+      }
+      const enabled = logFooter.classList.contains('open');
+      menuDebugToggle.classList.toggle('debug-enabled', enabled);
+      menuDebugToggle.classList.toggle('debug-disabled', !enabled);
+    }
+
+    function updateDebugFabState() {
+      if (!debugFab || !logFooter) {
+        return;
+      }
+      const enabled = logFooter.classList.contains('open');
+      debugFab.classList.toggle('debug-enabled', enabled);
+      debugFab.classList.toggle('debug-disabled', !enabled);
+      debugFab.classList.toggle('hidden', !document.body.classList.contains('connected'));
+    }
 
     function toggleLog() {
       const basePadding = getComputedStyle(document.documentElement).getPropertyValue('--body-bottom-padding').trim() || '50px';
@@ -653,6 +675,8 @@
       document.body.style.paddingBottom = logFooter.classList.contains('open') ? logFooter.clientHeight + "px" : basePadding;
       const logElement = document.getElementById('log');
       logElement.scrollTop = logElement.scrollHeight;
+      updateMenuDebugState();
+      updateDebugFabState();
     }
     window.toggleLog = toggleLog;
 
@@ -2993,6 +3017,7 @@
         mapInstance.removeLayer(mapMarker);
       }
       mapMarker = null;
+      updateDebugFabState();
     }
 
     const connectButton = document.getElementById('connect-button');
@@ -3078,6 +3103,7 @@
         document.body.classList.add('connected');
         log(`Connected to device: ${device.name}`);
         lastConnectedDeviceName = device && device.name ? device.name : null;
+        updateDebugFabState();
 
         loadAvailableSettings();
         await checkPin(document.getElementById('pincode').value);
@@ -4063,6 +4089,9 @@
     }
 
     initAppMenu();
+
+    updateMenuDebugState();
+    updateDebugFabState();
 
     const flashLogOkButton = document.getElementById('flash-log-ok');
     if (flashLogOkButton) {
