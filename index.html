@@ -36,11 +36,29 @@
 
 <body>
   <div id="header-section" class="page-section">
-    <div class="brand">
-      <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
-      <div class="brand-title">
-        <span class="brand-name">Smart Parks</span>
-        <span class="brand-subtitle">OpenCollar Edge BLE Web Connect</span>
+    <div class="header-top">
+      <div class="brand">
+        <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
+        <div class="brand-title">
+          <span class="brand-name">Smart Parks</span>
+          <span class="brand-subtitle">OpenCollar Edge BLE Web Connect</span>
+        </div>
+      </div>
+      <div class="app-menu">
+        <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
+          <span class="icon bars" aria-hidden="true"></span>
+        </button>
+        <div id="app-menu-panel" class="menu-panel" role="menu" aria-label="App menu">
+          <a href="#header-section" role="menuitem"><span class="icon square-caret-up" aria-hidden="true"></span><span>Top</span></a>
+          <a href="#status-area" class="hidden-when-disconnected" role="menuitem"><span class="icon square-poll-horizontal" aria-hidden="true"></span><span>Status</span></a>
+          <a href="#actions-area" class="hidden-when-disconnected" role="menuitem"><span class="icon power-off" aria-hidden="true"></span><span>Actions</span></a>
+          <a href="#settings-area" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon hw-version" aria-hidden="true"></span><span>Settings</span></a>
+          <a href="#other-commands" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon messages" aria-hidden="true"></span><span>Commands</span></a>
+          <a href="#logs-area" class="hidden-when-disconnected" role="menuitem"><span class="icon bug" aria-hidden="true"></span><span>Logs</span></a>
+          <a href="#map-area" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon ublox-location" aria-hidden="true"></span><span>Map</span></a>
+          <button type="button" class="hidden-when-disconnected dfu-hide" role="menuitem" onclick="openDfuPage()"><span class="icon screwdriver-wrench" aria-hidden="true"></span><span>DFU</span></button>
+          <a href="composer.html" role="menuitem"><span class="icon keyboard" aria-hidden="true"></span><span>Composer</span></a>
+        </div>
       </div>
     </div>
     <div class="controls">
@@ -253,18 +271,6 @@
     </details>
   </div>
 
-  <nav class="bottom-nav hidden-when-disconnected dfu-keep-visible" aria-label="Primary">
-    <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
-      <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
-    </a>
-    <button type="button" class="dfu-only dfu-only-nav" onclick="toggleDfuView(false)" aria-label="Home" title="Home"><span class="icon house" aria-hidden="true"></span></button>
-    <a href="#status-area" class="dfu-hide-nav" aria-label="Status" title="Status"><span class="icon square-poll-horizontal" aria-hidden="true"></span></a>
-    <a href="#settings-area" class="dfu-hide-nav lr-update-hide" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
-    <a href="#other-commands" class="dfu-hide-nav lr-update-hide" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
-    <a href="#map-area" class="dfu-hide-nav lr-update-hide" aria-label="Map" title="Map"><span class="icon ublox-location" aria-hidden="true"></span></a>
-    <button type="button" onclick="toggleLog()" aria-label="Log" title="Log"><span class="icon toggle-log" aria-hidden="true"></span></button>
-  </nav>
-
   <div class="log-footer hidden-when-disconnected dfu-keep-visible" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
       <span class="log-title"><span class="icon bug" aria-hidden="true"></span>Log</span>
@@ -322,6 +328,18 @@
       <div id="map-tracks-text" class="dfu-waiting-countdown"></div>
       <div class="ublox-fix-actions">
         <button id="map-tracks-ok" type="button" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
+  <div id="ble-reconnect-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text">Connection lost</div>
+      <div id="ble-reconnect-text" class="dfu-waiting-countdown">
+        The device disconnected unexpectedly. Reconnect or reset the app.
+      </div>
+      <div class="ublox-fix-actions">
+        <button id="ble-reconnect-button" type="button" class="primary">Reconnect</button>
+        <button id="ble-reconnect-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -601,6 +619,7 @@
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
     let reloadOnDisconnect = false;
+    let lastConnectedDeviceName = null;
     let mapTrackState = {
       active: false,
       phase: null,
@@ -1032,6 +1051,18 @@
       const overlay = document.getElementById('map-tracks-overlay');
       if (!overlay) {
         return;
+      }
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function setBleReconnectOverlayVisible(visible, message) {
+      const overlay = document.getElementById('ble-reconnect-overlay');
+      if (!overlay) {
+        return;
+      }
+      const textEl = document.getElementById('ble-reconnect-text');
+      if (textEl && message) {
+        textEl.textContent = message;
       }
       overlay.classList.toggle('hidden', !visible);
     }
@@ -2863,6 +2894,8 @@
 
     function onDisconnected() {
       log('Disconnected from device');
+      setBleReconnectOverlayVisible(false);
+      const wasUserRequestedDisconnect = userRequestedDisconnect;
       if (flashLogState.active) {
         showFlashLogFailure('Connection lost during log download.');
       }
@@ -2891,7 +2924,8 @@
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
       stopMessengerPolling();
-      if (document.body.classList.contains('dfu-active')) {
+      const inDfuMode = document.body.classList.contains('dfu-active');
+      if (inDfuMode) {
         const awaiting = window.DfuApp && window.DfuApp.isAwaitingReboot && window.DfuApp.isAwaitingReboot();
         if (awaiting) {
           showToast('Device rebooted. Waiting to reconnect for DFU.');
@@ -2911,6 +2945,10 @@
         reloadOnDisconnect = false;
         window.location.reload();
         return;
+      }
+      if (!wasUserRequestedDisconnect && !inDfuMode) {
+        const nameLabel = lastConnectedDeviceName ? ` ${lastConnectedDeviceName}` : ' the device';
+        setBleReconnectOverlayVisible(true, `Lost connection to${nameLabel}. Reconnect or reset the app.`);
       }
       lastPositionMessage = null;
       setMapStatus('Waiting for location...');
@@ -2936,6 +2974,37 @@
         if (!normalized) return null;
         return { namePrefix: normalized };
       }).filter(Boolean);
+    }
+
+    function buildReconnectFilters() {
+      const manufacturerFilter = {
+        manufacturerData: [{ companyIdentifier: 0x0A61 }]
+      };
+      if (lastConnectedDeviceName) {
+        return [{ ...manufacturerFilter, name: lastConnectedDeviceName }];
+      }
+      const nameFilters = parseDeviceNameFilters(deviceNameFilterInput.value);
+      if (nameFilters.length) {
+        return nameFilters.map(nameFilter => ({ ...manufacturerFilter, ...nameFilter }));
+      }
+      return [manufacturerFilter];
+    }
+
+    async function requestReconnectScan() {
+      const filters = buildReconnectFilters();
+      try {
+        const selectedDevice = await navigator.bluetooth.requestDevice({
+          filters,
+          optionalServices: [
+            '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+            '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
+          ]
+        });
+        setBleReconnectOverlayVisible(false);
+        await connectToDevice(selectedDevice);
+      } catch (error) {
+        log(`Reconnect failed: ${error.message}`, true);
+      }
     }
 
     async function connectToDevice(selectedDevice, options = {}) {
@@ -2971,6 +3040,7 @@
 
         document.body.classList.add('connected');
         log(`Connected to device: ${device.name}`);
+        lastConnectedDeviceName = device && device.name ? device.name : null;
 
         loadAvailableSettings();
         await checkPin(document.getElementById('pincode').value);
@@ -3966,6 +4036,24 @@
     if (mapTracksOkButton) {
       mapTracksOkButton.addEventListener('click', () => {
         setMapTracksOverlayVisible(false);
+      });
+    }
+
+    const bleReconnectButton = document.getElementById('ble-reconnect-button');
+    if (bleReconnectButton) {
+      bleReconnectButton.addEventListener('click', async () => {
+        if (!navigator.bluetooth) {
+          showToast('Web Bluetooth not available in this browser.');
+          return;
+        }
+        await requestReconnectScan();
+      });
+    }
+
+    const bleReconnectCancelButton = document.getElementById('ble-reconnect-cancel');
+    if (bleReconnectCancelButton) {
+      bleReconnectCancelButton.addEventListener('click', () => {
+        window.location.reload();
       });
     }
 
