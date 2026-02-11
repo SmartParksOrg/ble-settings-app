@@ -31,14 +31,9 @@
         <div class="sw-spinner" aria-hidden="true"></div>
       </div>
       <div class="app-menu">
-        <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
-          <svg class="menu-toggle-icon" viewBox="0 0 448 512" aria-hidden="true" focusable="false">
-            <path fill="currentColor" d="M0 80C0 62.3 14.3 48 32 48l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 112C14.3 112 0 97.7 0 80zM0 240c0-17.7 14.3-32 32-32l384 0c17.7 0 32 14.3 32 32s-14.3 32-32 32L32 272c-17.7 0-32-14.3-32-32zM448 400c0 17.7-14.3 32-32 32L32 432c-17.7 0-32-14.3-32-32s14.3-32 32-32l384 0c17.7 0 32 14.3 32 32z"/>
-          </svg>
-        </button>
-        <div id="app-menu-panel" class="menu-panel" role="menu" aria-label="App menu">
-          <a href="index.html" role="menuitem"><span class="icon house" aria-hidden="true"></span><span>Home</span></a>
-        </div>
+        <a href="index.html" class="menu-toggle" aria-label="Home">
+          <span class="icon house" aria-hidden="true"></span>
+        </a>
       </div>
     </div>
     <div class="controls">
@@ -301,7 +296,6 @@
     let lastPayloadType = 'none';
     const COMPOSER_MESSAGING_MAX_LEN = 46;
 
-    initAppMenu();
     initSwCacheIndicator();
 
     let composerDeviceVersionNotes = null;

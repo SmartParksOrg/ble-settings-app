@@ -1160,8 +1160,9 @@ h2 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 54px;
-    height: 54px;
+    width: 48px;
+    height: 48px;
+    box-sizing: border-box;
     border-radius: var(--radius-md);
     border: 1px solid rgba(31, 42, 35, 0.18);
     background: rgba(255, 255, 255, 0.82);
@@ -1169,6 +1170,7 @@ h2 {
     color: var(--sp-ink);
     cursor: pointer;
     transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    text-decoration: none;
 }
 
 .menu-toggle:hover {
@@ -1176,10 +1178,12 @@ h2 {
     box-shadow: 0 14px 22px rgba(31, 42, 35, 0.16);
 }
 
-.menu-toggle-icon {
-    width: 30px;
-    height: 30px;
+.menu-toggle-icon,
+.menu-toggle .icon {
+    width: 24px;
+    height: 24px;
     display: block;
+    background-size: 24px 24px;
 }
 
 .menu-panel {
@@ -1312,6 +1316,7 @@ h2 {
 .menu-panel .icon.toggle-log {
     filter: invert(1);
 }
+
 
 .brand-logo {
     width: 54px;
