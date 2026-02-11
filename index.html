@@ -57,6 +57,7 @@
           <a href="#logs-area" class="hidden-when-disconnected" role="menuitem"><span class="icon bug" aria-hidden="true"></span><span>Logs</span></a>
           <a href="#map-area" class="hidden-when-disconnected lr-update-hide" role="menuitem"><span class="icon ublox-location" aria-hidden="true"></span><span>Map</span></a>
           <button type="button" class="hidden-when-disconnected dfu-hide" role="menuitem" onclick="openDfuPage()"><span class="icon screwdriver-wrench" aria-hidden="true"></span><span>DFU</span></button>
+          <button type="button" class="hidden-when-disconnected" role="menuitem" onclick="toggleLog()"><span class="icon toggle-log" aria-hidden="true"></span><span>Debug Log</span></button>
           <a href="composer.html" role="menuitem"><span class="icon keyboard" aria-hidden="true"></span><span>Composer</span></a>
         </div>
       </div>
@@ -1046,6 +1047,42 @@
       }
     }
     window.toggleMapFullscreen = toggleMapFullscreen;
+
+    function initAppMenu() {
+      const toggle = document.getElementById('app-menu-toggle');
+      const panel = document.getElementById('app-menu-panel');
+      if (!toggle || !panel) {
+        return;
+      }
+      const closeMenu = () => {
+        panel.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+      };
+      toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = panel.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+      panel.querySelectorAll('a,button').forEach((item) => {
+        item.addEventListener('click', () => {
+          closeMenu();
+        });
+      });
+      document.addEventListener('click', (event) => {
+        if (!panel.classList.contains('open')) {
+          return;
+        }
+        if (panel.contains(event.target) || toggle.contains(event.target)) {
+          return;
+        }
+        closeMenu();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeMenu();
+        }
+      });
+    }
 
     function setMapTracksOverlayVisible(visible) {
       const overlay = document.getElementById('map-tracks-overlay');
@@ -4024,6 +4061,8 @@
     async function requestStatusMessage() {
       return executeBleCommand([0x20, CMD_STATUS, 0x00])
     }
+
+    initAppMenu();
 
     const flashLogOkButton = document.getElementById('flash-log-ok');
     if (flashLogOkButton) {

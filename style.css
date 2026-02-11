@@ -12,7 +12,7 @@
     --radius-md: 6px;
     --radius-lg: 8px;
     --radius-pill: 10px;
-    --body-bottom-padding: 64px;
+    --body-bottom-padding: 24px;
 }
 
 body,
@@ -1124,6 +1124,91 @@ h2 {
     padding: 6px 0 14px;
 }
 
+.header-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.app-menu {
+    position: relative;
+}
+
+.menu-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    border: 1px solid rgba(31, 42, 35, 0.18);
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 18px rgba(31, 42, 35, 0.12);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.menu-toggle:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 22px rgba(31, 42, 35, 0.16);
+}
+
+.menu-toggle .icon {
+    width: 20px;
+    height: 20px;
+    background-size: 20px 20px;
+    filter: none;
+}
+
+.menu-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    min-width: 220px;
+    background: rgba(255, 255, 255, 0.98);
+    border: 1px solid rgba(31, 42, 35, 0.15);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 18px 32px rgba(31, 42, 35, 0.18);
+    padding: 10px;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 1400;
+}
+
+.menu-panel.open {
+    display: flex;
+}
+
+.menu-panel a,
+.menu-panel button {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    border: 1px solid transparent;
+    background: rgba(82, 115, 94, 0.08);
+    color: var(--sp-ink);
+    text-decoration: none;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+}
+
+.menu-panel a:hover,
+.menu-panel button:hover {
+    background: rgba(82, 115, 94, 0.16);
+    border-color: rgba(82, 115, 94, 0.2);
+}
+
+.menu-panel .icon {
+    width: 18px;
+    height: 18px;
+    background-size: 18px 18px;
+}
+
 .brand-logo {
     width: 54px;
     height: 54px;
@@ -1166,7 +1251,7 @@ h2 {
     justify-content: center;
     align-items: center;
     width: 100%;
-    padding: 18px 12px 92px;
+    padding: 18px 12px 28px;
     opacity: 0.85;
 }
 
@@ -2452,6 +2537,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M112%20128C85.5%20128%2064%20149.5%2064%20176C64%20191.1%2071.1%20205.3%2083.2%20214.4L291.2%20370.4C308.3%20383.2%20331.7%20383.2%20348.8%20370.4L556.8%20214.4C568.9%20205.3%20576%20191.1%20576%20176C576%20149.5%20554.5%20128%20528%20128L112%20128zM64%20260L64%20448C64%20483.3%2092.7%20512%20128%20512L512%20512C547.3%20512%20576%20483.3%20576%20448L576%20260L377.6%20408.8C343.5%20434.4%20296.5%20434.4%20262.4%20408.8L64%20260z%22/%3E%3C/svg%3E');
 }
 
+.icon.bars {
+    background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M64%20144C64%20126.3%2078.3%20112%2096%20112L544%20112C561.7%20112%20576%20126.3%20576%20144C576%20161.7%20561.7%20176%20544%20176L96%20176C78.3%20176%2064%20161.7%2064%20144zM64%20320C64%20302.3%2078.3%20288%2096%20288L544%20288C561.7%20288%20576%20302.3%20576%20320C576%20337.7%20561.7%20352%20544%20352L96%20352C78.3%20352%2064%20337.7%2064%20320zM96%20464C78.3%20464%2064%20449.7%2064%20432C64%20414.3%2078.3%20400%2096%20400L544%20400C561.7%20400%20576%20414.3%20576%20432C576%20449.7%20561.7%20464%20544%20464L96%20464z%22/%3E%3C/svg%3E');
+}
+
 .icon.gear {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M259.1%2073.5C262.1%2058.7%20275.2%2048%20290.4%2048L350.2%2048C365.4%2048%20378.5%2058.7%20381.5%2073.5L396%20143.5C410.1%20149.5%20423.3%20157.2%20435.3%20166.3L503.1%20143.8C517.5%20139%20533.3%20145%20540.9%20158.2L570.8%20210C578.4%20223.2%20575.7%20239.8%20564.3%20249.9L511%20297.3C511.9%20304.7%20512.3%20312.3%20512.3%20320C512.3%20327.7%20511.8%20335.3%20511%20342.7L564.4%20390.2C575.8%20400.3%20578.4%20417%20570.9%20430.1L541%20481.9C533.4%20495%20517.6%20501.1%20503.2%20496.3L435.4%20473.8C423.3%20482.9%20410.1%20490.5%20396.1%20496.6L381.7%20566.5C378.6%20581.4%20365.5%20592%20350.4%20592L290.6%20592C275.4%20592%20262.3%20581.3%20259.3%20566.5L244.9%20496.6C230.8%20490.6%20217.7%20482.9%20205.6%20473.8L137.5%20496.3C123.1%20501.1%20107.3%20495.1%2099.7%20481.9L69.8%20430.1C62.2%20416.9%2064.9%20400.3%2076.3%20390.2L129.7%20342.7C128.8%20335.3%20128.4%20327.7%20128.4%20320C128.4%20312.3%20128.9%20304.7%20129.7%20297.3L76.3%20249.8C64.9%20239.7%2062.3%20223%2069.8%20209.9L99.7%20158.1C107.3%20144.9%20123.1%20138.9%20137.5%20143.7L205.3%20166.2C217.4%20157.1%20230.6%20149.5%20244.6%20143.4L259.1%2073.5zM320.3%20400C364.5%20399.8%20400.2%20363.9%20400%20319.7C399.8%20275.5%20363.9%20239.8%20319.7%20240C275.5%20240.2%20239.8%20276.1%20240%20320.3C240.2%20364.5%20276.1%20400.2%20320.3%20400z%22/%3E%3C/svg%3E');
 }
@@ -2708,7 +2797,7 @@ textarea {
 
 @media (min-width: 901px) {
     :root {
-        --body-bottom-padding: 40px;
+        --body-bottom-padding: 24px;
     }
 
     .bottom-nav {
@@ -2764,12 +2853,7 @@ textarea {
 
 @media (max-width: 900px) {
     :root {
-        --body-bottom-padding: 88px;
-        --bottom-nav-offset: 64px;
-    }
-
-    #floating-bar {
-        bottom: var(--bottom-nav-offset);
+        --body-bottom-padding: 24px;
     }
 
     #container,

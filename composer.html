@@ -19,11 +19,26 @@
 
 <body>
   <div id="header-section" class="page-section">
-    <div class="brand">
-      <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
-      <div class="brand-title">
-        <span class="brand-name">Smart Parks</span>
-        <span class="brand-subtitle">Settings HEX Composer</span>
+    <div class="header-top">
+      <div class="brand">
+        <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
+        <div class="brand-title">
+          <span class="brand-name">Smart Parks</span>
+          <span class="brand-subtitle">Settings HEX Composer</span>
+        </div>
+      </div>
+      <div class="app-menu">
+        <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
+          <span class="icon bars" aria-hidden="true"></span>
+        </button>
+        <div id="app-menu-panel" class="menu-panel" role="menu" aria-label="App menu">
+          <a href="#header-section" role="menuitem"><span class="icon square-caret-up" aria-hidden="true"></span><span>Top</span></a>
+          <a href="#settings-area" role="menuitem"><span class="icon hw-version" aria-hidden="true"></span><span>Settings</span></a>
+          <a href="#composer-commands" role="menuitem"><span class="icon messages" aria-hidden="true"></span><span>Commands</span></a>
+          <a href="#composer-messenger" role="menuitem"><span class="icon envelope" aria-hidden="true"></span><span>Messenger</span></a>
+          <a href="#composer-firmware-notes" role="menuitem"><span class="icon book" aria-hidden="true"></span><span>Firmware Notes</span></a>
+          <a href="index.html" role="menuitem"><span class="icon house" aria-hidden="true"></span><span>Home</span></a>
+        </div>
       </div>
     </div>
     <div class="controls">
@@ -146,21 +161,47 @@
 
   <div id="toast"></div>
 
-  <nav class="bottom-nav nav-4" aria-label="Primary">
-    <a href="#header-section" class="nav-logo" aria-label="Smart Parks">
-      <img src="assets/smart-parks-logo.png" alt="Smart Parks" />
-    </a>
-    <a href="#header-section" aria-label="Top" title="Top"><span class="icon square-caret-up" aria-hidden="true"></span></a>
-    <a href="#settings-area" aria-label="Settings" title="Settings"><span class="icon hw-version" aria-hidden="true"></span></a>
-    <a href="#composer-commands" aria-label="Commands" title="Commands"><span class="icon messages" aria-hidden="true"></span></a>
-    <a href="index.html" aria-label="Home" title="Home"><span class="icon house" aria-hidden="true"></span></a>
-  </nav>
-
   <footer class="app-version-footer">
     <span class="app-version" id="app-version">Version: loading...</span>
   </footer>
 
   <script>
+    function initAppMenu() {
+      const toggle = document.getElementById('app-menu-toggle');
+      const panel = document.getElementById('app-menu-panel');
+      if (!toggle || !panel) {
+        return;
+      }
+      const closeMenu = () => {
+        panel.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+      };
+      toggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const isOpen = panel.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+      panel.querySelectorAll('a,button').forEach((item) => {
+        item.addEventListener('click', () => {
+          closeMenu();
+        });
+      });
+      document.addEventListener('click', (event) => {
+        if (!panel.classList.contains('open')) {
+          return;
+        }
+        if (panel.contains(event.target) || toggle.contains(event.target)) {
+          return;
+        }
+        closeMenu();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          closeMenu();
+        }
+      });
+    }
+
     // ---------------------------------------------
     // Load and Display Settings
     // ---------------------------------------------
@@ -184,6 +225,8 @@
     const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     let lastPayloadType = 'none';
     const COMPOSER_MESSAGING_MAX_LEN = 46;
+
+    initAppMenu();
 
     let composerDeviceVersionNotes = null;
     let composerDeviceVersionNotesLoading = null;
