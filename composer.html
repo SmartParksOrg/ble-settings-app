@@ -27,6 +27,9 @@
           <span class="brand-subtitle">Settings HEX Composer</span>
         </div>
       </div>
+      <div id="sw-cache-indicator" class="sw-cache-indicator hidden" aria-live="polite" aria-label="Offline cache status">
+        <div class="sw-spinner" aria-hidden="true"></div>
+      </div>
       <div class="app-menu">
         <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
           <svg class="menu-toggle-icon" viewBox="0 0 448 512" aria-hidden="true" focusable="false">
@@ -199,6 +202,81 @@
       });
     }
 
+    function setSwCacheBusy(isBusy) {
+      const indicator = document.getElementById('sw-cache-indicator');
+      if (!indicator) {
+        return;
+      }
+      indicator.classList.toggle('hidden', !isBusy);
+    }
+
+    function getRequiredCacheUrls() {
+      const urls = [
+        'settings-meta.json',
+        'device-version-notes.json'
+      ];
+      const settingsFiles = Array.isArray(window.SETTINGS_FILES)
+        ? window.SETTINGS_FILES.map(file => `settings/${file}`)
+        : [];
+      return Array.from(new Set([...urls, ...settingsFiles]));
+    }
+
+    async function getMissingCacheUrls(urls) {
+      if (!('caches' in window)) {
+        return [];
+      }
+      const missing = [];
+      for (const url of urls) {
+        try {
+          const match = await caches.match(url);
+          if (!match) {
+            missing.push(url);
+          }
+        } catch (error) {
+          missing.push(url);
+        }
+      }
+      return missing;
+    }
+
+    async function warmMissingUrls(urls) {
+      if (!navigator.onLine || !urls.length) {
+        return;
+      }
+      await Promise.all(
+        urls.map((url) =>
+          fetch(url, { cache: 'reload' }).catch(() => null)
+        )
+      );
+    }
+
+    let swCacheLoopId = null;
+    async function ensureCacheReadyLoop() {
+      const urls = getRequiredCacheUrls();
+      const missing = await getMissingCacheUrls(urls);
+      if (!missing.length) {
+        setSwCacheBusy(false);
+        if (swCacheLoopId) {
+          clearTimeout(swCacheLoopId);
+          swCacheLoopId = null;
+        }
+        return;
+      }
+      setSwCacheBusy(true);
+      await warmMissingUrls(missing);
+      swCacheLoopId = setTimeout(ensureCacheReadyLoop, 2000);
+    }
+
+    function initSwCacheIndicator() {
+      if (!('serviceWorker' in navigator)) {
+        return;
+      }
+      setSwCacheBusy(true);
+      navigator.serviceWorker.ready
+        .then(() => ensureCacheReadyLoop())
+        .catch(() => null);
+    }
+
     // ---------------------------------------------
     // Load and Display Settings
     // ---------------------------------------------
@@ -224,6 +302,7 @@
     const COMPOSER_MESSAGING_MAX_LEN = 46;
 
     initAppMenu();
+    initSwCacheIndicator();
 
     let composerDeviceVersionNotes = null;
     let composerDeviceVersionNotesLoading = null;

@@ -1230,6 +1230,33 @@ h2 {
     color: #0f5a2d;
 }
 
+.sw-cache-indicator {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 54px;
+}
+
+.sw-cache-indicator.hidden {
+    display: none;
+}
+
+.sw-spinner {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(31, 42, 35, 0.2);
+    border-top-color: rgba(31, 42, 35, 0.65);
+    animation: sw-spin 0.9s linear infinite;
+}
+
+@keyframes sw-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .debug-toggle-fab {
     position: fixed;
     right: 16px;
