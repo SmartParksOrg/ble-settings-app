@@ -17,6 +17,13 @@ const HW_DFU_MANIFEST_URL = 'assets/dfu/manifest.json';
 let cachedManifest = null;
 let cachedHwVersionsByType = null;
 
+function normalizeHwTypeName(name) {
+  if (name === 'rangeredge_airq_nrf52840') {
+    return 'rangeredge_nrf52840';
+  }
+  return name;
+}
+
 function getHwTypeLabel(hwType) {
   if (Number.isFinite(hwType) && HW_TYPES.byId[hwType]) {
     return HW_TYPES.byId[hwType].label;
@@ -52,10 +59,11 @@ function buildHwVersionsByType(manifest) {
       if (!file?.hwType || !file?.hwVersion) {
         return;
       }
-      if (!map.has(file.hwType)) {
-        map.set(file.hwType, new Set());
+      const normalizedHwType = normalizeHwTypeName(file.hwType);
+      if (!map.has(normalizedHwType)) {
+        map.set(normalizedHwType, new Set());
       }
-      map.get(file.hwType).add(file.hwVersion);
+      map.get(normalizedHwType).add(file.hwVersion);
     });
   });
   return map;

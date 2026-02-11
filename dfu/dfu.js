@@ -47,6 +47,20 @@ const FwTypeEnum = {
   default: 0,
 };
 
+function normalizeHwTypeName(name) {
+  if (name === 'rangeredge_airq_nrf52840') {
+    return 'rangeredge_nrf52840';
+  }
+  return name;
+}
+
+function formatHwTypeLabel(name) {
+  if (name === 'rangeredge_airq_nrf52840') {
+    return 'rangeredge_nrf52840 (AirQ)';
+  }
+  return name;
+}
+
 const dfuCheckMessages = {
   [DfuFileCheckResult.ok]: 'DFU file looks good for this device.',
   [DfuFileCheckResult.warnOlderFirmware]: 'Selected firmware is older than the current device firmware. You can continue, but downgrading may not be supported.',
@@ -179,7 +193,8 @@ function setBundledStatus(message) {
 
 function buildBundledLabel(entry) {
   const release = entry.releaseId || entry.firmwareVersion || 'unknown';
-  const hw = entry.hwType ? `${entry.hwType}@${entry.hwVersion || '?'}` : 'unknown hardware';
+  const hwTypeLabel = entry.hwType ? formatHwTypeLabel(entry.hwType) : 'unknown hardware';
+  const hw = entry.hwType ? `${hwTypeLabel}@${entry.hwVersion || '?'}` : 'unknown hardware';
   return `${release} • ${hw}`;
 }
 
@@ -246,7 +261,10 @@ function shouldIncludeBundledEntry(entry) {
   const deviceHwVersion = normalizeVersionString(dfuState.deviceInfo?.hwVersion || '');
   const deviceFwVersion = normalizeVersionString(dfuState.deviceInfo?.fwVersion || '');
 
-  if (deviceHwTypeName && entry.hwType && entry.hwType !== deviceHwTypeName) {
+  const normalizedEntryHwType = entry.hwType ? normalizeHwTypeName(entry.hwType) : '';
+  const normalizedDeviceHwType = deviceHwTypeName ? normalizeHwTypeName(deviceHwTypeName) : '';
+
+  if (normalizedDeviceHwType && normalizedEntryHwType && normalizedEntryHwType !== normalizedDeviceHwType) {
     return false;
   }
 
@@ -543,7 +561,9 @@ function checkDfuFileName(fileName, deviceType, deviceFwVersion, deviceHwType, d
 
   if (deviceHwType !== HwTypeEnum.unknown) {
     const hwTypeString = FileNameHwEnum[deviceHwType];
-    if (hwTypeString !== fileHwType) {
+    const normalizedDeviceHw = normalizeHwTypeName(hwTypeString);
+    const normalizedFileHw = normalizeHwTypeName(fileHwType);
+    if (normalizedDeviceHw !== normalizedFileHw) {
       return DfuFileCheckResult.deviceHwTypeMismatch;
     }
 
