@@ -1,0 +1,1577 @@
+{
+    "settings": {
+        "tracker_type": {
+            "id": "0x00",
+            "default": 0,
+            "min": 0,
+            "max": 7,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "lr_gps_interval": {
+            "id": "0x01",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ublox_send_interval": {
+            "id": "0x02",
+            "default": 0,
+            "min": 0,
+            "max": 172800,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "status_send_interval": {
+            "id": "0x03",
+            "default": 3600,
+            "min": 1,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "satellite_send_interval": {
+            "id": "0x04",
+            "default": 86400,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "gps_init_lon": {
+            "id": "0x05",
+            "default": 156447700,
+            "min": -1800000000,
+            "max": 1800000000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "gps_init_lat": {
+            "id": "0x06",
+            "default": 465556280,
+            "min": -900000000,
+            "max": 900000000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "init_time": {
+            "id": "0x07",
+            "default": 1606314575,
+            "min": 1606314575,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ble_adv": {
+            "id": "0x08",
+            "default": true,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "gnss_assisted_scan": {
+            "id": "0x09",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "gps_resend_interval": {
+            "id": "0x0A",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "data_log": {
+            "id": "0x0B",
+            "default": true,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "lr_send_flag": {
+            "id": "0x0C",
+            "default": 4162715375,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "flash_store_flag": {
+            "id": "0x0D",
+            "default": 876143,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "lr_adr": {
+            "id": "0x0E",
+            "default": 3,
+            "min": 0,
+            "max": 15,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "lr_region": {
+            "id": "0x0F",
+            "default": 1,
+            "min": 1,
+            "max": 13,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "app_key": {
+            "id": "0x10",
+            "default": "{0x8B, 0xCD, 0x49, 0x42, 0x11, 0x67, 0xDD, 0x03, 0xBA, 0xD3, 0xAE, 0xEA, 0x98, 0xEF, 0xE4, 0x09}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 16,
+            "conversion": "byte_array"
+        },
+        "device_eui": {
+            "id": "0x11",
+            "default": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 8,
+            "conversion": "byte_array"
+        },
+        "app_eui": {
+            "id": "0x12",
+            "default": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 8,
+            "conversion": "byte_array"
+        },
+        "horizontal_accuracy": {
+            "id": "0x13",
+            "default": 50,
+            "min": 1,
+            "max": 1000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "cold_fix_retry": {
+            "id": "0x14",
+            "default": 200,
+            "min": 1,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "hot_fix_retry": {
+            "id": "0x15",
+            "default": 4,
+            "min": 1,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "cold_fix_timeout": {
+            "id": "0x16",
+            "default": 200,
+            "min": 1,
+            "max": 600,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "hot_fix_timeout": {
+            "id": "0x17",
+            "default": 65,
+            "min": 1,
+            "max": 600,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "ble_advertisement_interval": {
+            "id": "0x18",
+            "default": 500,
+            "min": 100,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "wifi_scan_interval": {
+            "id": "0x19",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "wifi_scan_aggregated_interval": {
+            "id": "0x1A",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ble_scan_duration": {
+            "id": "0x1B",
+            "default": 600,
+            "min": 50,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ble_scan_interval": {
+            "id": "0x1C",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ble_scan_aggregated_interval": {
+            "id": "0x1D",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ble_scan_filter": {
+            "id": "0x1E",
+            "default": 1,
+            "min": 0,
+            "max": 3,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ble_auto_disconnect": {
+            "id": "0x1F",
+            "default": 600,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "s_band_send_interval": {
+            "id": "0x20",
+            "default": 0,
+            "min": 0,
+            "max": 604800,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "device_name": {
+            "id": "0x21",
+            "default": "",
+            "min": "",
+            "max": "",
+            "length": 8,
+            "conversion": "string"
+        },
+        "lr_join_flag": {
+            "id": "0x22",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "lr_confirm_flag": {
+            "id": "0x23",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "lr_max_confirm_fail": {
+            "id": "0x24",
+            "default": 0,
+            "min": 0,
+            "max": 1000,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "gps_backoff_factor": {
+            "id": "0x25",
+            "default": 10,
+            "min": 10,
+            "max": 100,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ublox_send_interval_2": {
+            "id": "0x26",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "ublox_interval1_start": {
+            "id": "0x27",
+            "default": 11,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ublox_min_fix_time": {
+            "id": "0x28",
+            "default": 5,
+            "min": 0,
+            "max": 30,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ublox_multiple_intervals": {
+            "id": "0x29",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "device_pin": {
+            "id": "0x2A",
+            "default": "{0x00,0x00,0x00,0x00}",
+            "min": "{0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00}",
+            "length": 4,
+            "conversion": "byte_array"
+        },
+        "ublox_active_tracking": {
+            "id": "0x2B",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "led_enabled": {
+            "id": "0x2C",
+            "default": true,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "motion_ths": {
+            "id": "0x2D",
+            "default": 6,
+            "min": 0,
+            "max": 63,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "enable_motion_trig_gps": {
+            "id": "0x2E",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "gps_triggered_interval": {
+            "id": "0x2F",
+            "default": 60,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "gps_skipped_triggered_interval": {
+            "id": "0x30",
+            "default": 5,
+            "min": 0,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "lr_messaging_retry_interval": {
+            "id": "0x31",
+            "default": 60,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "lr_messaging_retry_count": {
+            "id": "0x32",
+            "default": 1,
+            "min": 1,
+            "max": 5,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ublox_leave_on": {
+            "id": "0x33",
+            "default": 15,
+            "min": 0,
+            "max": 60,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "memfault_send_interval": {
+            "id": "0x34",
+            "default": 0,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "rejoin_interval": {
+            "id": "0x35",
+            "default": 3600,
+            "min": 600,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "check_error_interval": {
+            "id": "0x36",
+            "default": 86400,
+            "min": 0,
+            "max": 2678400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "gnss_constellation_to_use": {
+            "id": "0x37",
+            "default": 3,
+            "min": 1,
+            "max": 3,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "sat_send_flag": {
+            "id": "0x39",
+            "default": 16522,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "satellite_enabled": {
+            "id": "0x3A",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "satellite_retry": {
+            "id": "0x3B",
+            "default": 10,
+            "min": 1,
+            "max": 15,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "fence_enabled": {
+            "id": "0x3F",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "fence_interval": {
+            "id": "0x40",
+            "default": 60,
+            "min": 0,
+            "max": 604800,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "fence_sampling_length": {
+            "id": "0x41",
+            "default": 10,
+            "min": 1,
+            "max": 60,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "fence_mv_scaling_factor": {
+            "id": "0x42",
+            "default": 100000,
+            "min": 100,
+            "max": 1000000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "flash_status_interval": {
+            "id": "0x43",
+            "default": 0,
+            "min": 0,
+            "max": 604800,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "s_band_app_key": {
+            "id": "0x44",
+            "default": "{0xEC, 0x7F, 0x38, 0x0E, 0x7A, 0xDF, 0xB2, 0xE5, 0xC9, 0xBB, 0xDE, 0x5A, 0xC2, 0x16, 0x94, 0xA8}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 16,
+            "conversion": "byte_array"
+        },
+        "s_band_network_key": {
+            "id": "0x45",
+            "default": "{0xDB, 0x7E, 0x27, 0x26, 0xCF, 0xF5, 0x8C, 0x13, 0x3A, 0x07, 0xB5, 0xA1, 0xB4, 0x00, 0xE1, 0xD0}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 16,
+            "conversion": "byte_array"
+        },
+        "s_band_dev_adr": {
+            "id": "0x46",
+            "default": "{0x26, 0x0B, 0xF6, 0xEF}",
+            "min": "{0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00}",
+            "length": 4,
+            "conversion": "byte_array"
+        },
+        "ble_scan_report_zero_connections_found": {
+            "id": "0x47",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "wifi_scan_report_zero_connections_found": {
+            "id": "0x48",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "cmdq_enabled": {
+            "id": "0x49",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "cmdq_scan_duration": {
+            "id": "0x4A",
+            "default": 10000,
+            "min": 1,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "cmdq_search_interval": {
+            "id": "0x4B",
+            "default": 300,
+            "min": 1,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "cmdq_on_no_detection_wait_duration": {
+            "id": "0x4C",
+            "default": 1800,
+            "min": 1,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "cmdq_searched_mac_address": {
+            "id": "0x4D",
+            "default": "{0xD8,0x10,0x68,0xAC,0xDA,0xE4}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 6,
+            "conversion": "byte_array"
+        },
+        "cmdq_reporting_interval": {
+            "id": "0x4E",
+            "default": 300,
+            "min": 1,
+            "max": 10000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "s_band_rf_frequency_hz": {
+            "id": "0x4F",
+            "default": 2008450000,
+            "min": 1980000000,
+            "max": 2100000000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "cmdq_report_zero_messages_to_be_sent": {
+            "id": "0x50",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "ublox_interval2_start": {
+            "id": "0x52",
+            "default": 19,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "lr_adr_profile": {
+            "id": "0x57",
+            "default": 3,
+            "min": 0,
+            "max": 3,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "ublox_min_satellites": {
+            "id": "0x5F",
+            "default": 3,
+            "min": 0,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "external_switch_detection_gpio_pin_power_enabled": {
+            "id": "0x60",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "vhf_enabled": {
+            "id": "0x61",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "vhf_interval1": {
+            "id": "0x62",
+            "default": 2,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "vhf_interval2": {
+            "id": "0x63",
+            "default": 2,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "vhf_interval1_start": {
+            "id": "0x64",
+            "default": 7,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "vhf_interval2_start": {
+            "id": "0x65",
+            "default": 19,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "vhf_multiple_intervals": {
+            "id": "0x66",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "vhf_num_of_packets_per_burst": {
+            "id": "0x67",
+            "default": 1,
+            "min": 1,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "vhf_time_between_packets_ms": {
+            "id": "0x68",
+            "default": 250,
+            "min": 1,
+            "max": 10000,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "vhf_external_path": {
+            "id": "0x69",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "vhf_tx_frequency_khz": {
+            "id": "0x6A",
+            "default": 150000,
+            "min": 150000,
+            "max": 300000,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "vhf_single_pulse_duration_ms": {
+            "id": "0x6B",
+            "default": 18,
+            "min": 5,
+            "max": 10000,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "s_band_send_mode": {
+            "id": "0x6C",
+            "default": 1,
+            "min": 0,
+            "max": 2,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "fence_led_blink": {
+            "id": "0x6D",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "gps_motion_triggered_min_num_of_triggers_per_interval": {
+            "id": "0x6E",
+            "default": 0,
+            "min": 0,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "gps_open_sky_detection_bitmask": {
+            "id": "0x6F",
+            "default": 0,
+            "min": 0,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "gps_open_sky_detection_avg_rssi_threshold_dbm": {
+            "id": "0x70",
+            "default": -70,
+            "min": -128,
+            "max": 0,
+            "length": 1,
+            "conversion": "int8"
+        },
+        "gps_open_sky_detection_max_rssi_threshold_dbm": {
+            "id": "0x71",
+            "default": -50,
+            "min": -128,
+            "max": 0,
+            "length": 1,
+            "conversion": "int8"
+        },
+        "ble_scan_manufacturer_id": {
+            "id": "0x72",
+            "default": 2657,
+            "min": 0,
+            "max": 65535,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "accel_movement_data_fifo_enabled": {
+            "id": "0x73",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "accel_odr_hz": {
+            "id": "0x74",
+            "default": 12,
+            "min": 0,
+            "max": 1600,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "accel_g_scale": {
+            "id": "0x75",
+            "default": 2,
+            "min": 2,
+            "max": 16,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "satellite_send_interval2": {
+            "id": "0x76",
+            "default": 86400,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "satellite_send_interval2_start": {
+            "id": "0x77",
+            "default": 19,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "satellite_multiple_intervals": {
+            "id": "0x78",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "satellite_interval1_start": {
+            "id": "0x79",
+            "default": 7,
+            "min": 0,
+            "max": 23,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "outdoor_detection_enabled": {
+            "id": "0x7A",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "outdoor_detection_tau": {
+            "id": "0x7B",
+            "default": 11,
+            "min": 0,
+            "max": 100,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "outdoor_detection_parameters": {
+            "id": "0x7C",
+            "default": "{0xCB,0xEC,0x6B,0x12,0x2A,0x13,0x79,0x0F,0x20,0x1C,0x00,0x00}",
+            "min": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "max": "{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}",
+            "length": 12,
+            "conversion": "byte_array"
+        },
+        "ublox_cold_fix_hour_interval": {
+            "id": "0x7D",
+            "default": 0,
+            "min": 0,
+            "max": 4320,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "external_switch_detection_enabled": {
+            "id": "0x7E",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "external_switch_detection_trigger_type": {
+            "id": "0x7F",
+            "default": 0,
+            "min": 0,
+            "max": 1,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "external_switch_detection_trigger_debounce_ms": {
+            "id": "0x80",
+            "default": 50,
+            "min": 0,
+            "max": 2000,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "external_switch_detection_reporting_interval": {
+            "id": "0x81",
+            "default": 3600,
+            "min": 0,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "external_switch_send_inactivity_report": {
+            "id": "0x82",
+            "default": true,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "external_switch_minimal_report_duration_ms": {
+            "id": "0x83",
+            "default": 250,
+            "min": 0,
+            "max": 65000,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "external_switch_input_pull": {
+            "id": "0x84",
+            "default": 1,
+            "min": 0,
+            "max": 2,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "external_switch_counter_enabled": {
+            "id": "0x85",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "air_quality_enabled": {
+            "id": "0x86",
+            "default": false,
+            "min": false,
+            "max": true,
+            "length": 1,
+            "conversion": "bool"
+        },
+        "air_quality_interval": {
+            "id": "0x87",
+            "default": 300,
+            "min": 10,
+            "max": 86400,
+            "length": 4,
+            "conversion": "uint32"
+        }
+    },
+    "commands": {
+        "cmd_join": {
+            "id": "0xA0",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset": {
+            "id": "0xA1",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_all_val": {
+            "id": "0xA2",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_single_val": {
+            "id": "0xA3",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_status": {
+            "id": "0xA4",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_position": {
+            "id": "0xA5",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset_gps": {
+            "id": "0xA6",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_all_settings": {
+            "id": "0xA7",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_single_setting": {
+            "id": "0xA8",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset_initial_position": {
+            "id": "0xA9",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset_initial_time": {
+            "id": "0xAA",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_clear_nvs": {
+            "id": "0xAB",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset_to_def_settings": {
+            "id": "0xAC",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_status_lr": {
+            "id": "0xAD",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_lr_fix": {
+            "id": "0xAE",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_set_location_and_time": {
+            "id": "0xAF",
+            "length": 12,
+            "conversion": "uint32",
+            "value": 0
+        },
+        "cmd_get_wifi_scan": {
+            "id": "0xB1",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_get_ble_scan": {
+            "id": "0xB2",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_get_flash_status": {
+            "id": "0xB3",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_get_lr_satellite_data": {
+            "id": "0xB4",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_get_ublox_satellite_data": {
+            "id": "0xB5",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_almanac_update": {
+            "id": "0xB6",
+            "length": 250,
+            "conversion": "byte_array",
+            "value": 0
+        },
+        "cmd_get_mac": {
+            "id": "0xB7",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_get_ublox_fix": {
+            "id": "0xB8",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_reset_lr": {
+            "id": "0xB9",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_flash_clear": {
+            "id": "0xBA",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_flash_get_all": {
+            "id": "0xBB",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_flash_get_from_head": {
+            "id": "0xBC",
+            "length": 12,
+            "conversion": "uint32",
+            "value": 0
+        },
+        "cmd_s_band_send": {
+            "id": "0xBD",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_set_operation_mode_com_th": {
+            "id": "0xBE",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_disable_flash_th": {
+            "id": "0xBF",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_disable_bt_th": {
+            "id": "0xC0",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_set_operation_mode_main_th": {
+            "id": "0xC1",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_check_pin": {
+            "id": "0xC2",
+            "length": 16,
+            "conversion": "byte_array",
+            "value": 0
+        },
+        "cmd_set_hibernation_mode": {
+            "id": "0xC3",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_lr_message": {
+            "id": "0xC4",
+            "length": 46,
+            "conversion": "string",
+            "value": 0
+        },
+        "cmd_read_all_lr_messages": {
+            "id": "0xC5",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_sat_buffer": {
+            "id": "0xC6",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_fence_measure": {
+            "id": "0xC8",
+            "length": 1,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_aggregated_bt_scan": {
+            "id": "0xC9",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_single_bt_scan": {
+            "id": "0xCA",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_bt_disconnect": {
+            "id": "0xCB",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_bt_cmdq_results": {
+            "id": "0xCC",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_decouple_collar": {
+            "id": "0xCD",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        },
+        "cmd_send_timestamp": {
+            "id": "0xCE",
+            "length": 0,
+            "conversion": "uint8",
+            "value": 0
+        }
+    },
+    "values": {
+        "reset_reason": {
+            "id": "0xD0",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "gps_lon": {
+            "id": "0xD1",
+            "default": 156447700,
+            "min": -1800000000,
+            "max": 1800000000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "gps_lat": {
+            "id": "0xD2",
+            "default": 465556280,
+            "min": -900000000,
+            "max": 900000000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "gps_alt": {
+            "id": "0xD3",
+            "default": 253000,
+            "min": -400000,
+            "max": 8000000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "lis2_acc_x": {
+            "id": "0xD4",
+            "default": 0,
+            "min": -100,
+            "max": 100,
+            "length": 4,
+            "conversion": "float"
+        },
+        "lis2_acc_y": {
+            "id": "0xD5",
+            "default": 0,
+            "min": -100,
+            "max": 100,
+            "length": 4,
+            "conversion": "float"
+        },
+        "lis2_acc_z": {
+            "id": "0xD6",
+            "default": 0,
+            "min": -100,
+            "max": 100,
+            "length": 4,
+            "conversion": "float"
+        },
+        "batt_mV": {
+            "id": "0xD7",
+            "default": 2500,
+            "min": 1500,
+            "max": 4500,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "ublox_time": {
+            "id": "0xD8",
+            "default": 1621861202,
+            "min": 1621861202,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "lr_satellites": {
+            "id": "0xD9",
+            "default": 0,
+            "min": 0,
+            "max": 255,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "mcu_temp": {
+            "id": "0xDA",
+            "default": 0,
+            "min": -100,
+            "max": 100,
+            "length": 4,
+            "conversion": "float"
+        },
+        "charge_mV": {
+            "id": "0xDB",
+            "default": 0,
+            "min": 0,
+            "max": 32000,
+            "length": 4,
+            "conversion": "int32"
+        },
+        "gps_h_acc_est": {
+            "id": "0xDC",
+            "default": 0,
+            "min": 0,
+            "max": 65535,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "flash_nr_msg": {
+            "id": "0xE8",
+            "default": 0,
+            "min": 0,
+            "max": 2147483647,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "last_position_time": {
+            "id": "0xE9",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "last_accel_int_time": {
+            "id": "0xEA",
+            "default": 0,
+            "min": 0,
+            "max": 4294967295,
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "n_mes": {
+            "id": "0xEB",
+            "default": 0,
+            "min": 0,
+            "max": 5,
+            "length": 1,
+            "conversion": "uint8"
+        },
+        "almanac_age": {
+            "id": "0xEC",
+            "default": 0,
+            "min": 0,
+            "max": 65535,
+            "length": 2,
+            "conversion": "uint16"
+        },
+        "factory_device_name": {
+            "id": "0xED",
+            "default": "",
+            "min": "",
+            "max": "",
+            "length": 8,
+            "conversion": "string"
+        },
+        "satellite_resend_try": {
+            "id": "0xEF",
+            "default": 0,
+            "min": 0,
+            "max": 30,
+            "length": 1,
+            "conversion": "uint8"
+        }
+    },
+    "messages": {
+        "msg_lr_messaging": {
+            "port": "port_lr_messaging",
+            "id": "0x90",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_memfault_chunks": {
+            "port": "port_memfault",
+            "id": "0x91",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_fence": {
+            "port": "port_fence",
+            "id": "0x92",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ublox_location_short": {
+            "port": "port_ublox_short_message",
+            "id": "0x93",
+            "length": 14,
+            "conversion": "byte_array"
+        },
+        "msg_flash_status": {
+            "port": "port_flash_status",
+            "id": "0x94",
+            "length": 5,
+            "conversion": "byte_array"
+        },
+        "msg_ublox_resend_location": {
+            "port": "port_ublox_resend_location",
+            "id": "0x95",
+            "length": 14,
+            "conversion": "byte_array"
+        },
+        "msg_timestamp": {
+            "port": "port_timestamp",
+            "id": "0x97",
+            "length": 4,
+            "conversion": "uint32"
+        },
+        "msg_external_switch_detection": {
+            "port": "port_external_switch_detection",
+            "id": "0x98",
+            "length": 5,
+            "conversion": "uint32"
+        },
+        "msg_external_switch_detection_status": {
+            "port": "port_external_switch_detection_status",
+            "id": "0x99",
+            "length": 5,
+            "conversion": "byte_array"
+        },
+        "msg_air_quality": {
+            "port": "port_air_quality",
+            "id": "0x9A",
+            "length": 47,
+            "conversion": "byte_array"
+        },
+        "msg_lr_messaging_timestamp": {
+            "port": "port_lr_messaging",
+            "id": "0xF0",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_gnss": {
+            "port": "port_lr_gps",
+            "id": "0xF1",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ublox_location": {
+            "port": "port_ublox_gps",
+            "id": "0xF2",
+            "length": 30,
+            "conversion": "byte_array"
+        },
+        "msg_cmd_confirm": {
+            "port": "port_messages",
+            "id": "0xF3",
+            "length": 2,
+            "conversion": "byte_array"
+        },
+        "msg_status": {
+            "port": "port_status",
+            "id": "0xF4",
+            "length": 14,
+            "conversion": "byte_array"
+        },
+        "msg_lr_satellites": {
+            "port": "port_lr_sat_data",
+            "id": "0xF5",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ublox_satellites": {
+            "port": "port_ublox_sat_data",
+            "id": "0xF6",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_wifi_scan_aggregated": {
+            "port": "port_wifi_scan_aggregated",
+            "id": "0xF7",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_wifi_scan": {
+            "port": "port_wifi_scan",
+            "id": "0xF8",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ble_scan_aggregated": {
+            "port": "port_ble_scan_aggregated",
+            "id": "0xF9",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ble_scan": {
+            "port": "port_ble_scan",
+            "id": "0xFA",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_ble_cmdq": {
+            "port": "port_ble_cmdq",
+            "id": "0xFC",
+            "length": 250,
+            "conversion": "byte_array"
+        },
+        "msg_mac_id": {
+            "port": "port_messages",
+            "id": "0xFD",
+            "length": 6,
+            "conversion": "byte_array"
+        },
+        "msg_last_position": {
+            "port": "port_messages",
+            "id": "0xFE",
+            "length": 16,
+            "conversion": "byte_array"
+        },
+        "msg_read_flash": {
+            "port": "port_flash_log",
+            "id": "0xFF",
+            "length": 250,
+            "conversion": "byte_array"
+        }
+    },
+    "ports": {
+        "port_lr_gps": 1,
+        "port_ublox_gps": 2,
+        "port_settings": 3,
+        "port_status": 4,
+        "port_lr_sat_data": 5,
+        "port_wifi_scan_aggregated": 6,
+        "port_ble_scan_aggregated": 7,
+        "port_ublox_sat_data": 9,
+        "port_wifi_scan": 10,
+        "port_ble_scan": 11,
+        "port_fence": 12,
+        "port_ublox_short_message": 13,
+        "port_flash_status": 14,
+        "port_ble_cmdq": 15,
+        "port_ublox_resend_location": 16,
+        "port_timestamp": 18,
+        "port_external_switch_detection": 19,
+        "port_external_switch_detection_status": 20,
+        "port_air_quality": 21,
+        "port_memfault": 27,
+        "port_lr_messaging": 28,
+        "port_flash_log": 29,
+        "port_values": 30,
+        "port_messages": 31,
+        "port_commands": 32
+    }
+}

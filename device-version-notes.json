@@ -46,6 +46,36 @@
         "This firmware is a test build.",
         "Expect incomplete or unstable behavior."
       ]
+    },
+    {
+      "id": "open-collar-7-1-0-release-notes",
+      "title": "Open Collar 7.1.0 release notes",
+      "appliesTo": {
+        "fwVersions": [
+          "7.1.0"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "Added: external switch user-configurable power control (toggle external switch power on/off).",
+        "Added: LoRa TX/RX tests in provisioning firmware.",
+        "Added: flash size printout as a separate provisioning test.",
+        "Added: freeedge_nrf52840 v1.6.0 board files with ambiguous flash support.",
+        "Added: collaredge_nrf52840 v1.5.0 board files with ambiguous flash support.",
+        "Added: RF front end module as a standalone module in a separate lib folder.",
+        "Fixed: AirQ report-sending interval overflow.",
+        "Fixed: flash read from head now starts at the specified message.",
+        "Fixed: external switch GPIO pin initialization.",
+        "Fixed: unnecessary uart0 (serial-uart) toggling when sending s-band messages.",
+        "Removed: RF scanner and related components (RF Open Sky Detection, EWMA partition).",
+        "AirQ: rangeredge_airq_nrf52840 is a use-case-specific build with an external I2C board (BME690, BMV080); to fit firmware size, it disables non-EU868 LoRa regions, BT_CMDQ, RF scanning/Open Sky Detection, and outdoor detection.",
+        "AirQ DFU files: see air_quality-v7.1.0."
+      ]
     }
   ]
 }

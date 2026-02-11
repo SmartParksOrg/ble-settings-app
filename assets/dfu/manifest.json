@@ -1,0 +1,311 @@
+{
+  "version": 1,
+  "generatedAt": "2026-02-11",
+  "releases": [
+    {
+      "releaseId": "open-collar-v4.4.3",
+      "product": "open-collar",
+      "firmwareVersion": "4.4.3",
+      "files": [
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.1.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.1.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rangeredge_nrf52840@1.1.0/open-collar-rangeredge_nrf52840-hv1.1.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.2.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.2.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rangeredge_nrf52840@1.2.0/open-collar-rangeredge_nrf52840-hv1.2.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.3.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rangeredge_nrf52840@1.3.0/open-collar-rangeredge_nrf52840-hv1.3.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.4.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rangeredge_nrf52840@1.4.0/open-collar-rangeredge_nrf52840-hv1.4.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.6.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rangeredge_nrf52840@1.6.0/open-collar-rangeredge_nrf52840-hv1.6.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rhinoedge_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-rhinoedge_nrf52840-hv1.3.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rhinoedge_nrf52840@1.3.0/open-collar-rhinoedge_nrf52840-hv1.3.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rhinoedge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rhinoedge_nrf52840-hv1.4.0-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rhinoedge_nrf52840@1.4.0/open-collar-rhinoedge_nrf52840-hv1.4.0-v4.4.3.bin"
+        },
+        {
+          "hwType": "rhinopuck35_nrf52840",
+          "hwVersion": "",
+          "fileName": "open-collar-rhinopuck35_nrf52840-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rhinopuck35_nrf52840/open-collar-rhinopuck35_nrf52840-v4.4.3.bin"
+        },
+        {
+          "hwType": "rhinopuck_nrf52840",
+          "hwVersion": "",
+          "fileName": "open-collar-rhinopuck_nrf52840-v4.4.3.bin",
+          "path": "assets/dfu/releases/open-collar-v4.4.3/rhinopuck_nrf52840/open-collar-rhinopuck_nrf52840-v4.4.3.bin"
+        }
+      ]
+    },
+    {
+      "releaseId": "open-collar-v5.0.1-migration",
+      "product": "open-collar",
+      "firmwareVersion": "5.0.1",
+      "files": [
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.4.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rangeredge_nrf52840@1.4.0/open-collar-rangeredge_nrf52840-hv1.4.0-v5.0.1.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.6.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rangeredge_nrf52840@1.6.0/open-collar-rangeredge_nrf52840-hv1.6.0-v5.0.1.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.7.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.7.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rangeredge_nrf52840@1.7.0/open-collar-rangeredge_nrf52840-hv1.7.0-v5.0.1.bin"
+        },
+        {
+          "hwType": "rhinoedge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rhinoedge_nrf52840-hv1.4.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rhinoedge_nrf52840@1.4.0/open-collar-rhinoedge_nrf52840-hv1.4.0-v5.0.1.bin"
+        },
+        {
+          "hwType": "rhinopuck35_nrf52840",
+          "hwVersion": "1.2.0",
+          "fileName": "open-collar-rhinopuck35_nrf52840-hv1.2.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rhinopuck35_nrf52840@1.2.0/open-collar-rhinopuck35_nrf52840-hv1.2.0-v5.0.1.bin"
+        },
+        {
+          "hwType": "rhinopuck_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-rhinopuck_nrf52840-hv1.3.0-v5.0.1.bin",
+          "path": "assets/dfu/releases/open-collar-v5.0.1-migration/rhinopuck_nrf52840@1.3.0/open-collar-rhinopuck_nrf52840-hv1.3.0-v5.0.1.bin"
+        }
+      ]
+    },
+    {
+      "releaseId": "open-collar-v6.15.3",
+      "product": "open-collar",
+      "firmwareVersion": "6.15.3",
+      "files": [
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.0.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.0.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/collaredge_nrf52840@1.0.0/open-collar-collaredge_nrf52840-hv1.0.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.1.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.1.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/collaredge_nrf52840@1.1.0/open-collar-collaredge_nrf52840-hv1.1.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.4.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/collaredge_nrf52840@1.4.0/open-collar-collaredge_nrf52840-hv1.4.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "freeedge_nrf52840",
+          "hwVersion": "1.0.0",
+          "fileName": "open-collar-freeedge_nrf52840-hv1.0.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/freeedge_nrf52840@1.0.0/open-collar-freeedge_nrf52840-hv1.0.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "freeedge_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-freeedge_nrf52840-hv1.3.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/freeedge_nrf52840@1.3.0/open-collar-freeedge_nrf52840-hv1.3.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.4.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rangeredge_nrf52840@1.4.0/open-collar-rangeredge_nrf52840-hv1.4.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.6.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rangeredge_nrf52840@1.6.0/open-collar-rangeredge_nrf52840-hv1.6.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.7.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.7.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rangeredge_nrf52840@1.7.0/open-collar-rangeredge_nrf52840-hv1.7.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.8.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.8.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rangeredge_nrf52840@1.8.0/open-collar-rangeredge_nrf52840-hv1.8.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rhinoedge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rhinoedge_nrf52840-hv1.4.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rhinoedge_nrf52840@1.4.0/open-collar-rhinoedge_nrf52840-hv1.4.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rhinopuck35_nrf52840",
+          "hwVersion": "1.2.0",
+          "fileName": "open-collar-rhinopuck35_nrf52840-hv1.2.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rhinopuck35_nrf52840@1.2.0/open-collar-rhinopuck35_nrf52840-hv1.2.0-v6.15.3.bin"
+        },
+        {
+          "hwType": "rhinopuck_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-rhinopuck_nrf52840-hv1.3.0-v6.15.3.bin",
+          "path": "assets/dfu/releases/open-collar-v6.15.3/rhinopuck_nrf52840@1.3.0/open-collar-rhinopuck_nrf52840-hv1.3.0-v6.15.3.bin"
+        }
+      ]
+    },
+    {
+      "releaseId": "open-collar-v7.1.0",
+      "product": "open-collar",
+      "firmwareVersion": "7.1.0",
+      "files": [
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.0.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.0.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/collaredge_nrf52840@1.0.0/open-collar-collaredge_nrf52840-hv1.0.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.1.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.1.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/collaredge_nrf52840@1.1.0/open-collar-collaredge_nrf52840-hv1.1.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.4.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/collaredge_nrf52840@1.4.0/open-collar-collaredge_nrf52840-hv1.4.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "collaredge_nrf52840",
+          "hwVersion": "1.5.0",
+          "fileName": "open-collar-collaredge_nrf52840-hv1.5.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/collaredge_nrf52840@1.5.0/open-collar-collaredge_nrf52840-hv1.5.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "freeedge_nrf52840",
+          "hwVersion": "1.0.0",
+          "fileName": "open-collar-freeedge_nrf52840-hv1.0.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/freeedge_nrf52840@1.0.0/open-collar-freeedge_nrf52840-hv1.0.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "freeedge_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-freeedge_nrf52840-hv1.3.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/freeedge_nrf52840@1.3.0/open-collar-freeedge_nrf52840-hv1.3.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "freeedge_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-freeedge_nrf52840-hv1.6.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/freeedge_nrf52840@1.6.0/open-collar-freeedge_nrf52840-hv1.6.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.4.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rangeredge_nrf52840@1.4.0/open-collar-rangeredge_nrf52840-hv1.4.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.6.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rangeredge_nrf52840@1.6.0/open-collar-rangeredge_nrf52840-hv1.6.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.7.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.7.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rangeredge_nrf52840@1.7.0/open-collar-rangeredge_nrf52840-hv1.7.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_nrf52840",
+          "hwVersion": "1.8.0",
+          "fileName": "open-collar-rangeredge_nrf52840-hv1.8.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rangeredge_nrf52840@1.8.0/open-collar-rangeredge_nrf52840-hv1.8.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rhinoedge_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rhinoedge_nrf52840-hv1.4.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rhinoedge_nrf52840@1.4.0/open-collar-rhinoedge_nrf52840-hv1.4.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rhinopuck35_nrf52840",
+          "hwVersion": "1.2.0",
+          "fileName": "open-collar-rhinopuck35_nrf52840-hv1.2.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rhinopuck35_nrf52840@1.2.0/open-collar-rhinopuck35_nrf52840-hv1.2.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rhinopuck_nrf52840",
+          "hwVersion": "1.3.0",
+          "fileName": "open-collar-rhinopuck_nrf52840-hv1.3.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/open-collar-v7.1.0/rhinopuck_nrf52840@1.3.0/open-collar-rhinopuck_nrf52840-hv1.3.0-v7.1.0.bin"
+        }
+      ]
+    },
+    {
+      "releaseId": "air-quality-v7.1.0",
+      "product": "open-collar",
+      "firmwareVersion": "7.1.0",
+      "files": [
+        {
+          "hwType": "rangeredge_airq_nrf52840",
+          "hwVersion": "1.4.0",
+          "fileName": "open-collar-rangeredge_airq_nrf52840-hv1.4.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/air-quality-v7.1.0/open-collar-v7.1.0/rangeredge_airq_nrf52840@1.4.0/open-collar-rangeredge_airq_nrf52840-hv1.4.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_airq_nrf52840",
+          "hwVersion": "1.6.0",
+          "fileName": "open-collar-rangeredge_airq_nrf52840-hv1.6.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/air-quality-v7.1.0/open-collar-v7.1.0/rangeredge_airq_nrf52840@1.6.0/open-collar-rangeredge_airq_nrf52840-hv1.6.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_airq_nrf52840",
+          "hwVersion": "1.7.0",
+          "fileName": "open-collar-rangeredge_airq_nrf52840-hv1.7.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/air-quality-v7.1.0/open-collar-v7.1.0/rangeredge_airq_nrf52840@1.7.0/open-collar-rangeredge_airq_nrf52840-hv1.7.0-v7.1.0.bin"
+        },
+        {
+          "hwType": "rangeredge_airq_nrf52840",
+          "hwVersion": "1.8.0",
+          "fileName": "open-collar-rangeredge_airq_nrf52840-hv1.8.0-v7.1.0.bin",
+          "path": "assets/dfu/releases/air-quality-v7.1.0/open-collar-v7.1.0/rangeredge_airq_nrf52840@1.8.0/open-collar-rangeredge_airq_nrf52840-hv1.8.0-v7.1.0.bin"
+        }
+      ]
+    }
+  ]
+}

@@ -18,15 +18,16 @@ const DfuFileCheckResult = {
   deviceCannotUpgradeToSix: 14,
 };
 
-const FileNameHwEnum = {
-  0: 'default',
-  1: 'rhinoedge_nrf52840',
-  2: 'elephantedge_nrf52840',
-  3: 'wisentedge_nrf52840',
-  4: 'cattracker_nrf52840',
-  5: 'rangeredge_nrf52840',
-  6: 'rhinopuck_nrf52840',
-};
+const DFU_MANIFEST_URL = 'assets/dfu/manifest.json';
+const HW_TYPES_READY = Boolean(
+  window.HW_TYPES && window.getHwTypeLabel && window.getHwTypeFileName && window.loadDfuManifest
+);
+
+const FileNameHwEnum = window.HW_TYPES?.byId
+  ? Object.fromEntries(
+      Object.entries(window.HW_TYPES.byId).map(([key, value]) => [Number(key), value.fileName])
+    )
+  : {};
 
 const FileNameFwEnum = {
   0: 'default',
@@ -52,7 +53,7 @@ const dfuCheckMessages = {
   [DfuFileCheckResult.emptyFileName]: 'Select a DFU file before continuing.',
   [DfuFileCheckResult.unsupportedFileType]: 'Unsupported DFU file type. Use a .bin or .zip file.',
   [DfuFileCheckResult.fileNameError]: 'DFU file name format is not recognized.',
-  [DfuFileCheckResult.warnUnverifiedFile]: 'Selected file has not been checked for capatability! By continuing to use this file, you confirm that you understand the risk of bricking the connected device.',
+  [DfuFileCheckResult.warnUnverifiedFile]: 'Selected file has not been checked for compatibility! By continuing to use this file, you confirm that you understand the risk of bricking the connected device.',
   [DfuFileCheckResult.deviceHwTypeMismatch]: 'Hardware type does not match the connected device.',
   [DfuFileCheckResult.deviceHwVersionUnknown]: 'Device hardware version is unknown.',
   [DfuFileCheckResult.deviceHwVersionMismatch]: 'Hardware version does not match the connected device.',
@@ -61,7 +62,7 @@ const dfuCheckMessages = {
   [DfuFileCheckResult.deviceFwVersionUnknown]: 'Device firmware version is unknown.',
   [DfuFileCheckResult.deviceFwVersionMismatch]: 'Firmware version in the file is older than the device.',
   [DfuFileCheckResult.fileFwVersionFormatError]: 'Firmware version in the file name is invalid.',
-  [DfuFileCheckResult.deviceCannotUpgradeToSix]: 'This device cannot be upgraded to 6.0 or newer firmware.',
+  [DfuFileCheckResult.deviceCannotUpgradeToSix]: 'This device cannot be upgraded to 6.0 or newer firmware without first installing the v5 migration firmware.',
 };
 
 const dfuState = {
@@ -70,6 +71,9 @@ const dfuState = {
   fileData: null,
   fileImageInfo: null,
   checkResult: DfuFileCheckResult.emptyFileName,
+  bundledEntries: [],
+  bundledEntriesAll: [],
+  bundledEntriesByPath: new Map(),
   connected: false,
   connecting: false,
   uploadReady: false,
@@ -90,7 +94,14 @@ const dfuState = {
   autoActivateInProgress: false,
   reconnectUnlockAt: 0,
   userConfirmed: false,
+  validHwVersionsByType: new Map(),
+  uploadInProgress: false,
+  bundledLoaded: false,
 };
+
+window.isDfuSessionActive = () => Boolean(dfuState.connected || dfuState.connecting || dfuState.uploadReady || dfuState.awaitingReboot);
+window.hasPendingDfuSelection = () => Boolean(dfuState.fileData || dfuState.file);
+window.isDfuUploadInProgress = () => Boolean(dfuState.uploadInProgress);
 
 let elements = null;
 let lastLoggedProgress = null;
@@ -114,6 +125,10 @@ function bindElements() {
     fileStatus: document.getElementById('dfu-file-status'),
     checkStatus: document.getElementById('dfu-check-status'),
     fileMatchStatus: document.getElementById('dfu-file-match'),
+    bundledSelect: document.getElementById('dfu-bundled-select'),
+    bundledUseButton: document.getElementById('dfu-bundled-use'),
+    bundledStatus: document.getElementById('dfu-bundled-status'),
+    bundledPicker: document.getElementById('dfu-bundled-picker'),
     confirmationPanel: document.getElementById('dfu-confirmation'),
     confirmCancelButton: document.getElementById('dfu-confirm-cancel'),
     confirmProceedButton: document.getElementById('dfu-confirm-proceed'),
@@ -155,6 +170,193 @@ function logDfu(message, isError = false) {
   }
   elements.mainLog.appendChild(line);
   elements.mainLog.scrollTop = elements.mainLog.scrollHeight;
+}
+
+function setBundledStatus(message) {
+  if (!elements || !elements.bundledStatus) return;
+  elements.bundledStatus.textContent = message;
+}
+
+function buildBundledLabel(entry) {
+  const release = entry.releaseId || entry.firmwareVersion || 'unknown';
+  const hw = entry.hwType ? `${entry.hwType}@${entry.hwVersion || '?'}` : 'unknown hardware';
+  return `${release} • ${hw}`;
+}
+
+function renderBundledOptions(entries, selectedPath = '') {
+  if (!elements || !elements.bundledSelect) return;
+  dfuState.bundledEntries = entries;
+  dfuState.bundledEntriesByPath = new Map(entries.map(entry => [entry.path, entry]));
+
+  elements.bundledSelect.innerHTML = '';
+
+  if (!entries.length) {
+    if (elements.bundledPicker) {
+      elements.bundledPicker.classList.toggle('hidden', dfuState.bundledLoaded);
+    }
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No built-in updates available';
+    elements.bundledSelect.appendChild(option);
+    elements.bundledSelect.disabled = true;
+    return;
+  }
+
+  if (elements.bundledPicker) {
+    elements.bundledPicker.classList.remove('hidden');
+  }
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = 'Select a built-in update';
+  elements.bundledSelect.appendChild(placeholder);
+
+  entries.forEach(entry => {
+    const option = document.createElement('option');
+    option.value = entry.path;
+    option.textContent = buildBundledLabel(entry);
+    elements.bundledSelect.appendChild(option);
+  });
+  if (selectedPath && dfuState.bundledEntriesByPath.has(selectedPath)) {
+    elements.bundledSelect.value = selectedPath;
+  }
+  elements.bundledSelect.disabled = false;
+}
+
+function normalizeVersionString(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return '';
+  const parts = trimmed.split('.');
+  if (parts.length === 2) {
+    return `${parts[0]}.${parts[1]}.0`;
+  }
+  return trimmed;
+}
+
+function getDeviceHwTypeFileName() {
+  if (!window.getHwTypeFileName) return '';
+  if (!dfuState.deviceInfo || !Number.isFinite(dfuState.deviceInfo.hwType)) {
+    return '';
+  }
+  return window.getHwTypeFileName(dfuState.deviceInfo.hwType) || '';
+}
+
+function shouldIncludeBundledEntry(entry) {
+  if (!entry) return false;
+  const deviceHwTypeName = getDeviceHwTypeFileName();
+  const deviceHwVersion = normalizeVersionString(dfuState.deviceInfo?.hwVersion || '');
+  const deviceFwVersion = normalizeVersionString(dfuState.deviceInfo?.fwVersion || '');
+
+  if (deviceHwTypeName && entry.hwType && entry.hwType !== deviceHwTypeName) {
+    return false;
+  }
+
+  if (deviceHwVersion && entry.hwVersion) {
+    if (normalizeVersionString(entry.hwVersion) !== deviceHwVersion) {
+      return false;
+    }
+  }
+
+  if (deviceFwVersion && entry.firmwareVersion) {
+    const deviceFwVersionFive = versionCompare(deviceFwVersion, '5.0');
+    const fileFwVersionSix = versionCompare(entry.firmwareVersion, '6.0');
+    if (deviceFwVersionFive === -1 && fileFwVersionSix !== -1) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function applyBundledFilter() {
+  if (!elements || !elements.bundledSelect) return;
+  const entries = dfuState.bundledEntriesAll || [];
+  const selectedPath = elements.bundledSelect.value || '';
+  if (!dfuState.deviceInfo) {
+    renderBundledOptions(entries, selectedPath);
+    return;
+  }
+  const filtered = entries.filter(shouldIncludeBundledEntry);
+  renderBundledOptions(filtered, selectedPath);
+}
+
+function getSelectedBundledEntry() {
+  if (!elements || !elements.bundledSelect) return null;
+  const path = elements.bundledSelect.value;
+  if (!path) return null;
+  return dfuState.bundledEntriesByPath.get(path) || null;
+}
+
+async function loadBundledManifest() {
+  if (!elements || !elements.bundledSelect) return;
+  dfuState.bundledLoaded = false;
+  elements.bundledSelect.disabled = true;
+  setBundledStatus('Loading built-in updates...');
+  try {
+    assertHardwareTypesReady();
+    const manifest = await window.loadDfuManifest();
+    const releases = Array.isArray(manifest?.releases) ? manifest.releases : [];
+    const entries = releases.flatMap(release => {
+      const files = Array.isArray(release?.files) ? release.files : [];
+      return files.map(file => ({
+        releaseId: release.releaseId,
+        product: release.product,
+        firmwareVersion: release.firmwareVersion,
+        hwType: file.hwType,
+        hwVersion: file.hwVersion,
+        fileName: file.fileName,
+        path: file.path,
+      }));
+    }).filter(entry => entry.path && entry.fileName);
+
+    if (window.getValidHwVersionsByType) {
+      dfuState.validHwVersionsByType = await window.getValidHwVersionsByType();
+    }
+
+    dfuState.bundledEntriesAll = entries;
+    applyBundledFilter();
+    if (!entries.length) {
+      setBundledStatus('No built-in updates available.');
+    } else if (!dfuState.bundledEntries.length && dfuState.deviceInfo) {
+      setBundledStatus('No built-in updates match this device.');
+    } else {
+      setBundledStatus('Built-in updates available.');
+    }
+  } catch (error) {
+    dfuState.bundledEntriesAll = [];
+    renderBundledOptions([]);
+    setBundledStatus('Built-in update list unavailable.');
+    logDfu(`Bundled DFU manifest load failed: ${error.message || error}`, true);
+  } finally {
+    dfuState.bundledLoaded = true;
+    if (dfuState.bundledEntries && dfuState.bundledEntries.length) {
+      if (elements.bundledPicker) {
+        elements.bundledPicker.classList.remove('hidden');
+      }
+    } else if (elements.bundledPicker) {
+      elements.bundledPicker.classList.add('hidden');
+    }
+  }
+}
+
+async function loadBundledFile(entry) {
+  if (!entry || !entry.path || !entry.fileName) return;
+  setBundledStatus(`Loading ${entry.fileName}...`);
+  try {
+    const response = await fetch(entry.path);
+    if (!response.ok) {
+      throw new Error(`File fetch failed: ${response.status}`);
+    }
+    const blob = await response.blob();
+    const file = new File([blob], entry.fileName, { type: 'application/octet-stream' });
+    if (elements.fileInput) {
+      elements.fileInput.value = '';
+    }
+    await handleFileSelection({ target: { files: [file] } });
+    setBundledStatus(`Loaded ${entry.fileName}.`);
+  } catch (error) {
+    setBundledStatus('Failed to load built-in update.');
+    logDfu(`Bundled DFU file load failed: ${error.message || error}`, true);
+  }
 }
 
 function updateUploadStatus(step, state, detail = '') {
@@ -303,6 +505,9 @@ function versionCompare(versionA, versionB) {
 }
 
 function checkDfuFileName(fileName, deviceType, deviceFwVersion, deviceHwType, deviceHwVersion) {
+  if (!HW_TYPES_READY) {
+    return DfuFileCheckResult.warnUnverifiedFile;
+  }
   if (isAppUpdateFile(fileName)) {
     return DfuFileCheckResult.warnUnverifiedFile;
   }
@@ -732,6 +937,10 @@ function resetDfuSession() {
   if (elements.fileInput) {
     elements.fileInput.value = '';
   }
+  if (elements.bundledSelect) {
+    elements.bundledSelect.value = '';
+  }
+  setBundledStatus('No built-in update selected.');
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
@@ -763,8 +972,9 @@ function showUploadSection() {
 
 function updateConnectionStatus(message, state = '') {
   if (!elements) return;
-  elements.connectionStatus.textContent = message;
-  elements.connectionStatus.classList.remove('success', 'error');
+  elements.connectionStatus.setAttribute('aria-label', message);
+  elements.connectionStatus.dataset.state = state || 'neutral';
+  elements.connectionStatus.classList.remove('success', 'error', 'pending', 'neutral');
   if (state) {
     elements.connectionStatus.classList.add(state);
   }
@@ -778,16 +988,16 @@ function resolveDeviceType(value, mapping, fallbackLabel) {
 }
 
 function decodeHwTypeLabel(hwType) {
-  const labels = {
-    0: 'default',
-    1: 'rhinoedge',
-    2: 'elephantedge',
-    3: 'wisentedge',
-    4: 'cattracker',
-    5: 'rangeredge',
-    6: 'rhinopuck',
-  };
-  return resolveDeviceType(hwType, labels, 'unknown');
+  if (window.getHwTypeLabel) {
+    return window.getHwTypeLabel(hwType);
+  }
+  return resolveDeviceType(hwType, {}, 'unknown');
+}
+
+function assertHardwareTypesReady() {
+  if (!HW_TYPES_READY) {
+    throw new Error('Hardware type mappings not loaded. Ensure hardware-types.js loads before dfu/dfu.js.');
+  }
 }
 
 function decodeFwTypeLabel(fwType) {
@@ -800,6 +1010,7 @@ function hydrateDeviceInfo() {
     dfuState.deviceInfo = null;
     renderDeviceInfo(null);
     updateCheckStatus(DfuFileCheckResult.emptyFileName);
+    applyBundledFilter();
     return;
   }
 
@@ -809,6 +1020,7 @@ function hydrateDeviceInfo() {
     fwTypeLabel: decodeFwTypeLabel(info.fwType),
   };
   renderDeviceInfo(dfuState.deviceInfo);
+  applyBundledFilter();
 }
 
 function hydratePendingDfu() {
@@ -941,7 +1153,7 @@ function setupMcuManager() {
   });
 
   dfuState.mcumgr.onConnecting(() => {
-    updateConnectionStatus('Connecting to device...');
+    updateConnectionStatus('Connecting to device...', 'pending');
     dfuState.connecting = true;
     updateUploadButtons();
   });
@@ -983,8 +1195,9 @@ function setupMcuManager() {
   dfuState.mcumgr.onDisconnect((error) => {
     dfuState.connected = false;
     dfuState.connecting = false;
+    dfuState.uploadInProgress = false;
     const message = error ? `Disconnected: ${error.message || error}` : 'Disconnected';
-    updateConnectionStatus(message, error ? 'error' : '');
+    updateConnectionStatus(message, 'error');
     if (elements.disconnectButton) {
       elements.disconnectButton.disabled = true;
     }
@@ -993,7 +1206,7 @@ function setupMcuManager() {
     if (dfuState.awaitingReboot) {
       updateUploadStatus('reboot', 'active', 'Waiting');
       updateUploadStatus('reconnect', 'active', 'Waiting');
-      updateConnectionStatus('Waiting for device to reboot...', '');
+      updateConnectionStatus('Waiting for device to reboot...', 'pending');
       setWaitingOverlay(true);
       ensureReconnectLock();
       dfuState.reconnectAttempts = 0;
@@ -1016,6 +1229,7 @@ function setupMcuManager() {
   });
 
   dfuState.mcumgr.onImageUploadFinished(() => {
+    dfuState.uploadInProgress = false;
     logDfu('Upload finished.');
     showToast('DFU upload finished.');
     setUploadProgress(100);
@@ -1033,6 +1247,7 @@ function setupMcuManager() {
   });
 
   dfuState.mcumgr.onImageUploadError(({ error, errorCode, consecutiveTimeouts, totalTimeouts }) => {
+    dfuState.uploadInProgress = false;
     const detail = [];
     if (Number.isFinite(errorCode)) detail.push(`code=${errorCode}`);
     if (Number.isFinite(consecutiveTimeouts)) detail.push(`consecutive=${consecutiveTimeouts}`);
@@ -1046,6 +1261,7 @@ function setupMcuManager() {
   });
 
   dfuState.mcumgr.onImageUploadCancelled(() => {
+    dfuState.uploadInProgress = false;
     logDfu('Upload cancelled.');
     showToast('DFU upload cancelled.');
     resetUploadProgress();
@@ -1495,7 +1711,7 @@ function shouldKeepReconnecting() {
 
 function scheduleReconnectAttempt() {
   updateUploadStatus('reconnect', 'active', 'Waiting');
-  updateConnectionStatus('Waiting for device to reboot...', '');
+  updateConnectionStatus('Waiting for device to reboot...', 'pending');
   setWaitingOverlay(true);
 }
 
@@ -1654,7 +1870,7 @@ async function connectForDfu(allowPrompt = true) {
       }
       if (!allowPrompt) {
         if (dfuState.awaitingReboot) {
-          updateConnectionStatus('Waiting for device to reboot...', '');
+          updateConnectionStatus('Waiting for device to reboot...', 'pending');
         } else {
           updateConnectionStatus('Reconnect to the device before starting DFU.', 'error');
         }
@@ -1687,7 +1903,7 @@ async function connectForDfu(allowPrompt = true) {
     }
     if (!allowPrompt) {
       if (dfuState.awaitingReboot) {
-        updateConnectionStatus('Waiting for device to reboot...', '');
+        updateConnectionStatus('Waiting for device to reboot...', 'pending');
       } else {
         updateConnectionStatus('DFU device not found. Use Scan to reconnect if needed.', 'error');
       }
@@ -1789,9 +2005,11 @@ async function startUpload() {
   const imageHash = normalizeHash(dfuState.fileImageInfo && dfuState.fileImageInfo.hash);
   logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, fallbacks=${fallbacks.join(', ') || 'none'}`);
   logDfu(`Image info: version=${imageVersion}, hash=${imageHash || 'unknown'}`);
+  dfuState.uploadInProgress = true;
   try {
     await dfuState.mcumgr.cmdUpload(dfuState.fileData);
   } catch (error) {
+    dfuState.uploadInProgress = false;
     logDfu(error.message || String(error), true);
     showToast('Failed to start DFU upload.');
     updateUploadStatus('start', 'error', 'Failed');
@@ -1810,6 +2028,16 @@ function attachHandlers() {
   if (!elements) return;
   if (elements.fileInput) {
     elements.fileInput.addEventListener('change', handleFileSelection);
+  }
+  if (elements.bundledUseButton) {
+    elements.bundledUseButton.addEventListener('click', async () => {
+      const entry = getSelectedBundledEntry();
+      if (!entry) {
+        setBundledStatus('Select a built-in update first.');
+        return;
+      }
+      await loadBundledFile(entry);
+    });
   }
   if (elements.confirmCancelButton) {
     elements.confirmCancelButton.addEventListener('click', () => {
@@ -1850,7 +2078,7 @@ function attachHandlers() {
   }
   if (elements.reconnectButton) {
     elements.reconnectButton.addEventListener('click', () => {
-      updateConnectionStatus('Reconnect requested...', '');
+      updateConnectionStatus('Reconnect requested...', 'pending');
       connectForDfu(true);
     });
   }
@@ -1969,12 +2197,14 @@ function init(options = null) {
   if (!bindElements()) return;
   dfuState.existingDevice = options && options.device ? options.device : null;
   dfuState.useExistingConnection = options ? Boolean(options.useExistingConnection) : false;
+  setBundledStatus('No built-in update selected.');
   hydrateDeviceInfo();
   updateCheckStatus(DfuFileCheckResult.emptyFileName);
   setupMcuManager();
   applyUploadSettings();
   attachHandlers();
   resetUi();
+  loadBundledManifest();
   hydratePendingDfu();
   if (dfuState.useExistingConnection && dfuState.existingDevice) {
     logDfu('DFU init: reusing existing BLE connection if available.');

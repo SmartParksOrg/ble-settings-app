@@ -8,12 +8,29 @@
   <script>
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js')
-        .then(reg => console.log('Service Worker registered:', reg))
+        .then(reg => {
+          console.log('Service Worker registered:', reg);
+          if (typeof reg.update === 'function') {
+            reg.update();
+          }
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (window.isDfuSessionActive && window.isDfuSessionActive()) {
+              console.log('Skipping auto-reload: DFU session active.');
+              return;
+            }
+            if (window.hasPendingDfuSelection && window.hasPendingDfuSelection()) {
+              console.log('Skipping auto-reload: DFU selection pending.');
+              return;
+            }
+            window.location.reload();
+          });
+        })
         .catch(err => console.error('Service Worker registration failed:', err));
     }
   </script>
   <link rel="stylesheet" href="style.css" />
   <link rel="manifest" href="manifest.json">
+  <script src="hardware-types.js"></script>
   <script src="functions.js"></script>
 </head>
 
@@ -39,13 +56,13 @@
       </div>
       <div class="hidden-when-connected">
         <section class="section section-card scan-card">
-          <div class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Scan</div>
+          <div class="section-card-title"><span class="icon bluetooth" aria-hidden="true"></span>Scan</div>
           <div class="section-card-body">
             <div class="primary-actions">
               <button id="connect-button" class="scan-button">Scan</button>
             </div>
             <details class="section section-card scan-settings-card">
-              <summary class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Scan settings</summary>
+              <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Scan settings</summary>
               <div class="section-card-body">
                 <label class="scan-settings-label" for="device-name-filter">
                   Device name filter (comma-separated prefixes):
@@ -75,7 +92,7 @@
           </div>
         </section>
         <section class="section section-card composer-card">
-          <div class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Composer</div>
+          <div class="section-card-title"><span class="icon keyboard" aria-hidden="true"></span>Composer</div>
           <div class="section-card-body">
             <div class="composer-actions">
               <a class="button composer-button" href="composer.html">Composer</a>
@@ -87,10 +104,6 @@
         <select id="settings-dropdown" onchange="loadSelectedSettings()"></select>
       </div>
       <div id="container"></div>
-
-      <div id="dfu-container" class="hidden">
-        <div id="dfu-connection-status" class="dfu-connection-status">Not connected</div>
-      </div>
     </div>
   </div>
 
@@ -103,7 +116,7 @@
 
   <div id="actions-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card" open>
-      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Actions</summary>
+      <summary class="section-card-title"><span class="icon power-off" aria-hidden="true"></span>Actions</summary>
       <div class="section-card-body">
         <div id="main-commands"></div>
       </div>
@@ -112,7 +125,7 @@
 
   <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Logs</summary>
+      <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
       <div class="section-card-body">
         <div class="status-header">
           <div class="status-item"><span class="icon messages"></span>Flash log</div>
@@ -129,7 +142,7 @@
           <span id="flash-log-status">Waiting for settings...</span>
         </div>
         <div class="log-actions">
-          <button type="button" class="log-action-button" onclick="executeCommand(settingsData?.commands?.cmd_flash_get_all?.id)">Download all logs</button>
+          <button type="button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
         </div>
         <div class="log-actions">
           <select id="flash-log-type-select" class="log-type-select" aria-label="Flash log message type">
@@ -138,22 +151,23 @@
           <button type="button" class="log-action-button" onclick="downloadFlashLogsByType()">Download selected message type</button>
         </div>
         <div class="log-actions">
-          <button type="button" class="log-action-button secondary" onclick="requestEraseAllLogs()">Erase all logs</button>
+          <button type="button" class="log-action-button erase-logs-button" onclick="setFlashLogEraseConfirmVisible(true)">Erase all logs</button>
         </div>
       </div>
     </details>
   </div>
 
+  <div id="firmware-notes-anchor"></div>
   <div id="firmware-notes-area" class="commands-section page-section hidden">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Firmware Notes</summary>
+      <summary class="section-card-title"><span class="icon book" aria-hidden="true"></span>Firmware Notes</summary>
       <div class="section-card-body" id="firmware-notes-body"></div>
     </details>
   </div>
 
   <div id="messenger-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Messenger</summary>
+      <summary class="section-card-title"><span class="icon envelope" aria-hidden="true"></span>Messenger</summary>
       <div class="section-card-body messenger-card">
         <div class="status-header messenger-header">
           <div class="status-item"><span class="icon messages"></span>Chat</div>
@@ -185,7 +199,7 @@
 
   <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Settings</summary>
+      <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
         <div class="settings-options">
           <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
@@ -215,7 +229,7 @@
 
   <div id="other-commands" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Commands</summary>
+      <summary class="section-card-title"><span class="icon play" aria-hidden="true"></span>Commands</summary>
       <div class="section-card-body">
         <div id="commands-buttons-section"></div>
       </div>
@@ -224,7 +238,7 @@
 
   <div id="map-area" class="map-section page-section hidden-when-no-status">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon ublox-location" aria-hidden="true"></span>Map</summary>
+      <summary class="section-card-title"><span class="icon location-dot" aria-hidden="true"></span>Map</summary>
       <div class="section-card-body">
         <div id="map-status" class="map-status">Waiting for location...</div>
         <div class="map-frame">
@@ -253,8 +267,11 @@
 
   <div class="log-footer hidden-when-disconnected dfu-keep-visible" id="logFooter">
     <div class="log-header" onclick="toggleLog()">
-      <span>Log</span>
-      <span class="icon close"></span>
+      <span class="log-title"><span class="icon bug" aria-hidden="true"></span>Log</span>
+      <span class="log-header-actions">
+        <span id="log-copy-button" class="icon copy" role="button" aria-label="Copy logs" title="Copy logs"></span>
+        <span class="icon close" aria-hidden="true"></span>
+      </span>
     </div>
     <div class="log-content" id="log"></div>
   </div>
@@ -332,7 +349,17 @@
       <div class="dfu-waiting-text">Warning: this will permanently erase all logs from device flash.</div>
       <div class="dfu-confirmation-actions">
         <button id="flash-log-erase-cancel" class="secondary" type="button">Cancel</button>
-        <button id="flash-log-erase-confirm" type="button">Erase all logs</button>
+        <button id="flash-log-erase-confirm" type="button">Erase</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash-log-download-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text" id="flash-log-download-warning"></div>
+      <div class="dfu-confirmation-actions">
+        <button id="flash-log-download-cancel" class="secondary" type="button">Cancel</button>
+        <button id="flash-log-download-confirm" type="button">Download all logs</button>
       </div>
     </div>
   </div>
@@ -362,6 +389,16 @@
     </div>
   </div>
 
+  <div id="reboot-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text">Warning: rebooting the device may cause it to lose its Join session to the LoRaWAN network.</div>
+      <div class="dfu-confirmation-actions">
+        <button id="reboot-cancel" class="secondary" type="button" onclick="setRebootConfirmVisible(false)">Cancel</button>
+        <button id="reboot-confirm" type="button" onclick="confirmReboot()">Reboot</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dfu-section" class="page-section hidden">
     <div id="dfu-waiting-overlay" class="dfu-waiting-overlay hidden">
       <div class="dfu-waiting-card">
@@ -373,7 +410,7 @@
       </div>
     </div>
     <section class="section section-card dfu-card">
-      <div class="section-card-title"><span class="icon hw-version" aria-hidden="true"></span>Connected device</div>
+      <div class="section-card-title"><span class="icon tachograph-digital" aria-hidden="true"></span>Connected device</div>
       <div class="section-card-body">
         <div class="dfu-device-grid">
           <div>
@@ -392,6 +429,14 @@
             <div class="dfu-label">Last status</div>
             <div id="dfu-device-updated" class="dfu-value">Not available</div>
           </div>
+          <div>
+            <div class="dfu-label">Connected</div>
+            <div class="dfu-value">
+              <div id="dfu-connection-status" class="dfu-connection-status" role="img" aria-label="Not connected" data-state="error">
+                <span class="dfu-connection-icon" aria-hidden="true"></span>
+              </div>
+            </div>
+          </div>
         </div>
         <div id="dfu-device-warning" class="dfu-warning hidden">
           Device details are missing. Connect to a device and wait for the status to load.
@@ -400,12 +445,17 @@
     </section>
 
     <section class="section section-card dfu-card">
-      <div class="section-card-title"><span class="icon messages" aria-hidden="true"></span>Step 1: Select DFU file</div>
+      <div class="section-card-title"><span class="icon file" aria-hidden="true"></span>Step 1: Select DFU file</div>
       <div class="section-card-body">
+        <div class="dfu-bundled-picker" id="dfu-bundled-picker">
+          <select id="dfu-bundled-select" class="dfu-bundled-select">
+            <option value="">Built-in DFU files (loading...)</option>
+          </select>
+          <button id="dfu-bundled-use" type="button" class="scan-button">Use built-in file</button>
+        </div>
         <div class="dfu-file-picker">
           <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
-          <label for="dfu-file" class="button dfu-file-button">Select DFU file</label>
-          <div class="dfu-file-hint">.bin or .zip</div>
+          <label for="dfu-file" class="button dfu-file-button">Upload DFU file</label>
         </div>
         <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
         <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
@@ -421,7 +471,7 @@
     </section>
 
     <section class="section section-card dfu-card hidden" id="dfu-upload-section">
-      <div class="section-card-title"><span class="icon ble-scan" aria-hidden="true"></span>Step 2: Upload firmware</div>
+      <div class="section-card-title"><span class="icon file-arrow-up" aria-hidden="true"></span>Step 2: Upload firmware</div>
       <div class="section-card-body">
         <div class="dfu-upload-status">
           <div class="dfu-upload-status-title">Upload status</div>
@@ -461,7 +511,7 @@
     </section>
 
     <details class="section section-card dfu-card dfu-advanced-card" id="dfu-advanced-card">
-      <summary class="section-card-title"><span class="icon settings" aria-hidden="true"></span>Advanced tools</summary>
+      <summary class="section-card-title"><span class="icon screwdriver-wrench" aria-hidden="true"></span>Advanced tools</summary>
       <div class="section-card-body">
         <div class="dfu-upload-actions">
           <button id="dfu-refresh-state" class="secondary">Refresh image state</button>
@@ -519,9 +569,10 @@
       pendingUnreadCheck: false
     };
     const mainCommands = {
-      'cmd_join': 'Join LP1',
-      'cmd_send_status_lr': 'Send status to LR1',
-      'cmd_get_ublox_fix': 'Get UBLOX fix',
+      'cmd_join': 'Join LoRaWAN',
+      'cmd_send_status_lr': 'Send Status to LoRaWAN',
+      'cmd_send_position': 'Send position to LoRaWAN',
+      'cmd_get_ublox_fix': 'Perform GPS fix now',
       'cmd_reset': 'Reboot device',
     };
 
@@ -542,12 +593,14 @@
     let leafletPromise = null;
     let userRequestedDisconnect = false;
     let lrUpdateMode = false;
+    let hasLrJoinError = false;
     let ubloxFixPending = false;
     let ubloxFixTimeoutId = null;
     let ubloxFixCountdownId = null;
     let ubloxBusyStatus = false;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
+    let reloadOnDisconnect = false;
     let mapTrackState = {
       active: false,
       phase: null,
@@ -582,6 +635,29 @@
       logElement.scrollTop = logElement.scrollHeight;
     }
     window.toggleLog = toggleLog;
+
+    function setRebootConfirmVisible(visible) {
+      const overlay = document.getElementById('reboot-confirm-overlay');
+      if (!overlay) return;
+      overlay.classList.toggle('hidden', !visible);
+    }
+    window.setRebootConfirmVisible = setRebootConfirmVisible;
+
+    function requestRebootConfirm() {
+      setRebootConfirmVisible(true);
+    }
+    window.requestRebootConfirm = requestRebootConfirm;
+
+    function confirmReboot() {
+      setRebootConfirmVisible(false);
+      const command = settingsData?.commands?.cmd_reset;
+      if (!command) {
+        showToast('Reboot command not available.');
+        return;
+      }
+      executeCommand(command.id);
+    }
+    window.confirmReboot = confirmReboot;
 
     function isLrUpdateFirmware(statusMessage) {
       return statusMessage
@@ -915,17 +991,26 @@
         setMapStatus('Offline: map unavailable.');
         return;
       }
-      setMapStatus(`Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+      const latestTimestamp = Number.isFinite(lastPositionMessage.timestamp) && lastPositionMessage.timestamp > 0
+        ? lastPositionMessage.timestamp
+        : null;
+      const latestTimestampLabel = latestTimestamp ? formatUbloxFixTimestamp(latestTimestamp) : '';
+      const latestTimestampRelative = latestTimestamp ? formatRelativeTimeFromNow(latestTimestamp) : '';
+      const timestampSuffix = latestTimestamp
+        ? ` • ${latestTimestampLabel} (${latestTimestampRelative})`
+        : '';
+      setMapStatus(`Location: ${latitude.toFixed(5)}, ${longitude.toFixed(5)}${timestampSuffix}`);
       const coords = [latitude, longitude];
       if (!mapMarker) {
         mapMarker = L.marker(coords, { icon: getLatestPositionIcon() }).addTo(mapInstance);
       } else {
         mapMarker.setLatLng(coords);
       }
-      const latestTimestamp = Number.isFinite(lastPositionMessage.timestamp) && lastPositionMessage.timestamp > 0
-        ? formatUbloxFixTimestamp(lastPositionMessage.timestamp)
-        : 'N/A';
-      mapMarker.bindPopup(`Latest known position: ${latestTimestamp}`);
+      mapMarker.bindPopup(
+        latestTimestamp
+          ? `Latest known position: ${latestTimestampLabel} (${latestTimestampRelative})`
+          : 'Latest known position'
+      );
       mapInstance.setView(coords, 14, { animate: false });
     }
 
@@ -1073,10 +1158,23 @@
       setMapStatus(`Track loaded: ${points.length} point(s).`);
     }
 
-    function buildTrackPayloadPlans(port, startIndex) {
+    function buildTrackPayloadPlans(port, startIndex, useSingleRequest) {
       const startIndexFromHead = Math.max(0, startIndex);
       const plans = [];
-      for (let offset = 0; offset < TRACK_POINTS_LIMIT; offset++) {
+      const totalCount = TRACK_POINTS_LIMIT;
+      if (useSingleRequest) {
+        const payload12 = new Uint8Array(12);
+        const view12 = new DataView(payload12.buffer);
+        view12.setUint32(0, port, true);
+        view12.setUint32(4, startIndexFromHead, true);
+        view12.setUint32(8, totalCount, true);
+        plans.push({
+          key: `u32-port,u32-index=${startIndexFromHead},u32-count=${totalCount}`,
+          bytes: payload12
+        });
+        return plans;
+      }
+      for (let offset = 0; offset < totalCount; offset++) {
         const payload12 = new Uint8Array(12);
         const view12 = new DataView(payload12.buffer);
         view12.setUint32(0, port, true);
@@ -1108,6 +1206,22 @@
       return true;
     }
 
+    function getTrackRequestVersion() {
+      const statusFw = lastStatusInfo?.fwVersion || null;
+      const settingsFile = document.getElementById('settings-dropdown')?.value;
+      const settingsVersion = extractSettingsVersion(settingsFile);
+      return statusFw || settingsVersion || null;
+    }
+
+    function shouldUseSingleTrackRequest() {
+      const version = getTrackRequestVersion();
+      const parsed = parseVersionString(version);
+      if (!parsed) {
+        return false;
+      }
+      return compareVersionStrings(version, '7.1.0') >= 0;
+    }
+
     function startTrackRequest(mode) {
       const cmd = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
       if (!cmd) {
@@ -1125,13 +1239,15 @@
       // Device uses "from head" indexing where 0 means newest entry (look back from latest).
       // To fetch the latest N points, always start from 0.
       const startIndex = 0;
+      const useSingleRequest = shouldUseSingleTrackRequest();
+      const strategyLabel = useSingleRequest ? 'batch' : 'single';
 
       mapTrackState.active = true;
       mapTrackState.phase = mode;
       mapTrackState.points = [];
-      mapTrackState.pendingPlans = buildTrackPayloadPlans(port, startIndex);
+      mapTrackState.pendingPlans = buildTrackPayloadPlans(port, startIndex, useSingleRequest);
       mapTrackState.flashBuffer = new Uint8Array(0);
-      log(`Track request start: phase=${mode}, strategy=single, port=${port}, startIndex(from head)=${startIndex}, count=${TRACK_POINTS_LIMIT}, payloads=${mapTrackState.pendingPlans.length}`);
+      log(`Track request start: phase=${mode}, strategy=${strategyLabel}, port=${port}, startIndex(from head)=${startIndex}, count=${TRACK_POINTS_LIMIT}, payloads=${mapTrackState.pendingPlans.length}`);
       if (!executeNextTrackPlan()) {
         mapTrackState.active = false;
         showMapTracksOverlay({
@@ -1602,6 +1718,7 @@
     }
 
     async function loadSelectedSettings() {
+      const settingsSelection = document.getElementById('settings-selection');
       const selectedFile = document.getElementById('settings-dropdown').value;
       if (!selectedFile) {
         return;
@@ -1623,6 +1740,9 @@
         updateMessengerMeta();
         startMessengerPolling();
         updateFirmwareNotes(selectedFile);
+        if (settingsSelection) {
+          settingsSelection.classList.add('hidden');
+        }
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
@@ -2135,16 +2255,7 @@
     }
 
     function decodeHwFwType(t) {
-      switch (t) {
-        case 0: return "default";
-        case 1: return "rhinoedge";
-        case 2: return "elephantedge";
-        case 3: return "wisentedge";
-        case 4: return "cattracker";
-        case 5: return "rangeredge";
-        case 6: return "rhinopuck";
-        default: return "unknown";
-      }
+      return window.getHwTypeLabel(t);
     }
 
     function decodeReset(reset) {
@@ -2263,6 +2374,7 @@
 
       if (lrUpdateMode) {
         ubloxBusyStatus = Boolean(statusMessage.ublox_busy);
+        hasLrJoinError = false;
         statusItems.push(
           `<div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>`,
           `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
@@ -2282,6 +2394,7 @@
           </div>
         `;
       } else {
+        hasLrJoinError = Boolean(statusMessage.err_lr_join);
         const errors = Object.entries(statusMessage)
           .filter(([key, hasError]) => key.startsWith('err_') && hasError)
           .map(([key]) => key.slice(4).toUpperCase())
@@ -2548,25 +2661,44 @@
 
     function toggleDfuView(showDfu) {
       const sectionsToHide = [
+        document.getElementById('status-area'),
+        document.getElementById('actions-area'),
         document.getElementById('settings-area'),
+        document.getElementById('logs-area'),
+        document.getElementById('messenger-area'),
         document.getElementById('other-commands'),
         document.getElementById('map-area'),
       ];
       const container = document.getElementById('container');
       const dfuContainer = document.getElementById('dfu-container');
       const dfuSection = document.getElementById('dfu-section');
+      const notesArea = document.getElementById('firmware-notes-area');
+      const notesAnchor = document.getElementById('firmware-notes-anchor');
+      const connectedCard = dfuSection ? dfuSection.querySelector('.dfu-card') : null;
       if (showDfu) {
         sectionsToHide.forEach(section => section && section.classList.add('hidden'));
         container && container.classList.add('hidden');
         dfuContainer && dfuContainer.classList.remove('hidden');
         dfuSection && dfuSection.classList.remove('hidden');
         document.body.classList.add('dfu-active');
+        if (notesArea && dfuSection) {
+          notesArea.classList.add('dfu-notes-mode');
+          if (connectedCard && connectedCard.parentNode === dfuSection) {
+            connectedCard.insertAdjacentElement('afterend', notesArea);
+          } else {
+            dfuSection.insertAdjacentElement('afterbegin', notesArea);
+          }
+        }
       } else {
         sectionsToHide.forEach(section => section && section.classList.remove('hidden'));
         container && container.classList.remove('hidden');
         dfuContainer && dfuContainer.classList.add('hidden');
         dfuSection && dfuSection.classList.add('hidden');
         document.body.classList.remove('dfu-active');
+        if (notesArea && notesAnchor) {
+          notesArea.classList.remove('dfu-notes-mode');
+          notesAnchor.insertAdjacentElement('afterend', notesArea);
+        }
       }
     }
     window.toggleDfuView = toggleDfuView;
@@ -2665,23 +2797,35 @@
         ? { 'cmd_reset': 'Reboot device' }
         : mainCommands;
 
-      mainCommandsElement.innerHTML = Object.entries(activeCommands).map(([key, label]) => {
+      const filteredCommands = Object.entries(activeCommands).filter(([key]) => (
+        key !== 'cmd_join' || hasLrJoinError
+      ));
+
+      const rebootEntry = filteredCommands.find(([key]) => key === 'cmd_reset');
+      const orderedCommands = rebootEntry
+        ? [...filteredCommands.filter(([key]) => key !== 'cmd_reset'), rebootEntry]
+        : filteredCommands;
+
+      mainCommandsElement.innerHTML = orderedCommands.map(([key, label]) => {
         const command = settingsData.commands[key];
         if (!command) {
           return '';
         }
         const isUbloxFix = key === 'cmd_get_ublox_fix';
+        const isReset = key === 'cmd_reset';
         const isDisabled = isUbloxFix && ubloxBusyStatus;
         const disabledAttr = isDisabled ? ' disabled' : '';
         const titleAttr = isDisabled ? ' title="UBLOX is busy. Please wait."' : '';
-        return `<button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${disabledAttr}${titleAttr}>${label}</button>`;
+        const classAttr = isReset ? ' class="reboot-button"' : '';
+        const onclickAttr = isReset ? ' onclick="requestRebootConfirm()"' : ` onclick="executeCommand('${command.id}')"`;
+        return `<button id="command-button-${command.id}"${classAttr}${onclickAttr}${disabledAttr}${titleAttr}>${label}</button>`;
       }).join('');
 
       if (!lrUpdateMode) {
-        mainCommandsElement.innerHTML += `
+        mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
-        `;
+        ` + mainCommandsElement.innerHTML;
       }
     }
 
@@ -2699,14 +2843,21 @@
 
     function autoSelectAndLoadSettings(statusMessage) {
       const settingsDropdown = document.getElementById('settings-dropdown');
+      const settingsSelection = document.getElementById('settings-selection');
       const fwVersion = `v${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
+      let matched = false;
 
       for (let i = 0; i < settingsDropdown.options.length; i++) {
         if (settingsDropdown.options[i].text.includes(fwVersion)) {
           settingsDropdown.selectedIndex = i;
+          matched = true;
           loadSelectedSettings();
           break;
         }
+      }
+
+      if (settingsSelection) {
+        settingsSelection.classList.toggle('hidden', matched);
       }
     }
 
@@ -2731,6 +2882,10 @@
       autoLoaded = false;
       setLrUpdateMode(false);
       document.body.classList.remove('connected');
+      const settingsSelection = document.getElementById('settings-selection');
+      if (settingsSelection) {
+        settingsSelection.classList.remove('hidden');
+      }
       lastStatusInfo = null;
       updateFirmwareNotes(null);
       document.body.classList.remove('has-status');
@@ -2751,6 +2906,11 @@
           console.warn('Failed to clear DFU device info', error);
         }
         userRequestedDisconnect = false;
+      }
+      if (reloadOnDisconnect) {
+        reloadOnDisconnect = false;
+        window.location.reload();
+        return;
       }
       lastPositionMessage = null;
       setMapStatus('Waiting for location...');
@@ -2854,8 +3014,17 @@
     });
 
     document.getElementById('disconnect-button').addEventListener('click', function () {
+      const inDfuMode = document.body.classList.contains('dfu-active');
+      const dfuUploading = window.isDfuUploadInProgress && window.isDfuUploadInProgress();
+      if (inDfuMode && dfuUploading) {
+        showToast('DFU upload in progress. Please wait before disconnecting.');
+        return;
+      }
       if (device && device.gatt.connected) {
         userRequestedDisconnect = true;
+        if (inDfuMode) {
+          reloadOnDisconnect = true;
+        }
         device.gatt.disconnect();
       }
     });
@@ -3017,6 +3186,39 @@
       return new Date(seconds * 1000).toLocaleString("nl-NL");
     }
 
+    function formatRelativeTimeFromNow(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        return 'N/A';
+      }
+      const diffMs = (seconds * 1000) - Date.now();
+      const absMs = Math.abs(diffMs);
+      const units = [
+        ['year', 365 * 24 * 60 * 60 * 1000],
+        ['month', 30 * 24 * 60 * 60 * 1000],
+        ['day', 24 * 60 * 60 * 1000],
+        ['hour', 60 * 60 * 1000],
+        ['minute', 60 * 1000],
+        ['second', 1000],
+      ];
+      let unit = 'second';
+      let unitMs = 1000;
+      for (const [candidate, candidateMs] of units) {
+        unit = candidate;
+        unitMs = candidateMs;
+        if (absMs >= candidateMs) {
+          break;
+        }
+      }
+      const value = Math.round(diffMs / unitMs);
+      if (typeof Intl !== 'undefined' && Intl.RelativeTimeFormat) {
+        const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+        return rtf.format(value, unit);
+      }
+      const absVal = Math.abs(value);
+      const suffix = value < 0 ? 'ago' : 'from now';
+      return `${absVal} ${unit}${absVal === 1 ? '' : 's'} ${suffix}`;
+    }
+
     function buildUbloxFixRow(label, value, isHtml = false) {
       const safeLabel = escapeHtml(label);
       const safeValue = isHtml ? value : escapeHtml(value);
@@ -3137,7 +3339,7 @@
         countEl.textContent = Number.isFinite(value) ? String(value) : 'N/A';
       }
       flashLogCountTotal = Number.isFinite(value) ? Number(value) : null;
-      setFlashLogStatus('Updated');
+      setFlashLogStatus('');
     }
 
     function requestFlashLogCount() {
@@ -3264,6 +3466,68 @@
         return;
       }
       overlay.classList.toggle('hidden', !visible);
+    }
+
+    function formatDurationSeconds(seconds) {
+      if (!Number.isFinite(seconds) || seconds <= 0) {
+        return '0s';
+      }
+      const parts = [];
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      const secs = Math.floor(seconds % 60);
+      if (hours) parts.push(`${hours}h`);
+      if (minutes || (hours && secs)) parts.push(`${minutes}m`);
+      if (!hours && !minutes) parts.push(`${secs}s`);
+      return parts.join(' ');
+    }
+
+    function setFlashLogDownloadConfirmVisible(visible, count = null) {
+      const overlay = document.getElementById('flash-log-download-confirm-overlay');
+      const warning = document.getElementById('flash-log-download-warning');
+      if (!overlay || !warning) {
+        return;
+      }
+      if (visible) {
+        const estimateRate = 5;
+        const estimateSeconds = Number.isFinite(count) ? Math.ceil(count / estimateRate) : null;
+        const estimateLabel = estimateSeconds ? ` (~${formatDurationSeconds(estimateSeconds)})` : '';
+        const countLabel = Number.isFinite(count) ? `${count}` : 'many';
+        warning.textContent = `Warning: this is about to download ${countLabel} log items${estimateLabel}. This operation cannot be cancelled mid-way. Ensure the Bluetooth connection is stable.`;
+      }
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function requestFlashLogDownloadAll() {
+      if (flashLogState.active) {
+        showToast('Cancel the current log download first.');
+        return;
+      }
+      const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
+      if (!flashCommand) {
+        showToast('Flash log command not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      if (Number.isFinite(flashLogCountTotal) && flashLogCountTotal > 500) {
+        setFlashLogDownloadConfirmVisible(true, flashLogCountTotal);
+        return;
+      }
+      executeCommand(flashCommand.id);
+    }
+
+    function confirmFlashLogDownloadAll() {
+      const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
+      if (!flashCommand) {
+        showToast('Flash log command not available in this firmware.');
+        setFlashLogDownloadConfirmVisible(false);
+        return;
+      }
+      executeCommand(flashCommand.id);
+      setFlashLogDownloadConfirmVisible(false);
     }
 
     function requestEraseAllLogs() {
@@ -3740,6 +4004,20 @@
       });
     }
 
+    const flashLogDownloadCancelButton = document.getElementById('flash-log-download-cancel');
+    if (flashLogDownloadCancelButton) {
+      flashLogDownloadCancelButton.addEventListener('click', () => {
+        setFlashLogDownloadConfirmVisible(false);
+      });
+    }
+
+    const flashLogDownloadConfirmButton = document.getElementById('flash-log-download-confirm');
+    if (flashLogDownloadConfirmButton) {
+      flashLogDownloadConfirmButton.addEventListener('click', () => {
+        confirmFlashLogDownloadAll();
+      });
+    }
+
     const ubloxFixOkButton = document.getElementById('ublox-fix-ok');
     if (ubloxFixOkButton) {
       ubloxFixOkButton.addEventListener('click', () => {
@@ -3747,6 +4025,38 @@
         ubloxFixPending = false;
         clearUbloxFixTimeout();
         clearUbloxFixCountdown();
+      });
+    }
+
+    const logCopyButton = document.getElementById('log-copy-button');
+    if (logCopyButton) {
+      logCopyButton.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        const logElement = document.getElementById('log');
+        const text = logElement ? logElement.innerText.trim() : '';
+        if (!text) {
+          showToast('No log entries to copy.');
+          return;
+        }
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            temp.setAttribute('readonly', '');
+            temp.style.position = 'absolute';
+            temp.style.left = '-9999px';
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+          }
+          showToast('Logs copied to clipboard.');
+        } catch (error) {
+          console.error(error);
+          showToast('Failed to copy logs.');
+        }
       });
     }
 

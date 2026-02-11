@@ -1,2 +1,5 @@
 # Ignore Windows alternate data stream metadata files
 *:Zone.Identifier
+*.elf
+*.hex
+*.zip
