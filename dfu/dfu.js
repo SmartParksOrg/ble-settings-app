@@ -37,6 +37,15 @@ const FileNameFwEnum = {
   4: 'cattracker_tracker',
   5: 'rangeredge_tracker',
   6: 'rhinopuck_tracker',
+  7: 'scanneredge_tracker',
+  8: 'collaredge_tracker',
+  9: 'freeedge_tracker',
+  10: 'fenceedge_tracker',
+  11: 'horseedge_tracker',
+  12: 'collaredgepico_tracker',
+  13: 'collaredgenano_tracker',
+  14: 'baboonedge_tracker',
+  15: 'pangolinedge_tracker',
 };
 
 const HwTypeEnum = {

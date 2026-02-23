@@ -7,9 +7,9 @@ const HW_TYPES = {
     4: { label: 'cattracker', fileName: 'cattracker_nrf52840' },
     5: { label: 'rangeredge', fileName: 'rangeredge_nrf52840' },
     6: { label: 'rhinopuck', fileName: 'rhinopuck_nrf52840' },
-    7: { label: 'freeedge', fileName: 'freeedge_nrf52840' },
+    7: { label: 'rhinopuck35', fileName: 'rhinopuck35_nrf52840' },
     8: { label: 'collaredge', fileName: 'collaredge_nrf52840' },
-    9: { label: 'rhinopuck35', fileName: 'rhinopuck35_nrf52840' },
+    9: { label: 'freeedge', fileName: 'freeedge_nrf52840' },
   },
 };
 
