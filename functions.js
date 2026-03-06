@@ -639,6 +639,9 @@ function renderInputControl(key, setting, value) {
     // 1) Custom input renderers
     else if (customInputRenderers[key]) {
         html += customInputRenderers[key](setting, value);
+        if (key === 'device_pin') {
+            value = normalizeDevicePinStorageValue(value);
+        }
     }
 
     // 2) If it's one of the bitmask settings -> render custom or port checkboxes
@@ -1644,7 +1647,10 @@ function validateInput(key, setting, value) {
             throw new Error(`Must be 'true' or 'false'`);
         }
     } else if (setting.conversion === 'byte_array') {
-        stringToUint8Array(value, setting.length);
+        const byteArrayValue = key === 'device_pin'
+            ? normalizeDevicePinStorageValue(value)
+            : value;
+        stringToUint8Array(byteArrayValue, setting.length);
     } else if (setting.conversion === 'string') {
         if (value.length > setting.length) {
             throw new Error(`Max length is ${setting.length} characters`);

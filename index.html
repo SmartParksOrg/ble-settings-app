@@ -148,17 +148,13 @@
       <div class="section-card-body">
         <div class="status-header">
           <div class="status-item"><span class="icon messages"></span>Flash log</div>
-          <a href="#" onclick="requestFlashLogCount()">
+          <a href="#" onclick="requestFlashLogCount(); return false;">
             <div class="status-item"><span class="icon refresh"></span>refresh</div>
           </a>
         </div>
         <div class="data-item">
           <span>Flash messages</span>
           <span id="flash-log-count">Not loaded</span>
-        </div>
-        <div class="data-item">
-          <span>Status</span>
-          <span id="flash-log-status">Waiting for settings...</span>
         </div>
         <div class="log-actions">
           <button type="button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
@@ -637,6 +633,8 @@
       active: false,
       lines: [],
       buffer: '',
+      frameBuffer: new Uint8Array(0),
+      decodedMessages: 0,
       startedAt: null,
       deviceName: '',
       logTypeLabel: 'all',
@@ -1788,6 +1786,8 @@
         active: true,
         lines: [],
         buffer: '',
+        frameBuffer: new Uint8Array(0),
+        decodedMessages: 0,
         startedAt: new Date(),
         deviceName: device && device.name ? device.name : '',
         logTypeLabel,
@@ -1811,6 +1811,35 @@
       });
       scheduleFlashLogInactivityTimeout();
       log(`Starting flash log download (${logTypeLabel})...`);
+    }
+
+    function parseFlashLogRecordCount(packetBytes, carryBuffer) {
+      const incoming = packetBytes.slice(1); // strip transport port byte
+      const merged = new Uint8Array((carryBuffer ? carryBuffer.length : 0) + incoming.length);
+      if (carryBuffer && carryBuffer.length) {
+        merged.set(carryBuffer, 0);
+      }
+      merged.set(incoming, carryBuffer ? carryBuffer.length : 0);
+
+      let index = 0;
+      let count = 0;
+      while (index + 2 < merged.length) {
+        const payloadLen = merged[index + 2];
+        const frameStart = index + 3;
+        const frameEnd = frameStart + payloadLen;
+        const metadataLen = 4;
+        const recordEnd = frameEnd + metadataLen;
+        if (recordEnd > merged.length) {
+          break;
+        }
+        count += 1;
+        index = recordEnd;
+      }
+
+      return {
+        count,
+        remainder: merged.slice(index)
+      };
     }
 
     function finishFlashLogCapture(reason) {
@@ -1878,7 +1907,16 @@
 
       const base64Line = bytesToBase64(payload);
       flashLogState.lines.push(base64Line);
-      const receivedCount = flashLogState.lines.length;
+
+      const parsed = parseFlashLogRecordCount(data, flashLogState.frameBuffer);
+      flashLogState.frameBuffer = parsed.remainder;
+      if (parsed.count > 0) {
+        flashLogState.decodedMessages += parsed.count;
+      }
+
+      const receivedCount = flashLogState.decodedMessages > 0
+        ? flashLogState.decodedMessages
+        : flashLogState.lines.length;
       const elapsedSeconds = Math.max(1, Math.round((Date.now() - flashLogState.startedAt.getTime()) / 1000));
       const rate = (receivedCount / elapsedSeconds).toFixed(1);
       const hasTotal = Number.isFinite(flashLogState.expectedTotal) && flashLogState.expectedTotal > 0;
