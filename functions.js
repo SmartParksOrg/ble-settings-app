@@ -43,6 +43,7 @@ const customInputRenderers = {
     ble_scan_duration: renderMsInput,
     ble_scan_manufacturer_id: renderHexUint16Input,
     cmdq_scan_duration: renderMsInput,
+    device_pin: renderDevicePinInput,
     external_switch_detection_trigger_debounce_ms: renderMsInput,
     gps_init_lat: renderLatitudeInput,
     gps_init_lon: renderLongitudeInput,
@@ -52,8 +53,9 @@ const customInputRenderers = {
 
 // Static list of settings files
 const SETTINGS_FILES = [
-    "settings_v7.0.0.json",
+    "settings-v7.2.0.json",
     "settings-v7.1.0.json",
+    "settings_v7.0.0.json",
     "settings-v5.0.1.json",
     "settings-v6.15.0.json",
     "settings-v6.14.1.json",
@@ -66,6 +68,7 @@ const SETTINGS_FILES = [
 ];
 const SETTINGS_META_FILE = "settings-meta.json";
 const APP_VERSION_FILE = "version.json";
+window.SETTINGS_FILES = SETTINGS_FILES;
 
 const dangerousCommands = [/_th$/, /set_hibernation_mode/, /almanac_update/];
 
@@ -191,7 +194,11 @@ function __onInputChanged(settingId) {
 
 function setInputValue(settingId, value) {
     const [key, setting] = getById(settingId);
-    document.getElementById(`input-container-${settingId}`).innerHTML = renderInputControl(key, setting, value);
+    document.getElementById(`input-container-${settingId}`).innerHTML = sanitizeRenderedInputHtml(renderInputControl(
+        key,
+        setting,
+        normalizeRenderableValue(value)
+    ));
 }
 
 function clearInputValue(settingId) {
@@ -208,7 +215,9 @@ function setDefaultValue(settingId) {
     if (!container) {
         return;
     }
-    container.innerHTML = renderInputControl(key, setting, setting.default);
+    container.innerHTML = sanitizeRenderedInputHtml(
+        renderInputControl(key, setting, normalizeRenderableValue(setting.default))
+    );
 }
 
 function getInputValue(settingId) {
@@ -534,6 +543,17 @@ function getGroupName(key) {
     return key;
 }
 
+function formatGroupTitle(groupName) {
+    if (!groupName) {
+        return '';
+    }
+    const normalized = String(groupName).trim().toLowerCase();
+    if (normalized === 'lr_gps') {
+        return 'LR GPS';
+    }
+    return String(groupName).replace(/_/g, ' ');
+}
+
 function groupAndSortSettings() {
     const grouped = {};
     const other = {};
@@ -591,7 +611,9 @@ function renderInput(key, setting) {
         return '';
     }
 
-    return `<div class="input-container" id="input-container-${setting.id}">${renderInputControl(key, setting, setting.default)}</div>`;
+    return `<div class="input-container" id="input-container-${setting.id}">${sanitizeRenderedInputHtml(
+        renderInputControl(key, setting, normalizeRenderableValue(setting.default))
+    )}</div>`;
 }
 
 function renderInputContainer(key, setting) {
@@ -603,9 +625,7 @@ function renderInputControl(key, setting, value) {
         return '';
     }
 
-    if (value === undefined) {
-        value = "";
-    }
+    value = normalizeRenderableValue(value);
 
     // Build the "include" checkbox + label
     let html = '';
@@ -653,8 +673,9 @@ function renderInputControl(key, setting, value) {
 
     // 5) If it's a normal bool
     else if (setting.conversion === 'bool') {
+        const boolValue = String(value).toLowerCase() === 'true';
         html += `<select id="new-value-${setting.id}" onchange="__onInputChanged('${setting.id}')">`;
-        if (value) {
+        if (boolValue) {
             html += `<option value="true" selected>true</option><option value="false">false</option>`;
         } else {
             html += `<option value="true">true</option><option value="false" selected>false</option>`;
@@ -855,7 +876,8 @@ function renderSecondsInput(setting, value) {
 }
 
 function renderUnixTimeInput(setting, value) {
-    const seconds = Number(value);
+    const hasValue = !isInvalidInputValue(value) && String(value).trim() !== '';
+    const seconds = hasValue ? Number(value) : NaN;
     const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
     const dateValue = date ? formatLocalDateTime(date) : '';
     return `
@@ -865,6 +887,101 @@ function renderUnixTimeInput(setting, value) {
         <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
         <input type="hidden" id="new-value-${setting.id}" value="${value ?? ''}" />
     `;
+}
+
+function normalizeDevicePinStorageValue(value) {
+    const normalized = normalizeRenderableValue(value);
+    if (normalized === '') {
+        return '';
+    }
+    const asString = String(normalized).trim();
+    if (/^\d{1,4}$/.test(asString)) {
+        const padded = asString.padStart(4, '0');
+        return padded.split('').map((digit) => `0${digit}`).join('').toUpperCase();
+    }
+    const hex = stripBytes(asString);
+    if (hex.length === 8) {
+        return hex.toUpperCase();
+    }
+    return '';
+}
+
+function devicePinDigitsFromStorage(value) {
+    const raw = normalizeDevicePinStorageValue(value);
+    if (!raw) {
+        return '';
+    }
+    const pairs = raw.match(/.{2}/g) || [];
+    if (pairs.length !== 4) {
+        return '';
+    }
+    const digits = pairs.map((pair) => pair[1]);
+    if (digits.some((digit) => !/^\d$/.test(digit))) {
+        return '';
+    }
+    return digits.join('');
+}
+
+function formatDevicePinForDisplay(value) {
+    const digits = devicePinDigitsFromStorage(value);
+    return digits || String(normalizeRenderableValue(value) || '');
+}
+
+function renderDevicePinInput(setting, value) {
+    const raw = normalizeDevicePinStorageValue(value);
+    const digits = devicePinDigitsFromStorage(value);
+    return `
+        <label class="input-label" for="pin-value-${setting.id}">PIN (4 digits)</label>
+        <input type="text" id="pin-value-${setting.id}" value="${digits}" maxlength="4" inputmode="numeric" pattern="[0-9]*" oninput="updateDevicePinValue('${setting.id}')" />
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (hex bytes)</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${raw}" readonly />
+        <input type="hidden" id="new-value-${setting.id}" value="${raw}" />
+    `;
+}
+
+function updateDevicePinValue(settingId) {
+    const input = document.getElementById(`pin-value-${settingId}`);
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    if (!input || !hiddenField) {
+        return;
+    }
+    const digits = (input.value || '').replace(/\D/g, '').slice(0, 4);
+    if (input.value !== digits) {
+        input.value = digits;
+    }
+    const raw = digits.length === 4
+        ? digits.split('').map((digit) => `0${digit}`).join('').toUpperCase()
+        : '';
+    hiddenField.value = raw;
+    if (rawValueElement) {
+        rawValueElement.value = raw;
+    }
+    __onInputChanged(settingId);
+}
+
+function isInvalidInputValue(value) {
+    if (value === undefined || value === null) {
+        return true;
+    }
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+        return true;
+    }
+    if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === 'undefined' || normalized === 'null' || normalized === 'nan';
+    }
+    return false;
+}
+
+function normalizeRenderableValue(value) {
+    return isInvalidInputValue(value) ? '' : value;
+}
+
+function sanitizeRenderedInputHtml(html) {
+    return String(html)
+        .replace(/(value=)(['"])(undefined|null|nan)\2/gi, '$1$2$2')
+        .replace(/(value=)(['"])\s*(undefined|null|nan)\s*\2/gi, '$1$2$2');
 }
 
 function renderMacAddressParameters(setting, value) {
@@ -1138,6 +1255,12 @@ function formatSettingValueForPreview(key, setting, value, compareValue = null, 
         return `<div class="import-preview-value">${escapeHtml(degrees)} <span class="import-preview-muted">degrees</span><div class="import-preview-subvalue">Raw: ${escapeHtml(Number.isFinite(raw) ? raw : value)}</div></div>`;
     }
 
+    if (key === 'device_pin') {
+        const digits = devicePinDigitsFromStorage(value);
+        const raw = normalizeDevicePinStorageValue(value);
+        return `<div class="import-preview-value">${escapeHtml(digits || '—')} <span class="import-preview-muted">PIN</span><div class="import-preview-subvalue">Raw: ${escapeHtml(raw || value)}</div></div>`;
+    }
+
     if (customByteArrayRenderers[key]) {
         return formatCustomByteArrayPreview(key, setting, value);
     }
@@ -1325,6 +1448,10 @@ function formatOptionPreview(label, value, options) {
 }
 
 function normalizeSettingValueForCompare(key, setting, value) {
+    if (key === 'device_pin') {
+        return normalizeDevicePinStorageValue(value);
+    }
+
     if (value === undefined || value === null || value === '') {
         return '';
     }
@@ -1438,6 +1565,10 @@ function settingToBytes(key, setting, value) {
     } else if (setting.conversion === 'bool') {
         return new Uint8Array([value.toString().toLowerCase() === 'true' ? 1 : 0]);
     } else if (setting.conversion === 'byte_array') {
+        if (key === 'device_pin') {
+            const normalizedPin = normalizeDevicePinStorageValue(value);
+            return stringToUint8Array(normalizedPin, setting.length);
+        }
         return stringToUint8Array(value, setting.length);
     } else if (setting.conversion === 'string') {
         return new TextEncoder().encode(value);

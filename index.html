@@ -1464,6 +1464,14 @@
           return;
         } else {
           mapTrackState.active = false;
+          if (status === 0x00) {
+            showMapTracksOverlay({
+              title: 'No track logs available',
+              text: 'No GPS tracks were found on this device.',
+              loading: false,
+            });
+            return;
+          }
           showMapTracksOverlay({
             title: 'Track request failed',
             text: `Device returned status 0x${status.toString(16).padStart(2, '0')}.`,
@@ -1494,9 +1502,7 @@
       if (!filtered.length) {
         showMapTracksOverlay({
           title: 'No track logs available',
-          text: mapTrackState.phase === 'short'
-            ? 'No msg_ublox_location or msg_ublox_location_short logs were found.'
-            : 'No msg_ublox_location logs were found.',
+          text: 'No GPS tracks were found on this device.',
           loading: false,
         });
         return;
@@ -2112,6 +2118,11 @@
 
         const value = getInputValue(setting.id);
 
+        if (key === 'device_pin') {
+          settings[key] = formatDevicePinForDisplay(value);
+          continue;
+        }
+
         if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
           settings[key] = Number(value);
         } else if (setting.conversion === 'bool') {
@@ -2659,7 +2670,7 @@
         groupToggle.className = 'group-toggle';
         groupToggle.setAttribute('aria-expanded', 'false');
         groupToggle.innerHTML = `
-          <span class="group-title">${groupName.replace(/_/g, " ")}</span>
+          <span class="group-title">${formatGroupTitle(groupName)}</span>
           <span class="group-caret" aria-hidden="true"></span>
         `;
         groupToggle.addEventListener('click', () => toggleGroup(groupWrapper));
@@ -2681,7 +2692,7 @@
 
           <div class="setting-controls">
             <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
-            <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${setting.default}">Set default</button>
+            <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${normalizeRenderableValue(setting.default)}">Set default</button>
           </div>
         `;
           settingsContainer.appendChild(row);
@@ -2797,7 +2808,7 @@
         safeGetValue("device_eui"),
         safeGetValue("app_key"),
         safeGetValue("app_eui"),
-        safeGetValue("device_pin").split("").filter((_, index) => (index + 1) % 2 === 0).join(""),
+        formatDevicePinForDisplay(safeGetValue("device_pin")),
         document.getElementById('hw-version').textContent,
         document.getElementById('fw-version').textContent,
         safeGetValue("s_band_dev_adr"),
@@ -3995,6 +4006,14 @@
 
         const [key, setting] = getById(id);
         let value = bytesToSetting(setting, valueBytes);
+        if (
+          value === undefined ||
+          value === null ||
+          (typeof value === 'number' && !Number.isFinite(value)) ||
+          (typeof value === 'string' && ['undefined', 'null', 'nan'].includes(value.trim().toLowerCase()))
+        ) {
+          value = '';
+        }
         log(`Decoded setting response: ${key} = ${value}`);
         const inputContainer = document.getElementById(`input-container-${setting.id}`);
         if (inputContainer) {

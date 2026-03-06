@@ -326,7 +326,7 @@
       "display_name": "store flag"
     },
     "gnss_assisted_scan": {
-      "category": "gps",
+      "category": "lr_gps",
       "label": "assisted scan",
       "description": "Gnss assisted scan setting.",
       "display_name": "assisted scan"

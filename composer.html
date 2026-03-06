@@ -492,6 +492,11 @@
 
         const value = getInputValue(setting.id);
 
+        if (key === 'device_pin') {
+          settings[key] = formatDevicePinForDisplay(value);
+          continue;
+        }
+
         if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
           settings[key] = Number(value);
         } else if (setting.conversion === 'bool') {
@@ -792,7 +797,7 @@
         groupToggle.className = 'group-toggle';
         groupToggle.setAttribute('aria-expanded', 'false');
         groupToggle.innerHTML = `
-          <span class="group-title">${groupName.replace(/_/g, " ")}</span>
+          <span class="group-title">${formatGroupTitle(groupName)}</span>
           <span class="group-caret" aria-hidden="true"></span>
         `;
         groupToggle.addEventListener('click', () => toggleGroup(groupWrapper));

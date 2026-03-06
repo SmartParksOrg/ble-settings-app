@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v10';
+const CACHE_NAME = 'app-cache-v15';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const DFU_MANIFEST_URL = toUrl('assets/dfu/manifest.json');
@@ -22,6 +22,7 @@ const STATIC_FILES = [
     toUrl('icon512_rounded.png'),
     toUrl('assets/smart-parks-logo.png'),
     toUrl('assets/dfu/manifest.json'),
+    toUrl('settings/settings-v7.2.0.json'),
     toUrl('settings/settings_v7.0.0.json'),
     toUrl('settings/settings-v7.1.0.json'),
     toUrl('settings/settings-v5.0.1.json'),

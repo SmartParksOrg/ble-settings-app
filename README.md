@@ -6,6 +6,12 @@ Adding a new settings.json version:
 - add settings.json version to functions.js
 - add settings.json version to service-worker.js
 
+Adding a new bundled DFU firmware release:
+- upload `.bin` files to `assets/dfu/releases/<release-id>/...`
+- add release entries to `assets/dfu/manifest.json` (release id, firmware version, and file paths)
+- bump `CACHE_NAME` in `service-worker.js` so clients fetch the new bundle
+- add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
+
 App versioning shown in UI:
 - the app reads `version.json` and shows it in the header (both `index.html` and `composer.html`)
 - update `version.json` on every deployment, preferably from GitHub Actions

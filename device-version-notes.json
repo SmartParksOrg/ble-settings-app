@@ -76,6 +76,31 @@
         "AirQ: rangeredge_airq_nrf52840 is a use-case-specific build with an external I2C board (BME690, BMV080); to fit firmware size, it disables non-EU868 LoRa regions, BT_CMDQ, RF scanning/Open Sky Detection, and outdoor detection.",
         "AirQ DFU files: see air_quality-v7.1.0."
       ]
+    },
+    {
+      "id": "open-collar-7-2-0-release-notes",
+      "title": "Open Collar 7.2.0 release notes",
+      "appliesTo": {
+        "fwVersions": [
+          "7.2.0"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "Added: SDFS UART (SD card writer) module and sample.",
+        "Added: updates to main README.md.",
+        "Added: support for multiple LED colors (magenta, yellow, and cyan).",
+        "Added: LP0 lib with packetization and communication modules.",
+        "Added: LP0 feature in main app for ABP message sending and offloading logic.",
+        "Fixed: device rebooting on ungraceful Bluetooth disconnection (for example when out of range).",
+        "Removed: remaining RF Open Sky detection user settings not removed in v7.1.0.",
+        "DFU files: see open-collar-v7.2.0."
+      ]
     }
   ]
 }
