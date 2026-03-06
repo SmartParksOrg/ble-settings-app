@@ -621,6 +621,7 @@
     let ubloxFixTimeoutId = null;
     let ubloxFixCountdownId = null;
     let ubloxBusyStatus = false;
+    let ubloxDisableInProgress = false;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
     let reloadOnDisconnect = false;
@@ -2562,7 +2563,8 @@
           `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
           `<div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>`,
           `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
-          `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`
+          `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
+          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`
         );
         lrUpdateBanner = `
           <div class="lr-update-banner">
@@ -2597,7 +2599,8 @@
           `<div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>`,
           `<div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>`,
           `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
-          `<div class="status-item"><span class="icon errors"></span>${errors}</div>`
+          `<div class="status-item"><span class="icon errors"></span>${errors}</div>`,
+          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`
         );
       }
 
@@ -2613,6 +2616,7 @@
           ${statusItems.join('')}
         </div>
       `;
+      updateUbloxGpsStatusTag();
 
       displayMainCommands();
 
@@ -3004,10 +3008,138 @@
       }).join('');
 
       if (!lrUpdateMode) {
+        const ubloxState = getUbloxGpsState();
+        const disableUbloxButton = ubloxState && ubloxState.enabled
+          ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableUbloxGps()"${ubloxDisableInProgress ? ' disabled' : ''}>Disable Ublox GPS</button>`
+          : '';
         mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
+          ${disableUbloxButton}
         ` + mainCommandsElement.innerHTML;
+      }
+    }
+
+    function getSettingValueByKey(settingKey) {
+      const setting = settingsData && settingsData.settings ? settingsData.settings[settingKey] : null;
+      if (!setting) {
+        return null;
+      }
+      const current = getInputValue(setting.id);
+      if (current !== undefined && current !== null && String(current).trim() !== '') {
+        return current;
+      }
+      return setting.default;
+    }
+
+    function parseBoolSettingValue(value) {
+      if (value === true || value === 1 || value === '1') {
+        return true;
+      }
+      if (value === false || value === 0 || value === '0') {
+        return false;
+      }
+      const normalized = String(value ?? '').trim().toLowerCase();
+      return normalized === 'true';
+    }
+
+    function parseNumberSettingValue(value) {
+      const num = Number.parseFloat(value);
+      return Number.isFinite(num) ? num : 0;
+    }
+
+    function getUbloxGpsState() {
+      const hasSettings = settingsData && settingsData.settings;
+      if (!hasSettings) {
+        return null;
+      }
+      const interval1Raw = getSettingValueByKey('ublox_send_interval');
+      const multipleRaw = getSettingValueByKey('ublox_multiple_intervals');
+      const interval2Raw = getSettingValueByKey('ublox_send_interval_2');
+      const interval1 = parseNumberSettingValue(interval1Raw);
+      const multipleIntervals = parseBoolSettingValue(multipleRaw);
+      const interval2 = parseNumberSettingValue(interval2Raw);
+      const enabled = interval1 > 0 || (multipleIntervals && interval2 > 0);
+      return {
+        interval1,
+        multipleIntervals,
+        interval2,
+        enabled
+      };
+    }
+
+    function updateUbloxGpsStatusTag() {
+      const tag = document.getElementById('ublox-gps-state-tag');
+      if (!tag) {
+        return;
+      }
+      const state = getUbloxGpsState();
+      if (!state) {
+        tag.textContent = 'UBLOX GPS: status unknown';
+        tag.classList.remove('active', 'inactive');
+        tag.classList.add('unknown');
+        return;
+      }
+      const interval1 = formatUbloxInterval(state.interval1);
+      const interval2 = formatUbloxInterval(state.interval2);
+      const suffix = `I1 ${interval1}, I2 ${interval2}, multi ${state.multipleIntervals ? 'on' : 'off'}`;
+      if (state.enabled) {
+        tag.textContent = `UBLOX GPS: enabled (${suffix})`;
+        tag.classList.remove('inactive', 'unknown');
+        tag.classList.add('active');
+      } else {
+        tag.textContent = `UBLOX GPS: disabled (${suffix})`;
+        tag.classList.remove('active', 'unknown');
+        tag.classList.add('inactive');
+      }
+    }
+
+    function formatUbloxInterval(secondsRaw) {
+      const seconds = Math.max(0, Math.round(parseNumberSettingValue(secondsRaw)));
+      if (seconds >= 3600 && seconds % 3600 === 0) {
+        return `${seconds / 3600} h`;
+      }
+      if (seconds >= 60 && seconds % 60 === 0) {
+        return `${seconds / 60} min`;
+      }
+      return `${seconds} s`;
+    }
+
+    async function disableUbloxGps() {
+      if (ubloxDisableInProgress) {
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const setting1 = settingsData && settingsData.settings ? settingsData.settings.ublox_send_interval : null;
+      const setting2 = settingsData && settingsData.settings ? settingsData.settings.ublox_send_interval_2 : null;
+      if (!setting1 || !setting2) {
+        showToast('UBLOX interval settings are not available in this firmware.');
+        return;
+      }
+      const state = getUbloxGpsState();
+      if (!state || !state.enabled) {
+        showToast('UBLOX GPS is already disabled.');
+        return;
+      }
+
+      ubloxDisableInProgress = true;
+      displayMainCommands();
+      try {
+        await updateBleSetting(setting1.id, '0');
+        await updateBleSetting(setting2.id, '0');
+        await sleep(300);
+        await requestBleValue(setting1.id, CMD_SINGLE_SETTING);
+        await requestBleValue(setting2.id, CMD_SINGLE_SETTING);
+        showToast('UBLOX GPS intervals disabled.');
+      } catch (error) {
+        showToast(`Failed to disable UBLOX GPS: ${error.message}`);
+      } finally {
+        ubloxDisableInProgress = false;
+        updateUbloxGpsStatusTag();
+        displayMainCommands();
       }
     }
 
@@ -4057,6 +4189,10 @@
       const [key] = getById(settingId);
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();
+      }
+      if (key === 'ublox_send_interval' || key === 'ublox_multiple_intervals' || key === 'ublox_send_interval_2') {
+        updateUbloxGpsStatusTag();
+        displayMainCommands();
       }
 
       const rowElement = document.getElementById(`setting-${settingId}`);

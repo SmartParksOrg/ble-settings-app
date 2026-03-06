@@ -14,4 +14,4 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v15`.
+- Service worker cache is currently `app-cache-v17`.

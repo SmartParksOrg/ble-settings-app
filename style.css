@@ -1506,6 +1506,35 @@ h2 {
     margin-right: 5px;
 }
 
+.ublox-gps-tag {
+    font-weight: 600;
+}
+
+.ublox-gps-tag.active {
+    background: rgba(52, 168, 83, 0.2);
+    border: 1px solid rgba(52, 168, 83, 0.45);
+}
+
+.ublox-gps-tag.inactive {
+    background: rgba(123, 135, 151, 0.2);
+    border: 1px solid rgba(123, 135, 151, 0.45);
+}
+
+.ublox-gps-tag.unknown {
+    background: rgba(255, 196, 112, 0.25);
+    border: 1px solid rgba(197, 121, 0, 0.35);
+}
+
+.ublox-disable-button {
+    background: linear-gradient(145deg, #f59e0b, #d97706);
+    border-color: transparent;
+    box-shadow: 0 6px 14px rgba(217, 119, 6, 0.3);
+}
+
+.ublox-disable-button:hover {
+    background: linear-gradient(145deg, #f8b84a, #c56d05);
+}
+
 .lr-update-banner {
     display: flex;
     align-items: center;
