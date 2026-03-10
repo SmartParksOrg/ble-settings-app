@@ -872,7 +872,7 @@
           const valueOptions = getCommandValueOptions();
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}">Value</label>
-            <select id="command-select-${command.id}" class="command-helper-input">
+            <select id="command-select-${command.id}" class="command-helper-input" onchange="updateEncodedMessage()">
               ${valueOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
           `;
@@ -880,25 +880,25 @@
           const settingOptions = getCommandSettingOptions();
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}">Setting</label>
-            <select id="command-select-${command.id}" class="command-helper-input">
+            <select id="command-select-${command.id}" class="command-helper-input" onchange="updateEncodedMessage()">
               ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
           `;
         } else if (key === 'cmd_flash_get_from_head') {
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}-port">Port</label>
-            <select id="command-select-${command.id}-port" class="command-helper-input">
+            <select id="command-select-${command.id}-port" class="command-helper-input" onchange="updateEncodedMessage()">
               ${getKnownPortOptions()}
             </select>
             <label class="command-helper-label" for="command-input-${command.id}-start">Start</label>
-            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" />
+            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
             <label class="command-helper-label" for="command-input-${command.id}-count">How many</label>
-            <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" />
+            <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
           `;
         } else if (commandInputMeta && commandInputMeta.options) {
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}">Value</label>
-            <select id="command-select-${command.id}" class="command-helper-input">
+            <select id="command-select-${command.id}" class="command-helper-input" onchange="updateEncodedMessage()">
               ${commandInputMeta.options.map(option => `<option value="${option.value}">${option.label}</option>`).join('')}
             </select>
           `;
@@ -908,7 +908,7 @@
           const dataFormat = commandInputMeta.input.format || 'uint8';
           helperHtml = `
             <label class="command-helper-label" for="command-input-${command.id}">${labelText}</label>
-            <input id="command-input-${command.id}" class="command-helper-input" type="text" placeholder="${placeholder}" data-format="${dataFormat}" />
+            <input id="command-input-${command.id}" class="command-helper-input" type="text" placeholder="${placeholder}" data-format="${dataFormat}" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
           `;
         }
         row.innerHTML = `
