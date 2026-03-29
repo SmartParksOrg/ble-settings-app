@@ -356,7 +356,7 @@
       "display_name": "init lon"
     },
     "gps_motion_triggered_min_num_of_triggers_per_interval": {
-      "category": "gps_open_sky_detection",
+      "category": "gps",
       "label": "motion triggered min num of triggers per interval",
       "description": "How often this is reported.",
       "display_name": "motion triggered min num of triggers per interval"
@@ -826,13 +826,13 @@
     "ublox_interval1_start": {
       "category": "gps",
       "label": "interval1 start",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "UTC hour (0-23) when the primary u-blox GNSS fix interval starts. When ublox_multiple_intervals is enabled, ublox_send_interval is used from this hour until ublox_interval2_start.",
       "display_name": "interval1 start"
     },
     "ublox_interval2_start": {
       "category": "gps",
       "label": "interval2 start",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "UTC hour (0-23) when the secondary u-blox GNSS fix interval starts. When ublox_multiple_intervals is enabled, ublox_send_interval_2 is used from this hour until ublox_interval1_start on the next day.",
       "display_name": "interval2 start"
     },
     "ublox_leave_on": {
@@ -856,19 +856,19 @@
     "ublox_multiple_intervals": {
       "category": "gps",
       "label": "multiple intervals",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "Enables two UTC-based u-blox GNSS fix schedules. When disabled, only ublox_send_interval is used. When enabled, ublox_send_interval applies from ublox_interval1_start until ublox_interval2_start, and ublox_send_interval_2 applies outside that window.",
       "display_name": "multiple intervals"
     },
     "ublox_send_interval": {
       "category": "gps",
       "label": "send interval",
-      "description": "How often this is reported.",
+      "description": "Primary u-blox GNSS fix interval. When ublox_multiple_intervals is disabled, this is the only interval used. When enabled, this interval applies from ublox_interval1_start until ublox_interval2_start (UTC).",
       "display_name": "send interval"
     },
     "ublox_send_interval_2": {
       "category": "gps",
       "label": "send interval 2",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "Secondary u-blox GNSS fix interval. Only used when ublox_multiple_intervals is enabled. This interval applies from ublox_interval2_start until ublox_interval1_start on the next day (UTC).",
       "display_name": "send interval 2"
     },
     "ublox_switch_interval": {

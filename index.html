@@ -2725,10 +2725,13 @@
           row.className = 'setting disabled with-controls';
           row.setAttribute('id', `setting-${setting.id}`);
           const settingDescription = getSettingDescription(key);
+          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription);
           row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
           row.innerHTML = `
-          <h4>${setting.display_name} <small>${key} (${setting.id})</small></h4> 
-          ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
+          <div class="setting-heading">
+            <h4>${setting.display_name} <small>${key} (${setting.id})</small></h4>
+            ${settingInfoTrigger}
+          </div>
           
           ${renderInput(key, setting)}
 

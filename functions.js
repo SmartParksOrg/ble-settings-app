@@ -2,7 +2,7 @@ let settingsData = null;
 let settingsMap = new Map(); // maps int ID -> [key, meta]
 let settingsMeta = null;
 const intervalPatterns = [
-    /^(?!.*advertisement).*_interval\d?$/, // matches _interval, _interval1, _interval2, etc., but not _advertisement_interval
+    /^(?!.*advertisement).*_interval(?:_\d+|\d+)?$/, // matches _interval, _interval1, _interval2, _interval_2, etc., but not _advertisement_interval
     /^rf_scan_duration$/,
     /^(cold|hot)_fix_timeout$/,
     /^ublox_min_fix_time$/,
@@ -47,6 +47,8 @@ const customInputRenderers = {
     external_switch_detection_trigger_debounce_ms: renderMsInput,
     gps_init_lat: renderLatitudeInput,
     gps_init_lon: renderLongitudeInput,
+    ublox_interval1_start: renderUtcHourInput,
+    ublox_interval2_start: renderUtcHourInput,
     vhf_time_between_packets_ms: renderMsInput,
     init_time: renderUnixTimeInput
 };
@@ -502,6 +504,14 @@ function getSettingDescription(key) {
     return meta && meta.description ? meta.description : "";
 }
 
+function renderSettingInfoTrigger(description) {
+    if (!description) {
+        return '';
+    }
+    const safeDescription = escapeHtml(description);
+    return `<button type="button" class="setting-info-button" aria-label="${safeDescription}" data-tooltip="${safeDescription}" title="${safeDescription}">i</button>`;
+}
+
 function getSettingOptions(key) {
     const meta = getSettingMeta(key);
     return meta && Array.isArray(meta.options) ? meta.options : null;
@@ -548,8 +558,23 @@ function formatGroupTitle(groupName) {
         return '';
     }
     const normalized = String(groupName).trim().toLowerCase();
-    if (normalized === 'lr_gps') {
-        return 'LR GPS';
+    const customGroupTitles = {
+        ble: 'BLE',
+        ble_scan: 'BLE Scan',
+        cmdq: 'CMDQ',
+        gps: 'GPS',
+        lorawan: 'LoRaWAN',
+        lp0: 'LP0',
+        lr_gps: 'LR GPS',
+        lr_messaging: 'Messaging',
+        outdoor: 'Outdoor detection',
+        s_band: 'S-Band Satellite',
+        satellite: 'Iridium Satellite',
+        vhf: 'VHF',
+        wifi_scan: 'WiFi Scan'
+    };
+    if (customGroupTitles[normalized]) {
+        return customGroupTitles[normalized];
     }
     return String(groupName).replace(/_/g, ' ');
 }
@@ -878,6 +903,26 @@ function renderSecondsInput(setting, value) {
     `;
 }
 
+function formatUtcHourLabel(value) {
+    if (!Number.isFinite(value)) {
+        return 'UTC hour not set';
+    }
+    const hour = Math.max(0, Math.min(23, Math.trunc(value)));
+    return `${String(hour).padStart(2, '0')}:00 UTC`;
+}
+
+function renderUtcHourInput(setting, value) {
+    const hourValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const safeValue = Number.isFinite(hourValue) ? Math.max(0, Math.min(23, Math.trunc(hourValue))) : '';
+    return `
+        <label class="input-label" for="new-value-${setting.id}">UTC hour</label>
+        <input type="number" id="new-value-${setting.id}" value="${safeValue}" min="0" max="23" step="1" oninput="updateUtcHourValue('${setting.id}')" />
+        <div class="input-helper" id="utc-hour-helper-${setting.id}">${formatUtcHourLabel(safeValue)}</div>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${safeValue}" readonly />
+    `;
+}
+
 function renderUnixTimeInput(setting, value) {
     const hasValue = !isInvalidInputValue(value) && String(value).trim() !== '';
     const seconds = hasValue ? Number(value) : NaN;
@@ -960,6 +1005,35 @@ function updateDevicePinValue(settingId) {
     if (rawValueElement) {
         rawValueElement.value = raw;
     }
+    __onInputChanged(settingId);
+}
+
+function updateUtcHourValue(settingId) {
+    const input = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    const helperElement = document.getElementById(`utc-hour-helper-${settingId}`);
+    if (!input) {
+        return;
+    }
+
+    const normalized = String(input.value || '').replace(/[^\d]/g, '');
+    if (String(input.value) !== normalized) {
+        input.value = normalized;
+    }
+
+    let hour = normalized === '' ? '' : parseInt(normalized, 10);
+    if (hour !== '' && Number.isFinite(hour)) {
+        hour = Math.max(0, Math.min(23, hour));
+        input.value = hour.toString();
+    }
+
+    if (rawValueElement) {
+        rawValueElement.value = hour === '' ? '' : hour.toString();
+    }
+    if (helperElement) {
+        helperElement.textContent = formatUtcHourLabel(hour);
+    }
+
     __onInputChanged(settingId);
 }
 

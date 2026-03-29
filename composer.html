@@ -811,15 +811,16 @@
           row.className = 'setting transparent';
           row.setAttribute('id', `setting-${setting.id}`);
           const settingDescription = getSettingDescription(key);
+          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription);
           row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
 
           // Build the "include" checkbox + label
           row.innerHTML = `
-            <div class="checkbox-container">
+            <div class="checkbox-container setting-select-row">
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
-              <label for="checkbox-${setting.id}"><h4 title="${key}">${setting.display_name} <small>${key} (${setting.id})</small></h4></label>
+              <label for="checkbox-${setting.id}" class="setting-select-label"><h4 title="${key}">${setting.display_name} <small>${key} (${setting.id})</small></h4></label>
+              ${settingInfoTrigger}
             </div>${renderInputContainer(key, setting)}
-            ${settingDescription ? `<p class="setting-help">${settingDescription}</p>` : ""}
           `;
 
           settingsContainer.appendChild(row);

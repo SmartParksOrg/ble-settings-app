@@ -625,13 +625,6 @@ body.map-fullscreen #map-area .map-frame {
     padding-top: 3px;
 }
 
-.setting-help {
-    margin: 6px 0 0;
-    font-size: 12px;
-    color: rgba(31, 42, 35, 0.7);
-    line-height: 1.4;
-}
-
 .setting.with-controls {
     justify-content: space-between;
 }
@@ -672,6 +665,104 @@ body.map-fullscreen #map-area .map-frame {
 
 .setting h4 small {
     font-weight: normal;
+}
+
+.setting-heading,
+.setting-select-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+}
+
+.setting-heading {
+    justify-content: space-between;
+}
+
+.setting-select-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.setting-info-button,
+.setting-info-button:hover,
+.setting-info-button:active {
+    width: 18px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(31, 42, 35, 0.18);
+    background: rgba(160, 191, 195, 0.18);
+    color: rgba(31, 42, 35, 0.8);
+    box-shadow: none;
+    transform: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: help;
+    position: relative;
+    flex: 0 0 auto;
+}
+
+.setting-info-button:hover,
+.setting-info-button:focus-visible {
+    background: rgba(160, 191, 195, 0.28);
+    border-color: rgba(82, 115, 94, 0.45);
+}
+
+.setting-info-button:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(82, 115, 94, 0.18);
+}
+
+.setting-info-button::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 8px);
+    width: min(280px, calc(100vw - 48px));
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: rgba(31, 42, 35, 0.96);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.45;
+    letter-spacing: 0;
+    text-align: left;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 20;
+}
+
+.setting-info-button::before {
+    content: "";
+    position: absolute;
+    right: 6px;
+    bottom: calc(100% + 2px);
+    width: 10px;
+    height: 10px;
+    background: rgba(31, 42, 35, 0.96);
+    transform: rotate(45deg);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+    z-index: 19;
+}
+
+.setting-info-button:hover::after,
+.setting-info-button:hover::before,
+.setting-info-button:focus-visible::after,
+.setting-info-button:focus-visible::before {
+    opacity: 1;
+    transform: translateY(0);
 }
 
 .input-label {
@@ -1385,6 +1476,10 @@ h2 {
 .checkbox-container {
     display: flex;
     align-items: center;
+}
+
+.checkbox-container.setting-select-row {
+    align-items: flex-start;
 }
 
 .checkbox-container label {
