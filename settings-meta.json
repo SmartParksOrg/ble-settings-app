@@ -28,7 +28,7 @@
     "air_quality_interval": {
       "category": "air",
       "label": "quality interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the air quality function runs.",
       "display_name": "quality interval"
     },
     "app_eui": {
@@ -64,7 +64,7 @@
     "ble_scan_aggregated_interval": {
       "category": "ble_scan",
       "label": "scan aggregated interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often aggregated BLE scan results are produced.",
       "display_name": "scan aggregated interval"
     },
     "ble_scan_duration": {
@@ -100,7 +100,7 @@
     "ble_scan_interval": {
       "category": "ble_scan",
       "label": "scan interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often a BLE scan runs.",
       "display_name": "scan interval"
     },
     "ble_scan_manufacturer_id": {
@@ -118,7 +118,7 @@
     "check_error_interval": {
       "category": "device",
       "label": "error interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the device checks for error conditions.",
       "display_name": "error interval"
     },
     "cmdq_enabled": {
@@ -316,7 +316,7 @@
     "flash_status_interval": {
       "category": "logs",
       "label": "status interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often flash status updates are generated.",
       "display_name": "status interval"
     },
     "flash_store_flag": {
@@ -358,7 +358,7 @@
     "gps_motion_triggered_min_num_of_triggers_per_interval": {
       "category": "gps",
       "label": "motion triggered min num of triggers per interval",
-      "description": "How often this is reported.",
+      "description": "Minimum number of motion triggers required within each motion-triggered GPS interval.",
       "display_name": "motion triggered min num of triggers per interval"
     },
     "gps_open_sky_detection_avg_rssi_threshold_dbm": {
@@ -382,19 +382,19 @@
     "gps_resend_interval": {
       "category": "gps",
       "label": "resend interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the device sends the last known GNSS position.",
       "display_name": "resend interval"
     },
     "gps_skipped_triggered_interval": {
       "category": "gps",
       "label": "skipped triggered interval",
-      "description": "How often this is reported.",
+      "description": "In default motion-triggered GPS mode, this sets how many consecutive ublox_send_interval periods may be skipped when no motion is detected before the device performs a fresh GPS fix anyway. Set to 0 to perform a fix on every ublox_send_interval.",
       "display_name": "skipped triggered interval"
     },
     "gps_triggered_interval": {
       "category": "gps",
       "label": "triggered interval",
-      "description": "How often this is reported.",
+      "description": "Controls the GPS interval used when motion-triggered GPS is active.",
       "display_name": "triggered interval"
     },
     "horizontal_accuracy": {
@@ -496,7 +496,7 @@
     "lr_gps_interval": {
       "category": "lr_gps",
       "label": "gps interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the LR GPS function runs.",
       "display_name": "gps interval"
     },
     "lr_join_flag": {
@@ -520,7 +520,7 @@
     "lr_messaging_retry_interval": {
       "category": "lr_messaging",
       "label": "messaging retry interval",
-      "description": "How often this is reported.",
+      "description": "Controls how long the device waits between LR messaging retry attempts.",
       "display_name": "messaging retry interval"
     },
     "lr_region": {
@@ -544,7 +544,7 @@
     "memfault_send_interval": {
       "category": "memfault",
       "label": "send interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often Memfault data is sent.",
       "display_name": "send interval"
     },
     "motion_ths": {
@@ -592,7 +592,7 @@
     "rf_open_sky_detection_interval1": {
       "category": "rf_open_sky_detection",
       "label": "interval1",
-      "description": "How often this is reported.",
+      "description": "Primary RF open sky detection interval.",
       "display_name": "interval1"
     },
     "rf_open_sky_detection_interval1_start": {
@@ -604,7 +604,7 @@
     "rf_open_sky_detection_interval2": {
       "category": "rf_open_sky_detection",
       "label": "interval2",
-      "description": "How often this is reported.",
+      "description": "Secondary RF open sky detection interval.",
       "display_name": "interval2"
     },
     "rf_open_sky_detection_interval2_start": {
@@ -640,13 +640,13 @@
     "rf_scan_interval": {
       "category": "rf_scan",
       "label": "interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often an RF scan runs.",
       "display_name": "interval"
     },
     "rf_scan_interval1": {
       "category": "rf_scan",
       "label": "interval1",
-      "description": "How often this is reported.",
+      "description": "Primary RF scan interval.",
       "display_name": "interval1"
     },
     "rf_scan_interval1_start": {
@@ -658,7 +658,7 @@
     "rf_scan_interval2": {
       "category": "rf_scan",
       "label": "interval2",
-      "description": "How often this is reported.",
+      "description": "Secondary RF scan interval.",
       "display_name": "interval2"
     },
     "rf_scan_interval2_start": {
@@ -700,7 +700,7 @@
     "s_band_send_interval": {
       "category": "s_band",
       "label": "send interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often an S-Band satellite message is sent.",
       "display_name": "send interval"
     },
     "s_band_send_mode": {
@@ -724,13 +724,13 @@
     "satellite_interval1_start": {
       "category": "satellite",
       "label": "interval1 start",
-      "description": "Satellite interval1 start setting.",
+      "description": "UTC hour (0-23) when the primary Iridium satellite send interval starts. When satellite_multiple_intervals is enabled, satellite_send_interval is used from this hour until satellite_send_interval2_start.",
       "display_name": "interval1 start"
     },
     "satellite_max_messages_per_interval": {
       "category": "satellite",
       "label": "max messages per interval",
-      "description": "How often this is reported.",
+      "description": "Maximum number of Iridium satellite messages allowed within each send interval.",
       "display_name": "max messages per interval"
     },
     "satellite_min_signal_strength": {
@@ -742,7 +742,7 @@
     "satellite_multiple_intervals": {
       "category": "satellite",
       "label": "multiple intervals",
-      "description": "Satellite multiple intervals setting.",
+      "description": "Enables two UTC-based Iridium satellite send schedules. When disabled, only satellite_send_interval is used. When enabled, satellite_send_interval applies from satellite_interval1_start until satellite_send_interval2_start, and satellite_send_interval2 applies outside that window.",
       "display_name": "multiple intervals"
     },
     "satellite_retry": {
@@ -754,25 +754,25 @@
     "satellite_send_interval": {
       "category": "satellite",
       "label": "send interval",
-      "description": "How often this is reported.",
+      "description": "Primary Iridium satellite send interval. When satellite_multiple_intervals is disabled, this is the only interval used. When enabled, this interval applies from satellite_interval1_start until satellite_send_interval2_start (UTC).",
       "display_name": "send interval"
     },
     "satellite_send_interval2": {
       "category": "satellite",
       "label": "send interval2",
-      "description": "How often this is reported.",
+      "description": "Secondary Iridium satellite send interval. Only used when satellite_multiple_intervals is enabled. This interval applies from satellite_send_interval2_start until satellite_interval1_start on the next day (UTC).",
       "display_name": "send interval2"
     },
     "satellite_send_interval2_start": {
       "category": "satellite",
       "label": "send interval2 start",
-      "description": "Satellite send interval2 start setting.",
+      "description": "UTC hour (0-23) when the secondary Iridium satellite send interval starts. When satellite_multiple_intervals is enabled, satellite_send_interval2 is used from this hour until satellite_interval1_start on the next day.",
       "display_name": "send interval2 start"
     },
     "status_send_interval": {
       "category": "status",
       "label": "send interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the device sends a status update.",
       "display_name": "send interval"
     },
     "tracker_type": {
@@ -820,7 +820,7 @@
     "ublox_cold_fix_hour_interval": {
       "category": "gps",
       "label": "cold fix hour interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often a cold u-blox fix attempt is allowed, in hours.",
       "display_name": "cold fix hour interval"
     },
     "ublox_interval1_start": {
@@ -874,7 +874,7 @@
     "ublox_switch_interval": {
       "category": "gps",
       "label": "switch interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often the device switches its u-blox operating mode or schedule.",
       "display_name": "switch interval"
     },
     "vhf_enabled": {
@@ -892,31 +892,31 @@
     "vhf_interval1": {
       "category": "vhf",
       "label": "interval1",
-      "description": "How often this is reported.",
+      "description": "Primary VHF transmit interval. When vhf_multiple_intervals is disabled, this is the only interval used. When enabled, this interval applies from vhf_interval1_start until vhf_interval2_start (UTC).",
       "display_name": "interval1"
     },
     "vhf_interval1_start": {
       "category": "vhf",
       "label": "interval1 start",
-      "description": "Vhf interval1 start setting.",
+      "description": "UTC hour (0-23) when the primary VHF interval starts. When vhf_multiple_intervals is enabled, vhf_interval1 is used from this hour until vhf_interval2_start.",
       "display_name": "interval1 start"
     },
     "vhf_interval2": {
       "category": "vhf",
       "label": "interval2",
-      "description": "How often this is reported.",
+      "description": "Secondary VHF transmit interval. Only used when vhf_multiple_intervals is enabled. This interval applies from vhf_interval2_start until vhf_interval1_start on the next day (UTC).",
       "display_name": "interval2"
     },
     "vhf_interval2_start": {
       "category": "vhf",
       "label": "interval2 start",
-      "description": "Vhf interval2 start setting.",
+      "description": "UTC hour (0-23) when the secondary VHF interval starts. When vhf_multiple_intervals is enabled, vhf_interval2 is used from this hour until vhf_interval1_start on the next day.",
       "display_name": "interval2 start"
     },
     "vhf_multiple_intervals": {
       "category": "vhf",
       "label": "multiple intervals",
-      "description": "Vhf multiple intervals setting.",
+      "description": "Enables two UTC-based VHF transmit schedules. When disabled, only vhf_interval1 is used. When enabled, vhf_interval1 applies from vhf_interval1_start until vhf_interval2_start, and vhf_interval2 applies outside that window.",
       "display_name": "multiple intervals"
     },
     "vhf_num_of_packets_per_burst": {
@@ -946,13 +946,13 @@
     "wifi_scan_aggregated_interval": {
       "category": "wifi_scan",
       "label": "scan aggregated interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often aggregated WiFi scan results are produced.",
       "display_name": "scan aggregated interval"
     },
     "wifi_scan_interval": {
       "category": "wifi_scan",
       "label": "scan interval",
-      "description": "How often this is reported.",
+      "description": "Controls how often a WiFi scan runs.",
       "display_name": "scan interval"
     },
     "wifi_scan_report_zero_connections_found": {

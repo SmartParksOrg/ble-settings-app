@@ -706,17 +706,26 @@ body.map-fullscreen #map-area .map-frame {
     cursor: help;
     position: relative;
     flex: 0 0 auto;
+    align-self: flex-start;
+    vertical-align: top;
+    appearance: none;
+    -webkit-appearance: none;
+    transform: none !important;
+    box-shadow: none !important;
+    transition: none !important;
 }
 
 .setting-info-button:hover,
+.setting-info-button:active,
 .setting-info-button:focus-visible {
-    background: rgba(160, 191, 195, 0.28);
-    border-color: rgba(82, 115, 94, 0.45);
+    transform: none !important;
+    box-shadow: none !important;
+    transition: none !important;
 }
 
 .setting-info-button:focus-visible {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(82, 115, 94, 0.18);
+    box-shadow: 0 0 0 3px rgba(82, 115, 94, 0.18) !important;
 }
 
 .setting-info-button::after {
@@ -742,25 +751,8 @@ body.map-fullscreen #map-area .map-frame {
     z-index: 20;
 }
 
-.setting-info-button::before {
-    content: "";
-    position: absolute;
-    right: 6px;
-    bottom: calc(100% + 2px);
-    width: 10px;
-    height: 10px;
-    background: rgba(31, 42, 35, 0.96);
-    transform: rotate(45deg);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s ease, transform 0.15s ease;
-    z-index: 19;
-}
-
 .setting-info-button:hover::after,
-.setting-info-button:hover::before,
-.setting-info-button:focus-visible::after,
-.setting-info-button:focus-visible::before {
+.setting-info-button:focus-visible::after {
     opacity: 1;
     transform: translateY(0);
 }

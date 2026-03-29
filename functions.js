@@ -49,6 +49,10 @@ const customInputRenderers = {
     gps_init_lon: renderLongitudeInput,
     ublox_interval1_start: renderUtcHourInput,
     ublox_interval2_start: renderUtcHourInput,
+    satellite_interval1_start: renderUtcHourInput,
+    satellite_send_interval2_start: renderUtcHourInput,
+    vhf_interval1_start: renderUtcHourInput,
+    vhf_interval2_start: renderUtcHourInput,
     vhf_time_between_packets_ms: renderMsInput,
     init_time: renderUnixTimeInput
 };
