@@ -289,6 +289,9 @@ function shouldIncludeBundledEntry(entry) {
     if (deviceFwVersionFive === -1 && fileFwVersionSix !== -1) {
       return false;
     }
+    if (deviceFwVersionFive !== -1 && fileFwVersionSix === -1) {
+      return false;
+    }
   }
 
   return true;

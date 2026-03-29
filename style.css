@@ -1704,6 +1704,16 @@ body.lr-update .button-cluster .hidden-when-no-settings {
     display: none !important;
 }
 
+body.firmware-v5-update #settings-selection,
+body.firmware-v5-update .settings-section,
+body.firmware-v5-update #actions-area,
+body.firmware-v5-update #logs-area,
+body.firmware-v5-update .commands-section,
+body.firmware-v5-update .map-section,
+body.firmware-v5-update .button-cluster .hidden-when-no-settings {
+    display: none !important;
+}
+
 .dfu-header-actions {
     display: flex;
     align-items: center;

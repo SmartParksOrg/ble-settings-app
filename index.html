@@ -574,8 +574,6 @@
     const MSG_LAST_POSITION = 0xFE;
     const MSG_LR_MESSAGING = 0x90;
     const MSG_LR_MESSAGING_TIMESTAMP = 0xF0;
-    const LR_UPDATE_FW_MAJOR = 5;
-    const LR_UPDATE_FW_MINOR = 0;
     const LR_MESSAGING_MAX_LEN = 46;
     const MESSENGER_POLL_MS = 30000;
 
@@ -612,6 +610,7 @@
     let leafletPromise = null;
     let userRequestedDisconnect = false;
     let lrUpdateMode = false;
+    let firmwareV5Mode = false;
     let hasLrJoinError = false;
     let ubloxFixPending = false;
     let ubloxFixTimeoutId = null;
@@ -706,9 +705,12 @@
     window.confirmReboot = confirmReboot;
 
     function isLrUpdateFirmware(statusMessage) {
-      return statusMessage
-        && statusMessage.ver_fw_major === LR_UPDATE_FW_MAJOR
-        && statusMessage.ver_fw_minor === LR_UPDATE_FW_MINOR;
+      // Firmware major v5 is handled by the dedicated firmwareV5Mode flow.
+      return false;
+    }
+
+    function isFirmwareV5(statusMessage) {
+      return statusMessage && statusMessage.ver_fw_major === 5;
     }
 
     function isCredentialSetting(setting) {
@@ -721,6 +723,14 @@
     function setLrUpdateMode(enabled) {
       lrUpdateMode = Boolean(enabled);
       document.body.classList.toggle('lr-update', lrUpdateMode);
+    }
+
+    function setFirmwareV5Mode(enabled) {
+      firmwareV5Mode = Boolean(enabled);
+      document.body.classList.toggle('firmware-v5-update', firmwareV5Mode);
+      if (firmwareV5Mode) {
+        document.body.classList.remove('has-settings');
+      }
     }
 
     function loadLeafletIfNeeded() {
@@ -1934,6 +1944,10 @@
     }
 
     async function loadSelectedSettings() {
+      if (firmwareV5Mode) {
+        showToast('Firmware v5 does not expose normal settings. Use DFU to install firmware v6 or higher.');
+        return;
+      }
       const settingsSelection = document.getElementById('settings-selection');
       const selectedFile = document.getElementById('settings-dropdown').value;
       if (!selectedFile) {
@@ -2593,7 +2607,27 @@
         hwType: statusMessage.ver_hw_type
       };
 
-      if (lrUpdateMode) {
+      if (firmwareV5Mode) {
+        ubloxBusyStatus = false;
+        hasLrJoinError = false;
+        statusItems.push(
+          `<div class="status-item" id="hw-version"><span class="icon hw-version"></span>${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}</div>`,
+          `<div class="status-item" id="fw-version"><span class="icon fw-version"></span>${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}</div>`,
+          `<div class="status-item"><span class="icon hw-type"></span>Hardware: ${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
+          `<div class="status-item"><span class="icon fw-version"></span>Firmware type: ${decodeHwFwType(statusMessage.ver_fw_type)}</div>`
+        );
+        lrUpdateBanner = `
+          <div class="lr-update-banner">
+            <div>
+              <div class="lr-update-title">Firmware v5 is a driver update firmware</div>
+              <div class="lr-update-text">This firmware is only meant to update internal device drivers. After it has been loaded successfully, run DFU again and install firmware v6 or higher.</div>
+            </div>
+            <div class="lr-update-actions">
+              <button type="button" class="scan-button" onclick="openDfuPage()">Go to DFU</button>
+            </div>
+          </div>
+        `;
+      } else if (lrUpdateMode) {
         ubloxBusyStatus = Boolean(statusMessage.ublox_busy);
         hasLrJoinError = false;
         statusItems.push(
@@ -2654,9 +2688,10 @@
           ${statusItems.join('')}
         </div>
       `;
-      updateUbloxGpsStatusTag();
-
-      displayMainCommands();
+      if (!firmwareV5Mode) {
+        updateUbloxGpsStatusTag();
+        displayMainCommands();
+      }
 
       try {
         const dfuInfo = {
@@ -2672,7 +2707,7 @@
         console.warn('Failed to store DFU device info', error);
       }
 
-      if (!lrUpdateMode) {
+      if (!lrUpdateMode && !firmwareV5Mode) {
         await executeBleCommand([0x20, CMD_SEND_POSITION, 0x00]);
 
         if (compareSemanticVersion(statusMessage.ver_fw_major, statusMessage.ver_fw_minor, 6, 11) >= 0) {
@@ -2681,7 +2716,7 @@
           await executeBleCommand([0x20, CMD_SEND_SINGLE_VAL, 0x01, VAL_UBLOX_TIME]);
         }
       }
-      updateFirmwareNotes(document.getElementById('settings-dropdown')?.value);
+      updateFirmwareNotes(firmwareV5Mode ? null : document.getElementById('settings-dropdown')?.value);
     }
 
     function compareSemanticVersion(major1, minor1, major2, minor2) {
@@ -3197,6 +3232,13 @@
     }
 
     function autoSelectAndLoadSettings(statusMessage) {
+      if (isFirmwareV5(statusMessage)) {
+        const settingsSelection = document.getElementById('settings-selection');
+        if (settingsSelection) {
+          settingsSelection.classList.add('hidden');
+        }
+        return;
+      }
       const settingsDropdown = document.getElementById('settings-dropdown');
       const settingsSelection = document.getElementById('settings-selection');
       const fwVersion = `v${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
@@ -3238,6 +3280,7 @@
       clearUbloxFixCountdown();
       autoLoaded = false;
       setLrUpdateMode(false);
+      setFirmwareV5Mode(false);
       document.body.classList.remove('connected');
       const settingsSelection = document.getElementById('settings-selection');
       if (settingsSelection) {
@@ -3515,10 +3558,11 @@
           updateMapLocation();
         } else if (port === 4) {
           const statusMessage = decodeStatusMessage(data.slice(1));
-          setLrUpdateMode(isLrUpdateFirmware(statusMessage));
+          setFirmwareV5Mode(isFirmwareV5(statusMessage));
+          setLrUpdateMode(isLrUpdateFirmware(statusMessage) && !firmwareV5Mode);
           await displayStatusMessage(statusMessage);
           document.body.classList.add('has-status');
-          if (!autoLoaded) {
+          if (!autoLoaded && !firmwareV5Mode) {
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);
           }
