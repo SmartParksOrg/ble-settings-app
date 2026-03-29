@@ -932,9 +932,11 @@ function renderUnixTimeInput(setting, value) {
     const seconds = hasValue ? Number(value) : NaN;
     const date = Number.isFinite(seconds) ? new Date(seconds * 1000) : null;
     const dateValue = date ? formatLocalDateTime(date) : '';
+    const utcValue = date ? date.toISOString().replace('.000Z', ' UTC') : '—';
     return `
         <label class="input-label" for="datetime-${setting.id}">Date & time (local)</label>
         <input type="datetime-local" id="datetime-${setting.id}" value="${dateValue}" onchange="updateUnixTimeValue('${setting.id}')" />
+        <div class="input-helper" id="utc-datetime-helper-${setting.id}">UTC: ${utcValue}</div>
         <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (unix seconds)</label>
         <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
         <input type="hidden" id="new-value-${setting.id}" value="${value ?? ''}" />
@@ -1160,6 +1162,7 @@ function updateUnixTimeValue(settingId) {
     const dateInput = document.getElementById(`datetime-${settingId}`);
     const hiddenField = document.getElementById(`new-value-${settingId}`);
     const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    const utcHelperElement = document.getElementById(`utc-datetime-helper-${settingId}`);
     if (!dateInput || !hiddenField) {
         return;
     }
@@ -1170,6 +1173,9 @@ function updateUnixTimeValue(settingId) {
     hiddenField.value = seconds.toString();
     if (rawValueElement) {
         rawValueElement.value = seconds.toString();
+    }
+    if (utcHelperElement) {
+        utcHelperElement.textContent = `UTC: ${date && !Number.isNaN(date.getTime()) ? date.toISOString().replace('.000Z', ' UTC') : '—'}`;
     }
     __onInputChanged(settingId);
 }
