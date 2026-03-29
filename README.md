@@ -1,6 +1,27 @@
 # ble-settings-app
 A simple Web Application that uses Web BLE to connect, read and write settings of a OpenCollar Edge device.
 
+## Running locally
+
+This app is a static web app. There is no build step and no `package.json`.
+
+Serve the repository root over a local HTTP server instead of opening `index.html` directly from disk:
+
+```bash
+cd /home/tim/apps/ble-settings-app
+python3 -m http.server 8000
+```
+
+Then open:
+
+- `http://localhost:8000/` for the main BLE settings app
+- `http://localhost:8000/composer.html` for the HEX composer
+
+Notes:
+
+- Use a Chromium-based browser such as Chrome or Edge, because the app uses Web Bluetooth / Web BLE.
+- `localhost` is required here because the app registers a service worker and fetches local JSON assets. Opening the files with a `file://` URL will not work correctly.
+
 Adding a new settings.json version:
 - upload settings.json file to settings folder
 - add settings.json version to functions.js
