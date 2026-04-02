@@ -1089,7 +1089,8 @@ function sanitizeRenderedInputHtml(html) {
 
 function renderMacAddressParameters(setting, value) {
     const bytes = parseByteArrayValue(value, setting.length);
-    const mac = bytes.map(byte => toHex(byte)).join(':');
+    const rawHex = bytesToHex(bytes);
+    const mac = formatMacAddressForDisplay(rawHex, setting.length);
     return `
         <label class="input-label" for="mac-value-${setting.id}">MAC address</label>
         <input
@@ -1103,8 +1104,8 @@ function renderMacAddressParameters(setting, value) {
             oninput="updateMacAddressValue('${setting.id}')"
         />
         <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (hex bytes)</label>
-        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${bytesToHex(bytes)}" readonly />
-        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${rawHex}" readonly />
+        <input type="hidden" id="new-value-${setting.id}" value="${rawHex}" />
         <div class="input-helper" id="mac-preview-${setting.id}">MAC: ${mac}</div>
     `;
 }
