@@ -323,6 +323,26 @@ function stripBytes(s) {
     return s.replace(/0x/g, '').replace(/[^0-9A-Fa-f]/g, '').toUpperCase();
 }
 
+function normalizeMacAddressInput(value) {
+    return String(value || '')
+        .trim()
+        .replace(/[^0-9A-Fa-f]/g, '')
+        .toUpperCase()
+        .slice(0, 12);
+}
+
+function formatMacAddressForDisplay(value, expectedLength = 6) {
+    const hex = normalizeMacAddressInput(value);
+    const requiredHexLength = expectedLength * 2;
+    if (!hex) {
+        return '';
+    }
+    if (hex.length !== requiredHexLength) {
+        return hex.match(/.{1,2}/g)?.join(':') || hex;
+    }
+    return hex.match(/.{2}/g).join(':');
+}
+
 function renderPortCheckboxes(setting, value) {
     const defaultVal = parseInt(value || 0, 10);
     let html = `
@@ -1071,15 +1091,20 @@ function renderMacAddressParameters(setting, value) {
     const bytes = parseByteArrayValue(value, setting.length);
     const mac = bytes.map(byte => toHex(byte)).join(':');
     return `
+        <label class="input-label" for="mac-value-${setting.id}">MAC address</label>
+        <input
+            type="text"
+            id="mac-value-${setting.id}"
+            value="${mac}"
+            maxlength="${setting.length * 3 - 1}"
+            placeholder="FF:FF:FF:FF:FF:FF"
+            autocapitalize="characters"
+            spellcheck="false"
+            oninput="updateMacAddressValue('${setting.id}')"
+        />
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value (hex bytes)</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${bytesToHex(bytes)}" readonly />
         <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
-        <div class="byte-array-grid">
-            ${renderByteArrayField(setting.id, 0, 'MAC byte 0', bytes[0], null, 'Hex 00-FF')}
-            ${renderByteArrayField(setting.id, 1, 'MAC byte 1', bytes[1], null, 'Hex 00-FF')}
-            ${renderByteArrayField(setting.id, 2, 'MAC byte 2', bytes[2], null, 'Hex 00-FF')}
-            ${renderByteArrayField(setting.id, 3, 'MAC byte 3', bytes[3], null, 'Hex 00-FF')}
-            ${renderByteArrayField(setting.id, 4, 'MAC byte 4', bytes[4], null, 'Hex 00-FF')}
-            ${renderByteArrayField(setting.id, 5, 'MAC byte 5', bytes[5], null, 'Hex 00-FF')}
-        </div>
         <div class="input-helper" id="mac-preview-${setting.id}">MAC: ${mac}</div>
     `;
 }
@@ -1137,6 +1162,31 @@ function updateLp0ByteArray(settingId) {
     if (macPreview) {
         macPreview.textContent = `MAC: ${Array.from(bytes).map(toHex).join(':')}`;
     }
+    __onInputChanged(settingId);
+}
+
+function updateMacAddressValue(settingId) {
+    const [_, setting] = getById(settingId);
+    const input = document.getElementById(`mac-value-${settingId}`);
+    const hiddenField = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    const macPreview = document.getElementById(`mac-preview-${settingId}`);
+    if (!input || !hiddenField) {
+        return;
+    }
+
+    const normalizedHex = normalizeMacAddressInput(input.value);
+    const formattedMac = formatMacAddressForDisplay(normalizedHex, setting.length);
+    input.value = formattedMac;
+    hiddenField.value = normalizedHex;
+
+    if (rawValueElement) {
+        rawValueElement.value = normalizedHex;
+    }
+    if (macPreview) {
+        macPreview.textContent = `MAC: ${formattedMac || '—'}`;
+    }
+
     __onInputChanged(settingId);
 }
 
@@ -1348,6 +1398,12 @@ function formatSettingValueForPreview(key, setting, value, compareValue = null, 
         return `<div class="import-preview-value">${escapeHtml(digits || '—')} <span class="import-preview-muted">PIN</span><div class="import-preview-subvalue">Raw: ${escapeHtml(raw || value)}</div></div>`;
     }
 
+    if (key === 'cmdq_searched_mac_address') {
+        const raw = stripBytes(String(value || ''));
+        const mac = formatMacAddressForDisplay(raw, setting.length);
+        return `<div class="import-preview-value">${escapeHtml(mac || '—')} <span class="import-preview-muted">MAC</span><div class="import-preview-subvalue">Raw: ${escapeHtml(raw || '—')}</div></div>`;
+    }
+
     if (customByteArrayRenderers[key]) {
         return formatCustomByteArrayPreview(key, setting, value);
     }
@@ -1523,6 +1579,10 @@ function formatCustomByteArrayPreview(key, setting, value) {
         `;
     }
 
+    if (key === 'cmdq_searched_mac_address') {
+        return `<div class="import-preview-mono">${escapeHtml(formatMacAddressForDisplay(bytesToHex(bytes), setting.length) || '—')}</div>`;
+    }
+
     return `<div class="import-preview-mono">${bytes.map(b => `0x${toHex(b)}`).join(' ')}</div>`;
 }
 
@@ -1537,6 +1597,10 @@ function formatOptionPreview(label, value, options) {
 function normalizeSettingValueForCompare(key, setting, value) {
     if (key === 'device_pin') {
         return normalizeDevicePinStorageValue(value);
+    }
+
+    if (key === 'cmdq_searched_mac_address') {
+        return normalizeMacAddressInput(value);
     }
 
     if (value === undefined || value === null || value === '') {
@@ -1656,6 +1720,10 @@ function settingToBytes(key, setting, value) {
             const normalizedPin = normalizeDevicePinStorageValue(value);
             return stringToUint8Array(normalizedPin, setting.length);
         }
+        if (key === 'cmdq_searched_mac_address') {
+            const normalizedMac = normalizeMacAddressInput(value);
+            return stringToUint8Array(normalizedMac, setting.length);
+        }
         return stringToUint8Array(value, setting.length);
     } else if (setting.conversion === 'string') {
         return new TextEncoder().encode(value);
@@ -1733,7 +1801,9 @@ function validateInput(key, setting, value) {
     } else if (setting.conversion === 'byte_array') {
         const byteArrayValue = key === 'device_pin'
             ? normalizeDevicePinStorageValue(value)
-            : value;
+            : key === 'cmdq_searched_mac_address'
+                ? normalizeMacAddressInput(value)
+                : value;
         stringToUint8Array(byteArrayValue, setting.length);
     } else if (setting.conversion === 'string') {
         if (value.length > setting.length) {
