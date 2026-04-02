@@ -10,6 +10,14 @@ const intervalPatterns = [
     /^fence_sampling_length$/
 ];
 
+const intervalPatternExclusions = new Set([
+    'satellite_max_messages_per_interval'
+]);
+
+function isIntervalSetting(key) {
+    return !intervalPatternExclusions.has(key) && intervalPatterns.some(rx => rx.test(key));
+}
+
 const grouping = {
     "^(hot|cold)_": "satellite",
     "^sat_send_flag$": "satellite",
@@ -703,7 +711,7 @@ function renderInputControl(key, setting, value) {
     }
 
     // 3) If the key ends with "_interval" -> render numeric + time-unit select (with auto-guess)
-    else if (intervalPatterns.some(rx => rx.test(key))) {
+    else if (isIntervalSetting(key)) {
         html += renderIntervalSetting(key, setting, value);
     }
 
@@ -1413,7 +1421,7 @@ function formatSettingValueForPreview(key, setting, value, compareValue = null, 
         return formatBitmaskPreview(key, value, compareValue, mode);
     }
 
-    if (intervalPatterns.some(rx => rx.test(key))) {
+    if (isIntervalSetting(key)) {
         const seconds = parseInt(value, 10) || 0;
         const guessedUnit = guessTimeUnit(seconds);
         const displayValue = Math.round(convertSecondsToUnit(seconds, guessedUnit));
@@ -1608,7 +1616,7 @@ function normalizeSettingValueForCompare(key, setting, value) {
         return '';
     }
 
-    if (intervalPatterns.some(rx => rx.test(key))) {
+    if (isIntervalSetting(key)) {
         const seconds = parseInt(value, 10);
         return Number.isFinite(seconds) ? seconds : value;
     }
@@ -1737,7 +1745,7 @@ function formatRangeLabel(key, min, max) {
     const minNum = Number(min);
     const maxNum = Number(max);
 
-    if (intervalPatterns.some(rx => rx.test(key)) && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+    if (isIntervalSetting(key) && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
         const unit = (key === 'cold_fix_timeout' || key === 'hot_fix_timeout') ? '1' : guessTimeUnit(Math.max(minNum, maxNum));
         const displayMin = Math.round(convertSecondsToUnit(minNum, unit));
         const displayMax = Math.round(convertSecondsToUnit(maxNum, unit));
