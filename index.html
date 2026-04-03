@@ -3675,7 +3675,10 @@
         } else if (port === 3) {
           decodeBleValueResponse(data.slice(1));
         } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
-          const timestamp = bytesToSetting(settingsData.values['ublox_time'], data.slice(3));
+          if (data.length < 7) {
+            throw new Error(`UBLOX time payload too short (${data.length} bytes)`);
+          }
+          const timestamp = new DataView(new Uint8Array(data.slice(3, 7)).buffer).getUint32(0, true);
           log(`Decoded: ublox time = ${timestamp}`);
           const timestampEl = document.getElementById('ublox-timestamp');
           if (timestampEl) {
