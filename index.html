@@ -3041,6 +3041,45 @@
         return;
       }
       try {
+        const ensureDfuInfoReady = async () => {
+          const readDfuInfo = () => {
+            try {
+              const raw = sessionStorage.getItem('dfuDeviceInfo');
+              return raw ? JSON.parse(raw) : null;
+            } catch (error) {
+              return null;
+            }
+          };
+
+          let info = readDfuInfo();
+          if (info && typeof info.hwVersion === 'string' && typeof info.fwVersion === 'string') {
+            return true;
+          }
+
+          if (typeof requestStatusMessage === 'function') {
+            try {
+              await requestStatusMessage();
+            } catch (error) {
+              console.warn('Failed to request status before opening DFU', error);
+            }
+          }
+
+          const deadline = Date.now() + 4000;
+          while (Date.now() < deadline) {
+            info = readDfuInfo();
+            if (info && typeof info.hwVersion === 'string' && typeof info.fwVersion === 'string') {
+              return true;
+            }
+            await sleep(100);
+          }
+          return false;
+        };
+
+        const infoReady = await ensureDfuInfoReady();
+        if (!infoReady) {
+          showToast('Waiting for device status. Please try DFU again in a moment.');
+          return;
+        }
         await loadDfuScriptsIfNeeded();
         if (window.DfuApp && window.DfuApp.init) {
           window.DfuApp.init({ device, useExistingConnection: true });

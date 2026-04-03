@@ -130,6 +130,7 @@ let elements = null;
 let lastLoggedProgress = null;
 let lastChunkAckLogAt = 0;
 let lastChunkAckOffset = 0;
+let handlersAttached = false;
 
 const DFU_PENDING_KEY = 'dfuPending';
 
@@ -2057,7 +2058,8 @@ function cancelUpload() {
 }
 
 function attachHandlers() {
-  if (!elements) return;
+  if (!elements || handlersAttached) return;
+  handlersAttached = true;
   if (elements.fileInput) {
     elements.fileInput.addEventListener('change', handleFileSelection);
   }
