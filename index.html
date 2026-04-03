@@ -2597,6 +2597,69 @@
       };
     }
 
+    function readStoredDfuDeviceInfo() {
+      try {
+        const raw = sessionStorage.getItem('dfuDeviceInfo');
+        if (!raw) {
+          return null;
+        }
+        return JSON.parse(raw);
+      } catch (error) {
+        return null;
+      }
+    }
+
+    async function normalizeStatusMessage(statusMessage) {
+      if (!statusMessage || statusMessage.ver_fw_major !== 5 || !window.getHwTypeFileName || !window.getValidHwVersionsForHwType) {
+        return statusMessage;
+      }
+
+      const hwTypeName = window.getHwTypeFileName(statusMessage.ver_hw_type);
+      if (!hwTypeName) {
+        return statusMessage;
+      }
+
+      try {
+        const validHwVersions = await window.getValidHwVersionsForHwType(hwTypeName);
+        if (!Array.isArray(validHwVersions) || !validHwVersions.length) {
+          return statusMessage;
+        }
+
+        const reportedHwVersion = `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}.0`;
+        if (validHwVersions.includes(reportedHwVersion)) {
+          return statusMessage;
+        }
+
+        const swappedHwVersion = `${statusMessage.ver_hw_minor}.${statusMessage.ver_hw_major}.0`;
+        if (validHwVersions.includes(swappedHwVersion)) {
+          return {
+            ...statusMessage,
+            ver_hw_major: statusMessage.ver_hw_minor,
+            ver_hw_minor: statusMessage.ver_hw_major,
+          };
+        }
+
+        const storedInfo = readStoredDfuDeviceInfo();
+        if (storedInfo
+          && storedInfo.hwType === statusMessage.ver_hw_type
+          && typeof storedInfo.hwVersion === 'string'
+          && validHwVersions.includes(`${storedInfo.hwVersion}.0`)) {
+          const [major, minor] = storedInfo.hwVersion.split('.').map(value => Number.parseInt(value, 10));
+          if (Number.isFinite(major) && Number.isFinite(minor)) {
+            return {
+              ...statusMessage,
+              ver_hw_major: major,
+              ver_hw_minor: minor,
+            };
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to normalize status message', error);
+      }
+
+      return statusMessage;
+    }
+
     async function displayStatusMessage(statusMessage) {
       const statusMessageElement = document.getElementById('status-message');
       const statusItems = [];
@@ -3558,7 +3621,7 @@
           log(`Decoded: last postion = ${JSON.stringify(lastPositionMessage)}`);
           updateMapLocation();
         } else if (port === 4) {
-          const statusMessage = decodeStatusMessage(data.slice(1));
+          const statusMessage = await normalizeStatusMessage(decodeStatusMessage(data.slice(1)));
           setFirmwareV5Mode(isFirmwareV5(statusMessage));
           setLrUpdateMode(isLrUpdateFirmware(statusMessage) && !firmwareV5Mode);
           await displayStatusMessage(statusMessage);
