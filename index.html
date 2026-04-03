@@ -2609,6 +2609,41 @@
       }
     }
 
+    function clearStoredDfuDeviceInfo() {
+      try {
+        sessionStorage.removeItem('dfuDeviceInfo');
+      } catch (error) {
+        console.warn('Failed to clear DFU device info', error);
+      }
+    }
+
+    async function isValidStoredDfuDeviceInfo(info) {
+      if (!info || typeof info !== 'object') {
+        return false;
+      }
+      if (typeof info.deviceName !== 'string' || typeof info.hwVersion !== 'string' || typeof info.fwVersion !== 'string') {
+        return false;
+      }
+      if (!Number.isFinite(info.hwType) || !Number.isFinite(info.fwType)) {
+        return false;
+      }
+      if (!window.getHwTypeFileName || !window.getValidHwVersionsForHwType) {
+        return true;
+      }
+
+      const hwTypeName = window.getHwTypeFileName(info.hwType);
+      if (!hwTypeName) {
+        return false;
+      }
+
+      const validHwVersions = await window.getValidHwVersionsForHwType(hwTypeName);
+      if (!Array.isArray(validHwVersions) || !validHwVersions.length) {
+        return true;
+      }
+
+      return validHwVersions.includes(`${info.hwVersion}.0`);
+    }
+
     async function normalizeStatusMessage(statusMessage) {
       if (!statusMessage || statusMessage.ver_fw_major !== 5 || !window.getHwTypeFileName || !window.getValidHwVersionsForHwType) {
         return statusMessage;
@@ -2640,10 +2675,9 @@
         }
 
         const storedInfo = readStoredDfuDeviceInfo();
-        if (storedInfo
+        if (await isValidStoredDfuDeviceInfo(storedInfo)
           && storedInfo.hwType === statusMessage.ver_hw_type
-          && typeof storedInfo.hwVersion === 'string'
-          && validHwVersions.includes(`${storedInfo.hwVersion}.0`)) {
+          && typeof storedInfo.hwVersion === 'string') {
           const [major, minor] = storedInfo.hwVersion.split('.').map(value => Number.parseInt(value, 10));
           if (Number.isFinite(major) && Number.isFinite(minor)) {
             return {
@@ -3042,16 +3076,19 @@
       }
       try {
         const ensureDfuInfoReady = async () => {
-          const readDfuInfo = () => {
-            try {
-              const raw = sessionStorage.getItem('dfuDeviceInfo');
-              return raw ? JSON.parse(raw) : null;
-            } catch (error) {
+          const readDfuInfo = async () => {
+            const info = readStoredDfuDeviceInfo();
+            if (!info) {
               return null;
             }
+            if (await isValidStoredDfuDeviceInfo(info)) {
+              return info;
+            }
+            clearStoredDfuDeviceInfo();
+            return null;
           };
 
-          let info = readDfuInfo();
+          let info = await readDfuInfo();
           if (info && typeof info.hwVersion === 'string' && typeof info.fwVersion === 'string') {
             return true;
           }
@@ -3066,7 +3103,7 @@
 
           const deadline = Date.now() + 4000;
           while (Date.now() < deadline) {
-            info = readDfuInfo();
+            info = await readDfuInfo();
             if (info && typeof info.hwVersion === 'string' && typeof info.fwVersion === 'string') {
               return true;
             }
