@@ -143,6 +143,21 @@
     </details>
   </div>
 
+  <div id="cmdq-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon tachograph-digital" aria-hidden="true"></span>CMDQ</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="cmdq-settings-section" class="settings-container"></div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestCmdqResults()">Request latest CMDQ results</button>
+        </div>
+        <div id="cmdq-results" class="cmdq-results">
+          <div class="cmdq-empty">No CMDQ result message received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
@@ -593,6 +608,15 @@
       'cmd_get_ublox_fix': 'Perform GPS fix now',
       'cmd_reset': 'Reboot device',
     };
+    const CMDQ_SETTING_ORDER = [
+      'cmdq_enabled',
+      'cmdq_searched_mac_address',
+      'cmdq_scan_duration',
+      'cmdq_search_interval',
+      'cmdq_reporting_interval',
+      'cmdq_on_no_detection_wait_duration',
+      'cmdq_report_zero_messages_to_be_sent'
+    ];
 
     let device, server, txCharacteristic, rxCharacteristic;
     window.device = device;
@@ -647,6 +671,7 @@
       lastRequest: null
     };
     let flashLogCountTotal = null;
+    let cmdqLatestResult = null;
 
     const logFooter = document.getElementById('logFooter');
     const menuDebugToggle = document.getElementById('menu-debug-toggle');
@@ -1962,6 +1987,7 @@
         await loadSettings(selectedFile);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
+        renderCmdqSection();
         displayMainCommands();
         displayCommands();
         populateFlashLogTypeOptions();
@@ -2881,6 +2907,385 @@
       }
     }
 
+    function getCmdqSettings() {
+      if (!settingsData || !settingsData.settings) {
+        return [];
+      }
+      return CMDQ_SETTING_ORDER.filter(key => settingsData.settings[key]).map(key => [key, settingsData.settings[key]]);
+    }
+
+    function hasCmdqFeature() {
+      const hasCmdqSettings = getCmdqSettings().length > 0;
+      const hasCmdqCommand = Boolean(settingsData && settingsData.commands && settingsData.commands.cmd_send_bt_cmdq_results);
+      const hasCmdqMessage = Boolean(settingsData && settingsData.messages && settingsData.messages.msg_ble_cmdq);
+      const hasCmdqPort = Boolean(settingsData && settingsData.ports && Number.isFinite(settingsData.ports.port_ble_cmdq));
+      return hasCmdqSettings && hasCmdqCommand && hasCmdqMessage && hasCmdqPort;
+    }
+
+    function formatCmdqIntervalSummary(seconds) {
+      const value = Number.parseInt(seconds, 10);
+      if (!Number.isFinite(value) || value < 0) {
+        return '—';
+      }
+      if (value >= 3600 && value % 3600 === 0) {
+        return `${value / 3600} hour${value === 3600 ? '' : 's'}`;
+      }
+      if (value >= 60 && value % 60 === 0) {
+        return `${value / 60} minute${value === 60 ? '' : 's'}`;
+      }
+      return `${value} second${value === 1 ? '' : 's'}`;
+    }
+
+    function getCmdqSettingCurrentValue(setting) {
+      const current = getInputValue(setting.id);
+      if (current !== undefined && current !== null && String(current).trim() !== '') {
+        return current;
+      }
+      return normalizeRenderableValue(setting.default);
+    }
+
+    function renderCmdqMirrorInput(key, setting, value) {
+      const safeValue = normalizeRenderableValue(value);
+
+      if (key === 'cmdq_enabled' || key === 'cmdq_report_zero_messages_to_be_sent') {
+        const boolValue = String(safeValue).toLowerCase() === 'true';
+        return `
+          <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
+          <select id="cmdq-value-${setting.id}" onchange="updateCmdqMirrorValue('${setting.id}', this.value)">
+            <option value="true"${boolValue ? ' selected' : ''}>true</option>
+            <option value="false"${boolValue ? '' : ' selected'}>false</option>
+          </select>
+        `;
+      }
+
+      if (key === 'cmdq_searched_mac_address') {
+        const rawHex = stripBytes(String(safeValue || ''));
+        const mac = formatMacAddressForDisplay(rawHex, setting.length);
+        return `
+          <label class="input-label" for="cmdq-value-${setting.id}">MAC address</label>
+          <input
+            type="text"
+            id="cmdq-value-${setting.id}"
+            value="${mac}"
+            maxlength="${setting.length * 3 - 1}"
+            placeholder="FF:FF:FF:FF:FF:FF"
+            autocapitalize="characters"
+            spellcheck="false"
+            oninput="updateCmdqMirrorValue('${setting.id}', this.value)"
+          />
+          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value (hex bytes)</label>
+          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${rawHex}" readonly />
+          <div class="input-helper">MAC: ${mac || '—'}</div>
+        `;
+      }
+
+      if (key === 'cmdq_scan_duration') {
+        return `
+          <label class="input-label" for="cmdq-value-${setting.id}">Milliseconds</label>
+          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="0" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
+          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value</label>
+          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
+        `;
+      }
+
+      if (isIntervalSetting(key)) {
+        return `
+          <label class="input-label" for="cmdq-value-${setting.id}">Seconds</label>
+          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="0" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
+          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value</label>
+          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
+          <div class="input-helper">${formatCmdqIntervalSummary(safeValue)}</div>
+        `;
+      }
+
+      if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const min = setting.min != undefined ? setting.min : '';
+        const max = setting.max != undefined ? setting.max : '';
+        return `
+          <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
+          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="${min}" max="${max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
+        `;
+      }
+
+      return `
+        <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
+        <input type="text" id="cmdq-value-${setting.id}" value="${escapeHtml(String(safeValue || ''))}" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
+      `;
+    }
+
+    function renderCmdqSettingRow(key, setting) {
+      const value = getCmdqSettingCurrentValue(setting);
+      const description = getSettingDescription(key);
+      const row = document.createElement('div');
+      row.className = 'setting with-controls cmdq-setting';
+      row.id = `cmdq-setting-${setting.id}`;
+      if (isValueNotDefault(setting.id, value)) {
+        row.classList.add('value-not-default');
+      }
+      row.innerHTML = `
+        <div class="setting-heading">
+          <h4>${getSettingLabel(key, 'cmdq')} <small>${key} (${setting.id})</small></h4>
+          ${renderSettingInfoTrigger(description)}
+        </div>
+        <div class="input-container" id="cmdq-input-container-${setting.id}">${renderCmdqMirrorInput(key, setting, value)}</div>
+        <div class="setting-controls">
+          <button type="button" id="cmdq-update-button-${setting.id}" onclick="updateCmdqSetting('${setting.id}')">Update</button>
+          <button type="button" id="cmdq-reset-button-${setting.id}" class="secondary" onclick="resetCmdqSetting('${setting.id}')">Set default</button>
+        </div>
+      `;
+      return row;
+    }
+
+    function renderCmdqSection() {
+      const area = document.getElementById('cmdq-area');
+      const settingsSection = document.getElementById('cmdq-settings-section');
+      if (!area || !settingsSection) {
+        return;
+      }
+      if (!hasCmdqFeature()) {
+        area.classList.add('hidden');
+        settingsSection.innerHTML = '';
+        renderCmdqResults();
+        return;
+      }
+
+      area.classList.remove('hidden');
+      settingsSection.innerHTML = '';
+      for (const [key, setting] of getCmdqSettings()) {
+        settingsSection.appendChild(renderCmdqSettingRow(key, setting));
+      }
+      renderCmdqResults();
+    }
+
+    function syncCmdqMirrorSetting(settingId, value = null) {
+      if (!hasCmdqFeature()) {
+        return;
+      }
+      const [key, setting] = getById(settingId);
+      if (!String(key).startsWith('cmdq_')) {
+        return;
+      }
+      const row = document.getElementById(`cmdq-setting-${setting.id}`);
+      if (!row) {
+        return;
+      }
+      const resolvedValue = value === null ? getCmdqSettingCurrentValue(setting) : value;
+      const container = document.getElementById(`cmdq-input-container-${setting.id}`);
+      if (container) {
+        container.innerHTML = renderCmdqMirrorInput(key, setting, resolvedValue);
+      }
+      row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
+    }
+
+    function updateCmdqMirrorValue(settingId, rawValue) {
+      const [key, setting] = getById(settingId);
+      let normalized = rawValue;
+
+      if (key === 'cmdq_searched_mac_address') {
+        normalized = normalizeMacAddressInput(rawValue);
+      } else if (setting.conversion === 'bool') {
+        normalized = String(rawValue).toLowerCase() === 'true' ? 'true' : 'false';
+      }
+
+      setInputValue(settingId, normalized);
+      __onInputChanged(settingId);
+      syncCmdqMirrorSetting(settingId, getInputValue(settingId));
+    }
+    window.updateCmdqMirrorValue = updateCmdqMirrorValue;
+
+    async function updateCmdqSetting(settingId) {
+      const row = document.getElementById(`cmdq-setting-${settingId}`);
+      if (row) {
+        row.classList.add('disabled');
+      }
+      try {
+        await updateSetting(settingId);
+      } finally {
+        if (row) {
+          row.classList.remove('disabled');
+        }
+      }
+    }
+    window.updateCmdqSetting = updateCmdqSetting;
+
+    function resetCmdqSetting(settingId) {
+      setDefaultValue(settingId);
+      __onInputChanged(settingId);
+      syncCmdqMirrorSetting(settingId, getInputValue(settingId));
+    }
+    window.resetCmdqSetting = resetCmdqSetting;
+
+    function requestCmdqResults() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_send_bt_cmdq_results : null;
+      if (!command) {
+        showToast('CMDQ results command not available in this firmware.');
+        return;
+      }
+      executeCommand(command.id);
+    }
+    window.requestCmdqResults = requestCmdqResults;
+
+    function decodeCmdqPayload(valueBytes) {
+      const bytes = Array.from(valueBytes || []);
+      const recordLength = 15;
+      const rawHex = bytesToHex(bytes);
+      const allZero = bytes.length > 0 && bytes.every(byte => byte === 0);
+      if (!bytes.length || allZero) {
+        return {
+          empty: true,
+          message: 'The device has not reported any CMDQ results yet.',
+          measurements: [],
+          rows: [
+            { label: 'Payload size', value: `${bytes.length} bytes` },
+            { label: 'Raw hex', value: rawHex || '—' }
+          ]
+        };
+      }
+
+      const measurementCount = Math.floor(bytes.length / recordLength);
+      const rows = [
+        { label: 'Payload size', value: `${bytes.length} bytes` },
+        { label: 'Decoded measurements', value: String(measurementCount) }
+      ];
+      const measurements = [];
+
+      for (let i = 0; i < measurementCount; i++) {
+        const offset = i * recordLength;
+        const measurementTimestamp =
+          (bytes[offset + 3] << 24) |
+          (bytes[offset + 2] << 16) |
+          (bytes[offset + 1] << 8) |
+          bytes[offset];
+        const rrMedian = bytes[offset + 4];
+        const rrMedianModesum = bytes[offset + 5];
+        const activityAverage = bytes[offset + 6];
+        const activityMax = bytes[offset + 7];
+        const activeMinInLastHour = bytes[offset + 8];
+        const rawTemperature = ((bytes[offset + 9] & 0xff) << 8) | (bytes[offset + 10] & 0xff);
+        const hImpedance = ((bytes[offset + 11] & 0xff) << 8) | (bytes[offset + 12] & 0xff);
+        const hrvRaw = ((bytes[offset + 13] & 0xff) << 8) | (bytes[offset + 14] & 0xff);
+        const cmdqSuccess = rawTemperature > 0;
+        const temperature = cmdqSuccess ? (rawTemperature * 0.0248) - 18.09 : 0;
+        const hrv = Math.sqrt(hrvRaw);
+
+        measurements.push({
+          index: i + 1,
+          cmdq_success: cmdqSuccess,
+          cmdq_timestamp: measurementTimestamp,
+          cmdq_timestamp_display: measurementTimestamp > 0 ? new Date(measurementTimestamp * 1000).toLocaleString('nl-NL') : '—',
+          cmdq_rr_median: rrMedian,
+          cmdq_rr_median_modesum: rrMedianModesum,
+          cmdq_activity_average: activityAverage,
+          cmdq_activity_max: activityMax,
+          cmdq_active_min_in_last_hour: activeMinInLastHour,
+          cmdq_temp: temperature,
+          cmdq_raw_temp: rawTemperature,
+          cmdq_h_impedance: hImpedance,
+          cmdq_hrv: hrv,
+          cmdq_hrv_raw: hrvRaw,
+        });
+      }
+
+      if (measurementCount === 0) {
+        rows.push({ label: 'Decode status', value: `Payload is not a multiple of ${recordLength} bytes` });
+      }
+      if (bytes.length % recordLength !== 0) {
+        rows.push({ label: 'Trailing bytes', value: String(bytes.length % recordLength) });
+      }
+
+      rows.push({ label: 'Raw hex', value: rawHex });
+      return {
+        empty: measurementCount === 0,
+        message: measurementCount === 0
+          ? 'The device returned a CMDQ payload, but it does not contain a complete decoded result.'
+          : `Latest CMDQ message decoded from port 15 with ${measurementCount} result${measurementCount === 1 ? '' : 's'}.`,
+        measurements,
+        rows
+      };
+    }
+
+    function storeCmdqMessage(data, valueBytes) {
+      cmdqLatestResult = {
+        receivedAt: new Date(),
+        port: data[0],
+        id: data[1],
+        length: data[2] ?? valueBytes.length,
+        rawHex: bytesToHex(data),
+        payloadHex: bytesToHex(valueBytes),
+        decoded: decodeCmdqPayload(valueBytes)
+      };
+      renderCmdqResults();
+    }
+
+    function renderCmdqResults() {
+      const resultsEl = document.getElementById('cmdq-results');
+      if (!resultsEl) {
+        return;
+      }
+      if (!hasCmdqFeature()) {
+        resultsEl.innerHTML = '<div class="cmdq-empty">CMDQ is not available in this firmware.</div>';
+        return;
+      }
+      if (!cmdqLatestResult) {
+        resultsEl.innerHTML = '<div class="cmdq-empty">No CMDQ result message received yet.</div>';
+        return;
+      }
+
+      const { decoded } = cmdqLatestResult;
+      const rows = decoded.rows.map(row => `
+        <div class="cmdq-result-row">
+          <span class="cmdq-result-label">${escapeHtml(row.label)}</span>
+          <span class="cmdq-result-value">${escapeHtml(row.value).replace(/\n/g, '<br>')}</span>
+        </div>
+      `).join('');
+      const measurements = Array.isArray(decoded.measurements) ? decoded.measurements.map(measurement => `
+        <div class="cmdq-result-row">
+          <span class="cmdq-result-label">Result ${measurement.index}</span>
+          <span class="cmdq-result-value">Timestamp: ${escapeHtml(measurement.cmdq_timestamp_display)}<br>
+            Unix: ${escapeHtml(String(measurement.cmdq_timestamp))}<br>
+            Success: ${escapeHtml(measurement.cmdq_success ? 'yes' : 'no')}<br>
+            RR median: ${escapeHtml(String(measurement.cmdq_rr_median))}<br>
+            RR median modesum: ${escapeHtml(String(measurement.cmdq_rr_median_modesum))}<br>
+            Activity average: ${escapeHtml(String(measurement.cmdq_activity_average))}<br>
+            Activity max: ${escapeHtml(String(measurement.cmdq_activity_max))}<br>
+            Active min in last hour: ${escapeHtml(String(measurement.cmdq_active_min_in_last_hour))}<br>
+            Temperature: ${escapeHtml(measurement.cmdq_success ? measurement.cmdq_temp.toFixed(2) + ' C' : 'No valid reading')}<br>
+            Raw temperature: ${escapeHtml(String(measurement.cmdq_raw_temp))}<br>
+            H impedance: ${escapeHtml(String(measurement.cmdq_h_impedance))}<br>
+            HRV: ${escapeHtml(Number.isFinite(measurement.cmdq_hrv) ? measurement.cmdq_hrv.toFixed(2) : '—')}<br>
+            HRV raw: ${escapeHtml(String(measurement.cmdq_hrv_raw))}</span>
+        </div>
+      `).join('') : '';
+
+      resultsEl.innerHTML = `
+        <div class="cmdq-result-card${decoded.empty ? ' is-empty' : ''}">
+          <div class="cmdq-result-meta">
+            <div><strong>Received</strong>: ${escapeHtml(cmdqLatestResult.receivedAt.toLocaleString('nl-NL'))}</div>
+            <div><strong>Message</strong>: port ${cmdqLatestResult.port}, id 0x${cmdqLatestResult.id.toString(16).toUpperCase().padStart(2, '0')}, length ${cmdqLatestResult.length}</div>
+          </div>
+          <div class="cmdq-result-message">${escapeHtml(decoded.message)}</div>
+          ${measurements ? `<div class="cmdq-result-grid">${measurements}</div>` : ''}
+          <div class="cmdq-result-grid">${rows}</div>
+        </div>
+      `;
+    }
+
+    function resetCmdqState() {
+      cmdqLatestResult = null;
+      renderCmdqResults();
+    }
+
+    window.handleSettingInputChange = function (settingId, value, valid, key) {
+      if (!valid || !String(key || '').startsWith('cmdq_')) {
+        return;
+      }
+      syncCmdqMirrorSetting(settingId, value);
+    };
+
     function displayCommands() {
       const commandsSection = document.getElementById('commands-buttons-section');
       commandsSection.innerHTML = '';
@@ -3023,6 +3428,7 @@
       const sectionsToHide = [
         document.getElementById('status-area'),
         document.getElementById('actions-area'),
+        document.getElementById('cmdq-area'),
         document.getElementById('settings-area'),
         document.getElementById('logs-area'),
         document.getElementById('messenger-area'),
@@ -3405,6 +3811,7 @@
       if (flashLogState.active) {
         showFlashLogFailure('Connection lost during log download.');
       }
+      resetCmdqState();
       mapFullscreen = false;
       document.body.classList.remove('map-fullscreen');
       const mapViewToggle = document.getElementById('map-view-toggle');
@@ -4337,6 +4744,12 @@
             return;
           }
 
+          if (portName === 'port_ble_cmdq') {
+            storeCmdqMessage(data, valueBytes);
+            log(`Decoded message: ${key} = ${bytesToHex(valueBytes) || 'empty'}`);
+            return;
+          }
+
           if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
@@ -4415,6 +4828,9 @@
     function updateSettingDisplay(settingId, value) {
       setInputValue(settingId, value);
       const [key] = getById(settingId);
+      if (String(key).startsWith('cmdq_')) {
+        syncCmdqMirrorSetting(settingId, value);
+      }
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();
       }

@@ -204,6 +204,9 @@ function __onInputChanged(settingId) {
     if (typeof (onInputChanged) === typeof (Function)) {
         onInputChanged(setting, value, valid);
     }
+    if (typeof window.handleSettingInputChange === 'function') {
+        window.handleSettingInputChange(setting.id, value, valid, key, setting);
+    }
 }
 
 function setInputValue(settingId, value) {

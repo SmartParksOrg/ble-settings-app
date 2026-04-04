@@ -2290,6 +2290,70 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     width: 100%;
 }
 
+.cmdq-card {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.cmdq-results {
+    border: 1px solid rgba(31, 42, 35, 0.12);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(246, 249, 247, 0.95), rgba(234, 241, 237, 0.95));
+    padding: 14px;
+}
+
+.cmdq-empty,
+.cmdq-result-message {
+    color: rgba(31, 42, 35, 0.72);
+    line-height: 1.5;
+}
+
+.cmdq-result-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.cmdq-result-card.is-empty {
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.cmdq-result-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.78);
+}
+
+.cmdq-result-grid {
+    display: grid;
+    gap: 10px;
+}
+
+.cmdq-result-row {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid rgba(31, 42, 35, 0.08);
+}
+
+.cmdq-result-label {
+    font-size: 11px;
+    letter-spacing: 0.2px;
+    text-transform: uppercase;
+    color: rgba(31, 42, 35, 0.6);
+}
+
+.cmdq-result-value {
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+    word-break: break-word;
+    color: rgba(31, 42, 35, 0.92);
+}
+
 .log-actions .scan-button,
 .log-actions .erase-logs-button {
     width: 100%;
