@@ -2354,6 +2354,53 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     color: rgba(31, 42, 35, 0.92);
 }
 
+.fence-calibration {
+    border: 1px solid rgba(31, 42, 35, 0.12);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.72);
+    padding: 14px;
+    margin-top: 8px;
+}
+
+.fence-calibration-help {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(160, 191, 195, 0.16);
+    color: rgba(31, 42, 35, 0.82);
+    line-height: 1.5;
+    font-size: 13px;
+}
+
+.fence-calibration-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fence-calibration-row input {
+    width: 100%;
+    display: block;
+    background: #fff;
+    border: 1px solid rgba(31, 42, 35, 0.15);
+    border-radius: var(--radius-sm);
+    padding: 9px 10px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+    font-size: 14px;
+}
+
+.fence-calibration-row input:focus {
+    outline: none;
+    border-color: var(--sp-forest);
+    box-shadow: 0 0 0 3px rgba(82, 115, 94, 0.18);
+}
+
+.fence-calibration-unit {
+    color: rgba(31, 42, 35, 0.72);
+    white-space: nowrap;
+}
+
 .log-actions .scan-button,
 .log-actions .erase-logs-button {
     width: 100%;
@@ -2803,6 +2850,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 
 .icon.ublox-location {
     background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--!Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M215.7 499.2C267 435 384 279.4 384 192C384 86 298 0 192 0S0 86 0 192c0 87.4 117 243 168.3 307.2c12.3 15.3 35.1 15.3 47.4 0zM192 128a64 64 0 1 1 0 128 64 64 0 1 1 0-128z"/></svg>');
+}
+
+.icon.electric-fence {
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" fill=\"none\" stroke=\"black\" stroke-width=\"26\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M96 88V424\"/><path d=\"M256 88V424\"/><path d=\"M416 88V424\"/><path d=\"M80 160H432\"/><path d=\"M80 256H432\"/><path d=\"M80 352H432\"/><path d=\"M292 116L212 264H276L220 396L332 232H260L292 116Z\" fill=\"black\" stroke=\"black\"/></svg>');
 }
 
 .icon.square-poll-horizontal {

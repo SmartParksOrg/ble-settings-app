@@ -158,6 +158,19 @@
     </details>
   </div>
 
+  <div id="fence-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon electric-fence" aria-hidden="true"></span>FenceEdge</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="fence-settings-section" class="settings-container"></div>
+        <div id="fence-actions-panel"></div>
+        <div id="fence-results" class="cmdq-results">
+          <div class="cmdq-empty">No fence measurement received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
@@ -617,6 +630,13 @@
       'cmdq_on_no_detection_wait_duration',
       'cmdq_report_zero_messages_to_be_sent'
     ];
+    const FENCE_SETTING_ORDER = [
+      'fence_enabled',
+      'fence_interval',
+      'fence_sampling_length',
+      'fence_mv_scaling_factor',
+      'fence_led_blink'
+    ];
 
     let device, server, txCharacteristic, rxCharacteristic;
     window.device = device;
@@ -672,6 +692,12 @@
     };
     let flashLogCountTotal = null;
     let cmdqLatestResult = null;
+    let fenceLatestResult = null;
+    let fenceMeasurementPending = false;
+    let fenceMeasurementTimeoutId = null;
+    let fenceMeasurementMessage = 'No fence measurement received yet.';
+    let fenceCalibrationRunning = false;
+    let fenceManualVoltageInput = '';
 
     const logFooter = document.getElementById('logFooter');
     const menuDebugToggle = document.getElementById('menu-debug-toggle');
@@ -1987,7 +2013,10 @@
         await loadSettings(selectedFile);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
+        resetCmdqState();
+        resetFenceState();
         renderCmdqSection();
+        renderFenceSection();
         displayMainCommands();
         displayCommands();
         populateFlashLogTypeOptions();
@@ -2728,7 +2757,8 @@
         fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
         hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`,
         fwType: statusMessage.ver_fw_type,
-        hwType: statusMessage.ver_hw_type
+        hwType: statusMessage.ver_hw_type,
+        fenceSupport: Boolean(statusMessage.fence)
       };
 
       if (firmwareV5Mode) {
@@ -2760,6 +2790,7 @@
           `<div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>`,
           `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
           `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
+          `<div class="status-item"><span class="icon electric-fence"></span>FenceEdge support: ${statusMessage.fence ? 'yes' : 'no'}</div>`,
           `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`
         );
         lrUpdateBanner = `
@@ -2815,6 +2846,7 @@
       if (!firmwareV5Mode) {
         updateUbloxGpsStatusTag();
         displayMainCommands();
+        renderFenceSection();
       }
 
       try {
@@ -3274,16 +3306,494 @@
       `;
     }
 
+    function getFenceSettings() {
+      if (!settingsData || !settingsData.settings) {
+        return [];
+      }
+      return FENCE_SETTING_ORDER.filter(key => settingsData.settings[key]).map(key => [key, settingsData.settings[key]]);
+    }
+
+    function hasFenceFeatureInSchema() {
+      const hasFenceSettings = getFenceSettings().length > 0;
+      const hasFenceCommand = Boolean(settingsData && settingsData.commands && settingsData.commands.cmd_fence_measure);
+      const hasFenceMessage = Boolean(settingsData && settingsData.messages && settingsData.messages.msg_fence);
+      const hasFencePort = Boolean(settingsData && settingsData.ports && Number.isFinite(settingsData.ports.port_fence));
+      return hasFenceSettings && hasFenceCommand && hasFenceMessage && hasFencePort;
+    }
+
+    function hasFenceHardwareSupport() {
+      return Boolean(lastStatusInfo && lastStatusInfo.fenceSupport);
+    }
+
+    function hasFenceFeature() {
+      return hasFenceFeatureInSchema() && hasFenceHardwareSupport();
+    }
+
+    function getFenceSettingCurrentValue(setting) {
+      const current = getInputValue(setting.id);
+      if (current !== undefined && current !== null && String(current).trim() !== '') {
+        return current;
+      }
+      return normalizeRenderableValue(setting.default);
+    }
+
+    function isFenceEnabledForActions() {
+      const setting = settingsData && settingsData.settings ? settingsData.settings.fence_enabled : null;
+      if (!setting) {
+        return false;
+      }
+      return String(getFenceSettingCurrentValue(setting)).toLowerCase() === 'true';
+    }
+
+    function renderFenceMirrorInput(key, setting, value) {
+      const safeValue = normalizeRenderableValue(value);
+
+      if (setting.conversion === 'bool') {
+        const boolValue = String(safeValue).toLowerCase() === 'true';
+        return `
+          <label class="input-label" for="fence-value-${setting.id}">Value</label>
+          <select id="fence-value-${setting.id}" onchange="updateFenceMirrorValue('${setting.id}', this.value)">
+            <option value="true"${boolValue ? ' selected' : ''}>true</option>
+            <option value="false"${boolValue ? '' : ' selected'}>false</option>
+          </select>
+        `;
+      }
+
+      if (isIntervalSetting(key)) {
+        return `
+          <label class="input-label" for="fence-value-${setting.id}">Seconds</label>
+          <input type="number" id="fence-value-${setting.id}" value="${safeValue}" min="0" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
+          <label class="raw-value-label" for="fence-raw-${setting.id}">Raw value</label>
+          <input type="text" id="fence-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
+          <div class="input-helper">${formatCmdqIntervalSummary(safeValue)}</div>
+        `;
+      }
+
+      if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const min = setting.min != undefined ? setting.min : '';
+        const max = setting.max != undefined ? setting.max : '';
+        return `
+          <label class="input-label" for="fence-value-${setting.id}">Value</label>
+          <input type="number" id="fence-value-${setting.id}" value="${safeValue}" min="${min}" max="${max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
+        `;
+      }
+
+      return `
+        <label class="input-label" for="fence-value-${setting.id}">Value</label>
+        <input type="text" id="fence-value-${setting.id}" value="${escapeHtml(String(safeValue || ''))}" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
+      `;
+    }
+
+    function renderFenceSettingRow(key, setting) {
+      const value = getFenceSettingCurrentValue(setting);
+      const description = getSettingDescription(key);
+      const row = document.createElement('div');
+      row.className = 'setting with-controls';
+      row.id = `fence-setting-${setting.id}`;
+      if (isValueNotDefault(setting.id, value)) {
+        row.classList.add('value-not-default');
+      }
+      row.innerHTML = `
+        <div class="setting-heading">
+          <h4>${getSettingLabel(key, 'fence')} <small>${key} (${setting.id})</small></h4>
+          ${renderSettingInfoTrigger(description)}
+        </div>
+        <div class="input-container" id="fence-input-container-${setting.id}">${renderFenceMirrorInput(key, setting, value)}</div>
+        <div class="setting-controls">
+          <button type="button" id="fence-update-button-${setting.id}" onclick="updateFenceSetting('${setting.id}')">Update</button>
+          <button type="button" id="fence-reset-button-${setting.id}" class="secondary" onclick="resetFenceSetting('${setting.id}')">Set default</button>
+        </div>
+      `;
+      return row;
+    }
+
+    function renderFenceSection() {
+      const area = document.getElementById('fence-area');
+      const settingsSection = document.getElementById('fence-settings-section');
+      if (!area || !settingsSection) {
+        return;
+      }
+      if (!hasFenceFeature()) {
+        area.classList.add('hidden');
+        settingsSection.innerHTML = '';
+        renderFenceResults();
+        return;
+      }
+
+      area.classList.remove('hidden');
+      settingsSection.innerHTML = '';
+      for (const [key, setting] of getFenceSettings()) {
+        settingsSection.appendChild(renderFenceSettingRow(key, setting));
+      }
+      renderFenceActionControls();
+      renderFenceResults();
+    }
+
+    function syncFenceMirrorSetting(settingId, value = null) {
+      if (!hasFenceFeature()) {
+        return;
+      }
+      const [key, setting] = getById(settingId);
+      if (!String(key).startsWith('fence_')) {
+        return;
+      }
+      const row = document.getElementById(`fence-setting-${setting.id}`);
+      if (!row) {
+        return;
+      }
+      const resolvedValue = value === null ? getFenceSettingCurrentValue(setting) : value;
+      const container = document.getElementById(`fence-input-container-${setting.id}`);
+      if (container) {
+        container.innerHTML = renderFenceMirrorInput(key, setting, resolvedValue);
+      }
+      row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
+    }
+
+    function updateFenceMirrorValue(settingId, rawValue) {
+      const [_, setting] = getById(settingId);
+      const normalized = setting.conversion === 'bool'
+        ? (String(rawValue).toLowerCase() === 'true' ? 'true' : 'false')
+        : rawValue;
+      setInputValue(settingId, normalized);
+      __onInputChanged(settingId);
+      syncFenceMirrorSetting(settingId, getInputValue(settingId));
+    }
+    window.updateFenceMirrorValue = updateFenceMirrorValue;
+
+    async function updateFenceSetting(settingId) {
+      const row = document.getElementById(`fence-setting-${settingId}`);
+      if (row) {
+        row.classList.add('disabled');
+      }
+      try {
+        await updateSetting(settingId);
+      } finally {
+        if (row) {
+          row.classList.remove('disabled');
+        }
+      }
+    }
+    window.updateFenceSetting = updateFenceSetting;
+
+    function resetFenceSetting(settingId) {
+      setDefaultValue(settingId);
+      __onInputChanged(settingId);
+      syncFenceMirrorSetting(settingId, getInputValue(settingId));
+    }
+    window.resetFenceSetting = resetFenceSetting;
+
+    function clearFenceMeasurementTimeout() {
+      if (fenceMeasurementTimeoutId) {
+        clearTimeout(fenceMeasurementTimeoutId);
+        fenceMeasurementTimeoutId = null;
+      }
+    }
+
+    function getFenceMeasurementTimeoutMs() {
+      const setting = settingsData && settingsData.settings ? settingsData.settings.fence_sampling_length : null;
+      const rawValue = setting ? getFenceSettingCurrentValue(setting) : '';
+      const parsed = Number.parseInt(rawValue, 10);
+      const fallback = setting ? Number.parseInt(setting.default, 10) : 10;
+      const seconds = Number.isFinite(parsed) && parsed > 0
+        ? parsed
+        : (Number.isFinite(fallback) && fallback > 0 ? fallback : 10);
+      return (seconds * 1000) + 1000;
+    }
+
+    function updateFenceManualVoltage(value) {
+      fenceManualVoltageInput = String(value || '').replace(',', '.').replace(/[^0-9.]/g, '');
+      renderFenceActionControls();
+    }
+    window.updateFenceManualVoltage = updateFenceManualVoltage;
+
+    function cancelFenceCalibration() {
+      fenceCalibrationRunning = false;
+      renderFenceActionControls();
+      showToast('Fence calibration cancelled.');
+    }
+    window.cancelFenceCalibration = cancelFenceCalibration;
+
+    function renderFenceActionControls() {
+      const panel = document.getElementById('fence-actions-panel');
+      if (!panel) {
+        return;
+      }
+      if (!hasFenceFeature()) {
+        panel.innerHTML = '';
+        return;
+      }
+      const actionsEnabled = isFenceEnabledForActions();
+      const disableMeasure = !actionsEnabled || fenceMeasurementPending;
+      const disableCalibrationInput = fenceCalibrationRunning || !actionsEnabled;
+      const disableCalibrationButton = !actionsEnabled;
+      panel.innerHTML = `
+        ${actionsEnabled ? '' : '<div class="cmdq-empty">Enable the fence feature to use measurement and calibration.</div>'}
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestFenceMeasurement()"${disableMeasure ? ' disabled' : ''}>Take measurement now</button>
+        </div>
+        <div class="fence-calibration">
+          <div class="fence-calibration-help">
+            <strong>How calibration works</strong><br>
+            1. Measure the fence voltage manually with your external meter.<br>
+            2. Enter that measured value here in <strong>kV</strong>.<br>
+            3. Press <strong>Calibrate</strong>. The device will take a fence measurement, compare it to your manual reading, and update the scaling factor automatically.<br>
+            4. After calibration, the app requests another measurement so you can verify the result.
+          </div>
+          <label class="input-label" for="fence-manual-voltage">Manual measured voltage</label>
+          <div class="fence-calibration-row">
+            <input type="text" id="fence-manual-voltage" value="${escapeHtml(fenceManualVoltageInput)}" inputmode="decimal" placeholder="e.g. 6.4" oninput="updateFenceManualVoltage(this.value)"${disableCalibrationInput ? ' disabled' : ''} />
+            <span class="fence-calibration-unit">kV</span>
+          </div>
+          <div class="log-actions">
+            <button type="button" class="log-action-button" onclick="${fenceCalibrationRunning ? 'cancelFenceCalibration()' : 'startFenceCalibration()'}"${disableCalibrationButton ? ' disabled' : ''}>${fenceCalibrationRunning ? 'Cancel calibration' : 'Calibrate'}</button>
+          </div>
+        </div>
+      `;
+    }
+
+    async function requestFenceMeasurement(options = {}) {
+      if (!isFenceEnabledForActions()) {
+        showToast('Enable fence first to take a measurement.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_fence_measure : null;
+      if (!command) {
+        showToast('Fence measurement command not available in this firmware.');
+        return;
+      }
+      const timeoutMs = getFenceMeasurementTimeoutMs();
+      fenceMeasurementPending = true;
+      fenceMeasurementMessage = `Waiting for fence measurement for up to ${Math.round(timeoutMs / 1000)} seconds...`;
+      renderFenceActionControls();
+      renderFenceResults();
+      clearFenceMeasurementTimeout();
+      fenceMeasurementTimeoutId = setTimeout(() => {
+        fenceMeasurementPending = false;
+        fenceMeasurementTimeoutId = null;
+        fenceMeasurementMessage = `No fence measurement received within ${Math.round(timeoutMs / 1000)} seconds.`;
+        if (fenceCalibrationRunning) {
+          fenceCalibrationRunning = false;
+          showToast('Fence calibration timed out.');
+        }
+        renderFenceActionControls();
+        renderFenceResults();
+      }, timeoutMs);
+
+      try {
+        await executeCommand(command.id);
+      } catch (error) {
+        clearFenceMeasurementTimeout();
+        fenceMeasurementPending = false;
+        fenceMeasurementMessage = 'Failed to request a fence measurement.';
+        renderFenceActionControls();
+        renderFenceResults();
+        if (!options.silent) {
+          showToast(`Failed to request fence measurement: ${error.message}`);
+        }
+      }
+    }
+    window.requestFenceMeasurement = requestFenceMeasurement;
+
+    async function startFenceCalibration() {
+      if (!isFenceEnabledForActions()) {
+        showToast('Enable fence first to start calibration.');
+        return;
+      }
+      const raw = String(fenceManualVoltageInput || '').trim();
+      if (!raw || raw.includes('-') || raw.includes(' ') || raw.includes(',')) {
+        showToast('Enter a valid manually measured fence voltage in kV.');
+        return;
+      }
+      const manualVoltageNum = Number.parseFloat(raw);
+      if (!Number.isFinite(manualVoltageNum) || manualVoltageNum <= 0) {
+        showToast('Enter a valid manually measured fence voltage in kV.');
+        return;
+      }
+      const setting = settingsData && settingsData.settings ? settingsData.settings.fence_mv_scaling_factor : null;
+      if (!setting) {
+        showToast('Fence scaling factor setting is not available in this firmware.');
+        return;
+      }
+
+      fenceCalibrationRunning = true;
+      renderFenceActionControls();
+      showToast('Fence calibration started.');
+
+      try {
+        await updateBleSetting(setting.id, '10000');
+        updateSettingDisplay(setting.id, '10000');
+        await requestFenceMeasurement({ silent: true });
+      } catch (error) {
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast(`Fence calibration failed to start: ${error.message}`);
+      }
+    }
+    window.startFenceCalibration = startFenceCalibration;
+
+    async function finishFenceCalibration(resultVoltage) {
+      if (resultVoltage <= 0) {
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast('Fence calibration failed.');
+        return;
+      }
+      const setting = settingsData && settingsData.settings ? settingsData.settings.fence_mv_scaling_factor : null;
+      if (!setting) {
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast('Fence scaling factor setting is not available in this firmware.');
+        return;
+      }
+
+      const manualVoltageNum = Number.parseFloat(String(fenceManualVoltageInput || '').trim());
+      if (!Number.isFinite(manualVoltageNum) || manualVoltageNum <= 0) {
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast('Fence calibration voltage is invalid.');
+        return;
+      }
+
+      const manualVoltageConverted = manualVoltageNum * 1000;
+      const newScalingFactor = Math.round((manualVoltageConverted / resultVoltage) * 10000).toString();
+
+      try {
+        await updateBleSetting(setting.id, newScalingFactor);
+        updateSettingDisplay(setting.id, newScalingFactor);
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast('Fence calibration has finished.');
+        await requestBleValue(setting.id, CMD_SINGLE_SETTING);
+        await requestFenceMeasurement({ silent: true });
+      } catch (error) {
+        fenceCalibrationRunning = false;
+        renderFenceActionControls();
+        showToast(`Failed to store calibrated fence scaling factor: ${error.message}`);
+      }
+    }
+
+    function decodeFencePayload(valueBytes) {
+      const bytes = Array.from(valueBytes || []);
+      const rawHex = bytesToHex(bytes);
+      if (bytes.length < 6) {
+        return {
+          empty: true,
+          message: 'The device has not reported a complete fence measurement yet.',
+          measurement: null,
+          rows: [
+            { label: 'Payload size', value: `${bytes.length} bytes` },
+            { label: 'Raw hex', value: rawHex || '—' }
+          ]
+        };
+      }
+
+      const success = bytes[0];
+      const N = bytes[1];
+      const voltage = ((bytes[3] & 0xff) << 8) | (bytes[2] & 0xff);
+      const energy = ((bytes[5] & 0xff) << 8) | (bytes[4] & 0xff);
+
+      return {
+        empty: false,
+        message: success ? 'Latest FenceEdge measurement decoded from port 12.' : 'FenceEdge measurement returned an unsuccessful result.',
+        measurement: { success, N, voltage, energy },
+        rows: [
+          { label: 'Payload size', value: `${bytes.length} bytes` },
+          { label: 'Success', value: String(success) },
+          { label: 'N', value: String(N) },
+          { label: 'Voltage', value: `${voltage}` },
+          { label: 'Energy', value: `${energy}` },
+          { label: 'Raw hex', value: rawHex }
+        ]
+      };
+    }
+
+    async function storeFenceMessage(data, valueBytes) {
+      fenceLatestResult = {
+        receivedAt: new Date(),
+        port: data[0],
+        id: data[1],
+        length: data[2] ?? valueBytes.length,
+        rawHex: bytesToHex(data),
+        payloadHex: bytesToHex(valueBytes),
+        decoded: decodeFencePayload(valueBytes)
+      };
+      clearFenceMeasurementTimeout();
+      fenceMeasurementPending = false;
+      fenceMeasurementMessage = 'No fence measurement received yet.';
+      renderFenceActionControls();
+      renderFenceResults();
+      if (fenceCalibrationRunning && fenceLatestResult.decoded && fenceLatestResult.decoded.measurement) {
+        await finishFenceCalibration(fenceLatestResult.decoded.measurement.voltage);
+      }
+    }
+
+    function renderFenceResults() {
+      const resultsEl = document.getElementById('fence-results');
+      if (!resultsEl) {
+        return;
+      }
+      if (!hasFenceFeature()) {
+        resultsEl.innerHTML = '<div class="cmdq-empty">FenceEdge is not available in this firmware.</div>';
+        return;
+      }
+      if (fenceMeasurementPending) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(fenceMeasurementMessage)}</div>`;
+        return;
+      }
+      if (!fenceLatestResult) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(fenceMeasurementMessage)}</div>`;
+        return;
+      }
+
+      const { decoded } = fenceLatestResult;
+      const rows = decoded.rows.map(row => `
+        <div class="cmdq-result-row">
+          <span class="cmdq-result-label">${escapeHtml(row.label)}</span>
+          <span class="cmdq-result-value">${escapeHtml(row.value)}</span>
+        </div>
+      `).join('');
+
+      resultsEl.innerHTML = `
+        <div class="cmdq-result-card${decoded.empty ? ' is-empty' : ''}">
+          <div class="cmdq-result-meta">
+            <div><strong>Received</strong>: ${escapeHtml(fenceLatestResult.receivedAt.toLocaleString('nl-NL'))}</div>
+            <div><strong>Message</strong>: port ${fenceLatestResult.port}, id 0x${fenceLatestResult.id.toString(16).toUpperCase().padStart(2, '0')}, length ${fenceLatestResult.length}</div>
+          </div>
+          <div class="cmdq-result-message">${escapeHtml(decoded.message)}</div>
+          <div class="cmdq-result-grid">${rows}</div>
+        </div>
+      `;
+    }
+
     function resetCmdqState() {
       cmdqLatestResult = null;
       renderCmdqResults();
     }
 
+    function resetFenceState() {
+      clearFenceMeasurementTimeout();
+      fenceLatestResult = null;
+      fenceMeasurementPending = false;
+      fenceCalibrationRunning = false;
+      fenceMeasurementMessage = 'No fence measurement received yet.';
+      renderFenceResults();
+      renderFenceActionControls();
+    }
+
     window.handleSettingInputChange = function (settingId, value, valid, key) {
-      if (!valid || !String(key || '').startsWith('cmdq_')) {
+      if (!valid) {
         return;
       }
-      syncCmdqMirrorSetting(settingId, value);
+      const normalizedKey = String(key || '');
+      if (normalizedKey.startsWith('cmdq_')) {
+        syncCmdqMirrorSetting(settingId, value);
+      } else if (normalizedKey.startsWith('fence_')) {
+        syncFenceMirrorSetting(settingId, value);
+      }
     };
 
     function displayCommands() {
@@ -3429,6 +3939,7 @@
         document.getElementById('status-area'),
         document.getElementById('actions-area'),
         document.getElementById('cmdq-area'),
+        document.getElementById('fence-area'),
         document.getElementById('settings-area'),
         document.getElementById('logs-area'),
         document.getElementById('messenger-area'),
@@ -3812,6 +4323,7 @@
         showFlashLogFailure('Connection lost during log download.');
       }
       resetCmdqState();
+      resetFenceState();
       mapFullscreen = false;
       document.body.classList.remove('map-fullscreen');
       const mapViewToggle = document.getElementById('map-view-toggle');
@@ -4750,6 +5262,12 @@
             return;
           }
 
+          if (portName === 'port_fence') {
+            await storeFenceMessage(data, valueBytes);
+            log(`Decoded message: ${key} = ${bytesToHex(valueBytes) || 'empty'}`);
+            return;
+          }
+
           if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
@@ -4830,6 +5348,8 @@
       const [key] = getById(settingId);
       if (String(key).startsWith('cmdq_')) {
         syncCmdqMirrorSetting(settingId, value);
+      } else if (String(key).startsWith('fence_')) {
+        syncFenceMirrorSetting(settingId, value);
       }
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();
