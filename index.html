@@ -171,6 +171,36 @@
     </details>
   </div>
 
+  <div id="wifi-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon wifi-scan" aria-hidden="true"></span>WiFi Scan</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="wifi-scan-settings-section" class="settings-container"></div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('wifi')">Do WiFi scan now</button>
+        </div>
+        <div id="wifi-scan-results" class="cmdq-results">
+          <div class="cmdq-empty">No WiFi scan results received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="ble-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon bluetooth" aria-hidden="true"></span>BLE Scan</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="ble-scan-settings-section" class="settings-container"></div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('ble')">Show latest BLE scan results</button>
+        </div>
+        <div id="ble-scan-results" class="cmdq-results">
+          <div class="cmdq-empty">No BLE scan results received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
@@ -578,6 +608,13 @@
   </div>
 
   <footer class="app-version-footer">
+    <div class="app-footer-links">
+      <a class="app-footer-link" href="https://github.com/SmartParksOrg/ble-settings-app" target="_blank" rel="noopener noreferrer">
+        <span class="icon github" aria-hidden="true"></span>
+        <span>GitHub</span>
+      </a>
+      <a class="app-footer-link" href="https://www.smartparks.org" target="_blank" rel="noopener noreferrer">www.smartparks.org</a>
+    </div>
     <span class="app-version" id="app-version">Version: loading...</span>
   </footer>
 
@@ -637,6 +674,52 @@
       'fence_mv_scaling_factor',
       'fence_led_blink'
     ];
+    const WIFI_SCAN_SETTING_ORDER = [
+      'wifi_scan_interval',
+      'wifi_scan_aggregated_interval',
+      'wifi_scan_report_zero_connections_found'
+    ];
+    const BLE_SCAN_SETTING_ORDER = [
+      'ble_scan_interval',
+      'ble_scan_aggregated_interval',
+      'ble_scan_duration',
+      'ble_scan_filter',
+      'ble_scan_manufacturer_id',
+      'ble_scan_report_zero_connections_found'
+    ];
+    const SCAN_REQUEST_TIMEOUT_MS = 30000;
+    const SCAN_FEATURES = {
+      wifi: {
+        label: 'WiFi',
+        settingsPrefix: 'wifi_scan_',
+        settingsOrder: WIFI_SCAN_SETTING_ORDER,
+        areaId: 'wifi-scan-area',
+        settingsSectionId: 'wifi-scan-settings-section',
+        resultsId: 'wifi-scan-results',
+        commandKey: 'cmd_get_wifi_scan',
+        messageKeys: ['msg_wifi_scan_aggregated', 'msg_wifi_scan'],
+        portKeys: ['port_wifi_scan_aggregated', 'port_wifi_scan'],
+        emptyMessage: 'No WiFi scan results received yet.',
+        pendingMessage: 'Running WiFi scan now...',
+        timeoutMessage: 'No WiFi scan results received.',
+        unavailableMessage: 'WiFi scanning is not available in this firmware.'
+      },
+      ble: {
+        label: 'BLE',
+        settingsPrefix: 'ble_scan_',
+        settingsOrder: BLE_SCAN_SETTING_ORDER,
+        areaId: 'ble-scan-area',
+        settingsSectionId: 'ble-scan-settings-section',
+        resultsId: 'ble-scan-results',
+        commandKey: 'cmd_get_ble_scan',
+        messageKeys: ['msg_ble_scan_aggregated', 'msg_ble_scan'],
+        portKeys: ['port_ble_scan_aggregated', 'port_ble_scan'],
+        emptyMessage: 'No BLE scan results received yet.',
+        pendingMessage: 'Loading latest BLE scan results...',
+        timeoutMessage: 'No BLE scan results received.',
+        unavailableMessage: 'BLE scanning is not available in this firmware.'
+      }
+    };
 
     let device, server, txCharacteristic, rxCharacteristic;
     window.device = device;
@@ -698,6 +781,20 @@
     let fenceMeasurementMessage = 'No fence measurement received yet.';
     let fenceCalibrationRunning = false;
     let fenceManualVoltageInput = '';
+    const scanState = {
+      wifi: {
+        latestResult: null,
+        pending: false,
+        timeoutId: null,
+        statusMessage: SCAN_FEATURES.wifi.emptyMessage
+      },
+      ble: {
+        latestResult: null,
+        pending: false,
+        timeoutId: null,
+        statusMessage: SCAN_FEATURES.ble.emptyMessage
+      }
+    };
 
     const logFooter = document.getElementById('logFooter');
     const menuDebugToggle = document.getElementById('menu-debug-toggle');
@@ -2015,8 +2112,12 @@
         displaySettings();
         resetCmdqState();
         resetFenceState();
+        resetScanState('wifi');
+        resetScanState('ble');
         renderCmdqSection();
         renderFenceSection();
+        renderScanSection('wifi');
+        renderScanSection('ble');
         displayMainCommands();
         displayCommands();
         populateFlashLogTypeOptions();
@@ -2946,6 +3047,30 @@
       return CMDQ_SETTING_ORDER.filter(key => settingsData.settings[key]).map(key => [key, settingsData.settings[key]]);
     }
 
+    function getScanFeatureConfig(kind) {
+      return SCAN_FEATURES[kind] || null;
+    }
+
+    function getScanSettings(kind) {
+      const config = getScanFeatureConfig(kind);
+      if (!config || !settingsData || !settingsData.settings) {
+        return [];
+      }
+      return config.settingsOrder.filter(key => settingsData.settings[key]).map(key => [key, settingsData.settings[key]]);
+    }
+
+    function hasScanFeature(kind) {
+      const config = getScanFeatureConfig(kind);
+      if (!config) {
+        return false;
+      }
+      const hasSettings = getScanSettings(kind).length > 0;
+      const hasCommand = Boolean(settingsData && settingsData.commands && settingsData.commands[config.commandKey]);
+      const hasMessage = config.messageKeys.some(key => Boolean(settingsData && settingsData.messages && settingsData.messages[key]));
+      const hasPort = config.portKeys.some(key => Boolean(settingsData && settingsData.ports && Number.isFinite(settingsData.ports[key])));
+      return hasSettings && hasCommand && hasMessage && hasPort;
+    }
+
     function hasCmdqFeature() {
       const hasCmdqSettings = getCmdqSettings().length > 0;
       const hasCmdqCommand = Boolean(settingsData && settingsData.commands && settingsData.commands.cmd_send_bt_cmdq_results);
@@ -3784,6 +3909,719 @@
       renderFenceActionControls();
     }
 
+    function getScanSettingCurrentValue(setting) {
+      const current = getScanInputValue('wifi', setting.id) ?? getScanInputValue('ble', setting.id) ?? getInputValue(setting.id);
+      if (current !== undefined && current !== null && String(current).trim() !== '') {
+        return current;
+      }
+      return normalizeRenderableValue(setting.default);
+    }
+
+    function getScanScopedId(kind, base, settingId, extra = '') {
+      return `${kind}-scan-${base}-${settingId}${extra}`;
+    }
+
+    function getScanInputValue(kind, settingId) {
+      const el = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      if (el) {
+        return el.value.trim();
+      }
+      return undefined;
+    }
+
+    function renderScopedScanInput(kind, key, setting, value) {
+      let html = sanitizeRenderedInputHtml(renderInputControl(key, setting, normalizeRenderableValue(value)));
+      const replacements = [
+        'new-value',
+        'raw-value',
+        'input-error',
+        'input-container',
+        'mac-value',
+        'mac-preview',
+        'pin-value',
+        'interval-num',
+        'interval-unit',
+        'datetime',
+        'utc-datetime-helper',
+        'hex-value',
+        'coord-value',
+        'byte',
+        'utc-hour-helper'
+      ];
+
+      for (const base of replacements) {
+        const escapedBase = base.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedId = String(setting.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        html = html.replace(new RegExp(`([=\"'])${escapedBase}-${escapedId}((?:-[^\"']*)?)([\"'])`, 'g'), `$1${kind}-scan-${base}-${setting.id}$2$3`);
+      }
+
+      const eventReplacements = [
+        ['updateMsValue', 'scanUpdateMsValue'],
+        ['updateSecondsValue', 'scanUpdateSecondsValue'],
+        ['updateUnixTimeValue', 'scanUpdateUnixTimeValue'],
+        ['updateHexValue', 'scanUpdateHexValue'],
+        ['updateCoordinateValue', 'scanUpdateCoordinateValue'],
+        ['updateDevicePinValue', 'scanUpdateDevicePinValue'],
+        ['updateUtcHourValue', 'scanUpdateUtcHourValue'],
+        ['updateIntervalValue', 'scanUpdateIntervalValue'],
+        ['updateIntervalUnit', 'scanUpdateIntervalUnit'],
+        ['updateMacAddressValue', 'scanUpdateMacAddressValue'],
+        ['updateLp0ByteArray', 'scanUpdateLp0ByteArray']
+      ];
+
+      html = html.replace(new RegExp(`__onInputChanged\\('${setting.id}'\\)`, 'g'), `scanOnInputChanged('${kind}', '${setting.id}')`);
+      for (const [source, target] of eventReplacements) {
+        html = html.replace(new RegExp(`${source}\\('${setting.id}'`, 'g'), `${target}('${kind}', '${setting.id}'`);
+      }
+
+      return html;
+    }
+
+    function updateMainSettingFromScan(kind, settingId, value, valid) {
+      setInputValue(settingId, value);
+      const mainRow = document.getElementById(`setting-${settingId}`);
+      if (mainRow) {
+        mainRow.classList.toggle('value-not-default', isValueNotDefault(settingId, value));
+      }
+      syncScanMirrorSetting(kind, settingId, value);
+      const scanRow = document.getElementById(`${kind}-scan-setting-${settingId}`);
+      if (scanRow) {
+        scanRow.classList.toggle('value-not-default', valid && isValueNotDefault(settingId, value));
+      }
+    }
+
+    function scanOnInputChanged(kind, settingId) {
+      const [key, setting] = getById(settingId);
+      const value = getScanInputValue(kind, setting.id);
+      const errorElement = document.getElementById(getScanScopedId(kind, 'input-error', setting.id));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', setting.id));
+
+      let valid = true;
+      try {
+        validateInput(key, setting, value);
+        if (errorElement) {
+          errorElement.innerText = '';
+        }
+      } catch (error) {
+        valid = false;
+        if (errorElement) {
+          errorElement.innerText = error.message;
+        }
+      }
+
+      if (rawValueElement) {
+        rawValueElement.value = value ?? '';
+      }
+
+      updateMainSettingFromScan(kind, setting.id, value, valid);
+      if (typeof window.handleSettingInputChange === 'function') {
+        window.handleSettingInputChange(setting.id, value, valid, key, setting);
+      }
+    }
+    window.scanOnInputChanged = scanOnInputChanged;
+
+    function scanUpdateMsValue(kind, settingId) {
+      const input = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateMsValue = scanUpdateMsValue;
+
+    function scanUpdateSecondsValue(kind, settingId) {
+      const input = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateSecondsValue = scanUpdateSecondsValue;
+
+    function scanUpdateUnixTimeValue(kind, settingId) {
+      const dateInput = document.getElementById(getScanScopedId(kind, 'datetime', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      const utcHelperElement = document.getElementById(getScanScopedId(kind, 'utc-datetime-helper', settingId));
+      if (!dateInput || !hiddenField) {
+        return;
+      }
+      const date = dateInput.value ? new Date(dateInput.value) : null;
+      const seconds = date && !Number.isNaN(date.getTime()) ? Math.floor(date.getTime() / 1000) : '';
+      hiddenField.value = seconds.toString();
+      if (rawValueElement) {
+        rawValueElement.value = seconds.toString();
+      }
+      if (utcHelperElement) {
+        utcHelperElement.textContent = `UTC: ${date && !Number.isNaN(date.getTime()) ? date.toISOString().replace('.000Z', ' UTC') : '—'}`;
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateUnixTimeValue = scanUpdateUnixTimeValue;
+
+    function scanUpdateHexValue(kind, settingId) {
+      const [_, setting] = getById(settingId);
+      const hexInput = document.getElementById(getScanScopedId(kind, 'hex-value', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      if (!hexInput || !hiddenField) {
+        return;
+      }
+      const stripped = String(hexInput.value || '').trim().replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '').slice(0, 4);
+      hexInput.value = stripped ? `0x${stripped.toUpperCase()}` : '';
+      const parsed = stripped ? parseInt(stripped, 16) : '';
+      hiddenField.value = parsed === '' ? '' : String(parsed);
+      if (rawValueElement) {
+        rawValueElement.value = hiddenField.value;
+      }
+      scanOnInputChanged(kind, setting.id);
+    }
+    window.scanUpdateHexValue = scanUpdateHexValue;
+
+    function scanUpdateCoordinateValue(kind, settingId, min, max) {
+      const input = document.getElementById(getScanScopedId(kind, 'coord-value', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      if (!input || !hiddenField) {
+        return;
+      }
+      const normalized = String(input.value || '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '');
+      input.value = normalized;
+      const degrees = normalized === '' || normalized === '-' ? NaN : parseFloat(normalized);
+      const clamped = Number.isFinite(degrees) ? Math.max(min, Math.min(max, degrees)) : NaN;
+      const raw = Number.isFinite(clamped) ? Math.round(clamped * 1e7).toString() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) {
+        rawValueElement.value = raw;
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateCoordinateValue = scanUpdateCoordinateValue;
+
+    function scanUpdateDevicePinValue(kind, settingId) {
+      const input = document.getElementById(getScanScopedId(kind, 'pin-value', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      if (!input || !hiddenField) {
+        return;
+      }
+      const digits = (input.value || '').replace(/\D/g, '').slice(0, 4);
+      if (input.value !== digits) {
+        input.value = digits;
+      }
+      const raw = digits.length === 4 ? digits.split('').map((digit) => `0${digit}`).join('').toUpperCase() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) {
+        rawValueElement.value = raw;
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateDevicePinValue = scanUpdateDevicePinValue;
+
+    function scanUpdateUtcHourValue(kind, settingId) {
+      const input = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      const helperElement = document.getElementById(getScanScopedId(kind, 'utc-hour-helper', settingId));
+      if (!input) {
+        return;
+      }
+      const normalized = String(input.value || '').replace(/[^\d]/g, '');
+      if (String(input.value) !== normalized) {
+        input.value = normalized;
+      }
+      let hour = normalized === '' ? '' : parseInt(normalized, 10);
+      if (hour !== '' && Number.isFinite(hour)) {
+        hour = Math.max(0, Math.min(23, hour));
+        input.value = hour.toString();
+      }
+      if (rawValueElement) {
+        rawValueElement.value = hour === '' ? '' : hour.toString();
+      }
+      if (helperElement) {
+        helperElement.textContent = formatUtcHourLabel(hour);
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateUtcHourValue = scanUpdateUtcHourValue;
+
+    function scanUpdateIntervalValue(kind, settingId) {
+      const numericInput = document.getElementById(getScanScopedId(kind, 'interval-num', settingId));
+      const unitSelect = document.getElementById(getScanScopedId(kind, 'interval-unit', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) {
+        return;
+      }
+      let displayVal = parseFloat(numericInput.value) || 0;
+      if (displayVal < 0) {
+        displayVal = 0;
+      }
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateIntervalValue = scanUpdateIntervalValue;
+
+    function scanUpdateIntervalUnit(kind, settingId) {
+      const numericInput = document.getElementById(getScanScopedId(kind, 'interval-num', settingId));
+      const unitSelect = document.getElementById(getScanScopedId(kind, 'interval-unit', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) {
+        return;
+      }
+      const currentSeconds = parseInt(hiddenField.value, 10) || 0;
+      const displayVal = Math.ceil(convertSecondsToUnit(currentSeconds, unitSelect.value));
+      numericInput.value = displayVal;
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateIntervalUnit = scanUpdateIntervalUnit;
+
+    function scanUpdateMacAddressValue(kind, settingId) {
+      const [_, setting] = getById(settingId);
+      const input = document.getElementById(getScanScopedId(kind, 'mac-value', settingId));
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      const macPreview = document.getElementById(getScanScopedId(kind, 'mac-preview', settingId));
+      if (!input || !hiddenField) {
+        return;
+      }
+      const normalizedHex = normalizeMacAddressInput(input.value);
+      const formattedMac = formatMacAddressForDisplay(normalizedHex, setting.length);
+      input.value = formattedMac;
+      hiddenField.value = normalizedHex;
+      if (rawValueElement) {
+        rawValueElement.value = normalizedHex;
+      }
+      if (macPreview) {
+        macPreview.textContent = `MAC: ${formattedMac || '—'}`;
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateMacAddressValue = scanUpdateMacAddressValue;
+
+    function scanUpdateLp0ByteArray(kind, settingId) {
+      const [_, setting] = getById(settingId);
+      const bytes = new Uint8Array(setting.length);
+      for (let i = 0; i < setting.length; i++) {
+        const input = document.getElementById(getScanScopedId(kind, 'byte', settingId, `-${i}`));
+        let value = input ? parseInt(input.value, 10) : 0;
+        if (isNaN(value)) {
+          value = 0;
+        }
+        value = Math.min(255, Math.max(0, value));
+        if (input && !input.readOnly) {
+          input.value = value;
+        }
+        bytes[i] = value;
+      }
+      const hiddenField = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      if (hiddenField) {
+        hiddenField.value = bytesToHex(bytes);
+      }
+      const macPreview = document.getElementById(getScanScopedId(kind, 'mac-preview', settingId));
+      if (macPreview) {
+        macPreview.textContent = `MAC: ${Array.from(bytes).map(toHex).join(':')}`;
+      }
+      scanOnInputChanged(kind, settingId);
+    }
+
+    function formatScanTimestamp(timestamp) {
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        return '—';
+      }
+      return new Date(timestamp * 1000).toLocaleString('nl-NL');
+    }
+
+    function decodeAggregatedScanPayload(bytes, len) {
+      const resultCount = bytes[0] || 0;
+      const entries = [];
+      let i = 0;
+      let idx = 0;
+      while (i < resultCount && idx < len - 1) {
+        const base = 1 + i * 9;
+        let id = '';
+        for (let j = 2; j > 0; j--) {
+          id += `${bytes[base + j].toString(16).padStart(2, '0')}:`;
+        }
+        id += bytes[base].toString(16).padStart(2, '0');
+        const entry = {
+          id,
+          rssi: (bytes[base + 3] || 0) - 128,
+          count: bytes[base + 4] || 0,
+          t: (((bytes[base + 8] || 0) << 24) | ((bytes[base + 7] || 0) << 16) | ((bytes[base + 6] || 0) << 8) | (bytes[base + 5] || 0)) >>> 0
+        };
+        if (!entries.some(existing => existing.id === entry.id)) {
+          entries.push(entry);
+        }
+        i++;
+        idx += 9;
+      }
+      return {
+        reportedCount: resultCount,
+        entries
+      };
+    }
+
+    function decodeLastBleScanPayload(bytes, len) {
+      const timestamp = (((bytes[3] || 0) << 24) | ((bytes[2] || 0) << 16) | ((bytes[1] || 0) << 8) | (bytes[0] || 0)) >>> 0;
+      const resultCount = bytes[4] || 0;
+      const entries = [];
+      let i = 0;
+      let idx = 5;
+      while (i < resultCount && idx < len - 1) {
+        const base = 5 + i * 4;
+        let id = '';
+        for (let j = 2; j > 0; j--) {
+          id += `${bytes[base + j].toString(16).padStart(2, '0')}:`;
+        }
+        id += bytes[base].toString(16).padStart(2, '0');
+        entries.push({
+          id,
+          rssi: (bytes[base + 3] || 0) - 128,
+          count: null,
+          t: timestamp
+        });
+        i++;
+        idx += 4;
+      }
+      return {
+        reportedCount: resultCount,
+        timestamp,
+        entries
+      };
+    }
+
+    function decodeScanPayload(kind, messageKey, valueBytes) {
+      const config = getScanFeatureConfig(kind);
+      const bytes = Array.from(valueBytes || []);
+      const scanLabel = config ? config.label : 'Scan';
+      if (!bytes.length || bytes.every(byte => byte === 0)) {
+        return {
+          empty: true,
+          message: `The device has not reported any ${scanLabel} scan results yet.`,
+          entries: [],
+          rows: []
+        };
+      }
+
+      const isLastBleScan = messageKey === 'msg_ble_scan';
+      const decoded = isLastBleScan
+        ? decodeLastBleScanPayload(bytes, bytes.length)
+        : decodeAggregatedScanPayload(bytes, bytes.length);
+      const messageMode = messageKey.includes('aggregated') ? 'aggregated' : 'single';
+      const entries = Array.isArray(decoded.entries) ? decoded.entries : [];
+      return {
+        empty: entries.length === 0,
+        message: entries.length === 0
+          ? `The latest ${scanLabel} scan payload does not contain any decoded results.`
+          : `Latest ${scanLabel} scan ${messageMode} payload contains ${entries.length} result${entries.length === 1 ? '' : 's'}.`,
+        entries,
+        rows: []
+      };
+    }
+
+    function renderScanMirrorInput(kind, key, setting, value) {
+      return renderScopedScanInput(kind, key, setting, value);
+    }
+
+    function renderScanSettingRow(kind, key, setting) {
+      const value = getScanSettingCurrentValue(setting);
+      const description = getSettingDescription(key);
+      const row = document.createElement('div');
+      row.className = 'setting with-controls';
+      row.id = `${kind}-scan-setting-${setting.id}`;
+      if (isValueNotDefault(setting.id, value)) {
+        row.classList.add('value-not-default');
+      }
+      row.innerHTML = `
+        <div class="setting-heading">
+          <h4>${getSettingLabel(key, `${kind}_scan`)} <small>${key} (${setting.id})</small></h4>
+          ${renderSettingInfoTrigger(description)}
+        </div>
+        <div class="input-container" id="${kind}-scan-input-container-${setting.id}">${renderScanMirrorInput(kind, key, setting, value)}</div>
+        <div class="setting-controls">
+          <button type="button" onclick="updateScanSetting('${kind}', '${setting.id}')">Update</button>
+          <button type="button" class="secondary" onclick="resetScanSetting('${kind}', '${setting.id}')">Set default</button>
+        </div>
+      `;
+      return row;
+    }
+
+    function renderScanSection(kind) {
+      const config = getScanFeatureConfig(kind);
+      if (!config) {
+        return;
+      }
+      const area = document.getElementById(config.areaId);
+      const settingsSection = document.getElementById(config.settingsSectionId);
+      if (!area || !settingsSection) {
+        return;
+      }
+      if (!hasScanFeature(kind)) {
+        area.classList.add('hidden');
+        settingsSection.innerHTML = '';
+        renderScanResults(kind);
+        return;
+      }
+      area.classList.remove('hidden');
+      settingsSection.innerHTML = '';
+      for (const [key, setting] of getScanSettings(kind)) {
+        settingsSection.appendChild(renderScanSettingRow(kind, key, setting));
+      }
+      renderScanResults(kind);
+    }
+
+    function syncScanMirrorSetting(kind, settingId, value = null) {
+      if (!hasScanFeature(kind)) {
+        return;
+      }
+      const config = getScanFeatureConfig(kind);
+      const [key, setting] = getById(settingId);
+      if (!config || !String(key).startsWith(config.settingsPrefix)) {
+        return;
+      }
+      const row = document.getElementById(`${kind}-scan-setting-${setting.id}`);
+      if (!row) {
+        return;
+      }
+      const resolvedValue = value === null ? getScanSettingCurrentValue(setting) : value;
+      const container = document.getElementById(`${kind}-scan-input-container-${setting.id}`);
+      if (container) {
+        container.innerHTML = renderScanMirrorInput(kind, key, setting, resolvedValue);
+      }
+      row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
+    }
+
+    async function updateScanSetting(kind, settingId) {
+      const row = document.getElementById(`${kind}-scan-setting-${settingId}`);
+      if (row) {
+        row.classList.add('disabled');
+      }
+      try {
+        await updateSetting(settingId);
+      } finally {
+        if (row) {
+          row.classList.remove('disabled');
+        }
+      }
+    }
+    window.updateScanSetting = updateScanSetting;
+
+    function resetScanSetting(kind, settingId) {
+      setDefaultValue(settingId);
+      __onInputChanged(settingId);
+      syncScanMirrorSetting(kind, settingId, getInputValue(settingId));
+    }
+    window.resetScanSetting = resetScanSetting;
+
+    function clearScanRequestTimeout(kind) {
+      const state = scanState[kind];
+      if (!state || !state.timeoutId) {
+        return;
+      }
+      clearTimeout(state.timeoutId);
+      state.timeoutId = null;
+    }
+
+    function resetScanState(kind) {
+      const config = getScanFeatureConfig(kind);
+      const state = scanState[kind];
+      if (!config || !state) {
+        return;
+      }
+      clearScanRequestTimeout(kind);
+      state.latestResult = null;
+      state.pending = false;
+      state.statusMessage = config.emptyMessage;
+      renderScanResults(kind);
+    }
+
+    async function requestScanResults(kind) {
+      const config = getScanFeatureConfig(kind);
+      const state = scanState[kind];
+      if (!config || !state) {
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const command = settingsData && settingsData.commands ? settingsData.commands[config.commandKey] : null;
+      if (!command) {
+        showToast(`${config.label} scan command not available in this firmware.`);
+        return;
+      }
+
+      clearScanRequestTimeout(kind);
+      state.latestResult = null;
+      state.pending = true;
+      state.statusMessage = config.pendingMessage;
+      renderScanResults(kind);
+
+      state.timeoutId = setTimeout(() => {
+        state.pending = false;
+        state.timeoutId = null;
+        state.statusMessage = config.timeoutMessage;
+        renderScanResults(kind);
+      }, SCAN_REQUEST_TIMEOUT_MS);
+
+      try {
+        await executeCommand(command.id);
+      } catch (error) {
+        clearScanRequestTimeout(kind);
+        state.pending = false;
+        state.statusMessage = `Failed to request ${config.label} scan results.`;
+        renderScanResults(kind);
+        showToast(`Failed to request ${config.label} scan results: ${error.message}`);
+      }
+    }
+    window.requestScanResults = requestScanResults;
+
+    function storeScanMessage(kind, messageKey, data, valueBytes) {
+      const config = getScanFeatureConfig(kind);
+      const state = scanState[kind];
+      if (!config || !state) {
+        return;
+      }
+      state.latestResult = {
+        receivedAt: new Date(),
+        port: data[0],
+        id: data[1],
+        length: data[2] ?? valueBytes.length,
+        rawHex: bytesToHex(data),
+        payloadHex: bytesToHex(valueBytes),
+        decoded: decodeScanPayload(kind, messageKey, valueBytes)
+      };
+      clearScanRequestTimeout(kind);
+      state.pending = false;
+      state.statusMessage = config.emptyMessage;
+      renderScanResults(kind);
+    }
+
+    function renderScanResults(kind) {
+      const config = getScanFeatureConfig(kind);
+      const state = scanState[kind];
+      if (!config || !state) {
+        return;
+      }
+      const resultsEl = document.getElementById(config.resultsId);
+      if (!resultsEl) {
+        return;
+      }
+      if (!hasScanFeature(kind)) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(config.unavailableMessage)}</div>`;
+        return;
+      }
+      if (state.pending) {
+        resultsEl.innerHTML = `
+          <div class="cmdq-result-card scan-progress-card">
+            <div class="scan-progress-header">
+              <div class="scan-progress-label">${escapeHtml(config.label)}</div>
+              <div class="scan-progress-detail">${escapeHtml(state.statusMessage)}</div>
+            </div>
+            <div class="flash-log-progress indeterminate">
+              <div></div>
+            </div>
+          </div>
+        `;
+        return;
+      }
+      if (!state.latestResult) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(state.statusMessage)}</div>`;
+        return;
+      }
+
+      const { decoded } = state.latestResult;
+      const sortedEntries = Array.isArray(decoded.entries)
+        ? [...decoded.entries].sort((a, b) => {
+          const rssiA = Number.isFinite(a.rssi) ? a.rssi : -999;
+          const rssiB = Number.isFinite(b.rssi) ? b.rssi : -999;
+          if (rssiA !== rssiB) {
+            return rssiB - rssiA;
+          }
+          const timeA = Number.isFinite(a.t) ? a.t : 0;
+          const timeB = Number.isFinite(b.t) ? b.t : 0;
+          return timeB - timeA;
+        })
+        : [];
+      const bestSignal = sortedEntries.length && Number.isFinite(sortedEntries[0].rssi) ? `${sortedEntries[0].rssi} dBm` : '—';
+      const resultEntityLabel = kind === 'wifi' ? 'access point' : 'device';
+      const resultEntityLabelPlural = kind === 'wifi' ? 'access points' : 'devices';
+      const resultHeading = kind === 'wifi' ? 'WiFi Access Points' : 'BLE Devices';
+      const entries = sortedEntries.map((entry, index) => {
+        const signalStrength = Number.isFinite(entry.rssi)
+          ? (entry.rssi >= -60 ? 'strong' : entry.rssi >= -75 ? 'medium' : 'weak')
+          : 'unknown';
+        const signalLabel = signalStrength === 'strong'
+          ? 'Strong signal'
+          : signalStrength === 'medium'
+            ? 'Medium signal'
+            : signalStrength === 'weak'
+              ? 'Weak signal'
+              : 'Signal unknown';
+        const displayId = kind === 'wifi'
+          ? String(entry.id || '—').toUpperCase()
+          : String(entry.id || '—').toUpperCase();
+        const subtitle = kind === 'wifi'
+          ? `Access point ${index + 1}`
+          : `Device ${index + 1}`;
+        const countMarkup = Number.isFinite(entry.count)
+          ? `<span class="scan-entry-pill">Seen ${escapeHtml(String(entry.count))}x</span>`
+          : '';
+        return `
+          <article class="scan-entry-card scan-entry-${signalStrength}">
+            <div class="scan-entry-main">
+              <div class="scan-entry-heading">
+                <div class="scan-entry-title-group">
+                  <div class="scan-entry-title">${escapeHtml(displayId)}</div>
+                  <div class="scan-entry-subtitle">${escapeHtml(subtitle)}</div>
+                </div>
+                <div class="scan-entry-signal">
+                  <span class="scan-entry-rssi">${escapeHtml(Number.isFinite(entry.rssi) ? `${entry.rssi} dBm` : '—')}</span>
+                  <span class="scan-entry-signal-label">${escapeHtml(signalLabel)}</span>
+                </div>
+              </div>
+              <div class="scan-entry-pill-row">
+                ${countMarkup}
+                <span class="scan-entry-pill">${escapeHtml(Number.isFinite(entry.t) ? `Last seen ${formatScanTimestamp(entry.t)}` : 'Last seen —')}</span>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
+
+      const metaLabel = decoded.empty && kind === 'ble' ? 'Last check' : 'Received';
+      const bleEmptyNote = decoded.empty && kind === 'ble'
+        ? '<div class="cmdq-result-note">The device can only scan for BLE devices when the app is not connected, because it uses the same BLE capability. Reconnect later to see the BLE scan results.</div>'
+        : '';
+
+      resultsEl.innerHTML = `
+        <div class="cmdq-result-card${decoded.empty ? ' is-empty' : ''}">
+          <div class="cmdq-result-meta">
+            <div><strong>${escapeHtml(metaLabel)}</strong>: ${escapeHtml(state.latestResult.receivedAt.toLocaleString('nl-NL'))}</div>
+          </div>
+          <div class="cmdq-result-message">${escapeHtml(decoded.message)}</div>
+          ${bleEmptyNote}
+          ${entries ? `
+            <section class="scan-results-shell">
+              <div class="scan-results-summary">
+                <div class="scan-summary-block">
+                  <span class="scan-summary-label">${escapeHtml(resultHeading)}</span>
+                  <span class="scan-summary-value">${escapeHtml(`${sortedEntries.length} ${sortedEntries.length === 1 ? resultEntityLabel : resultEntityLabelPlural}`)}</span>
+                </div>
+                <div class="scan-summary-block">
+                  <span class="scan-summary-label">Best signal</span>
+                  <span class="scan-summary-value">${escapeHtml(bestSignal)}</span>
+                </div>
+              </div>
+              <div class="scan-entry-list">${entries}</div>
+            </section>
+          ` : ''}
+        </div>
+      `;
+    }
+
     window.handleSettingInputChange = function (settingId, value, valid, key) {
       if (!valid) {
         return;
@@ -3793,6 +4631,10 @@
         syncCmdqMirrorSetting(settingId, value);
       } else if (normalizedKey.startsWith('fence_')) {
         syncFenceMirrorSetting(settingId, value);
+      } else if (normalizedKey.startsWith('wifi_scan_')) {
+        syncScanMirrorSetting('wifi', settingId, value);
+      } else if (normalizedKey.startsWith('ble_scan_')) {
+        syncScanMirrorSetting('ble', settingId, value);
       }
     };
 
@@ -4324,6 +5166,8 @@
       }
       resetCmdqState();
       resetFenceState();
+      resetScanState('wifi');
+      resetScanState('ble');
       mapFullscreen = false;
       document.body.classList.remove('map-fullscreen');
       const mapViewToggle = document.getElementById('map-view-toggle');
@@ -5268,6 +6112,18 @@
             return;
           }
 
+          if (['port_wifi_scan_aggregated', 'port_wifi_scan'].includes(portName)) {
+            storeScanMessage('wifi', key, data, valueBytes);
+            log(`Decoded message: ${key} = ${bytesToHex(valueBytes) || 'empty'}`);
+            return;
+          }
+
+          if (['port_ble_scan_aggregated', 'port_ble_scan'].includes(portName)) {
+            storeScanMessage('ble', key, data, valueBytes);
+            log(`Decoded message: ${key} = ${bytesToHex(valueBytes) || 'empty'}`);
+            return;
+          }
+
           if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
             // Updated time and position, refresh time and position
             await requestStatusMessage();
@@ -5350,6 +6206,10 @@
         syncCmdqMirrorSetting(settingId, value);
       } else if (String(key).startsWith('fence_')) {
         syncFenceMirrorSetting(settingId, value);
+      } else if (String(key).startsWith('wifi_scan_')) {
+        syncScanMirrorSetting('wifi', settingId, value);
+      } else if (String(key).startsWith('ble_scan_')) {
+        syncScanMirrorSetting('ble', settingId, value);
       }
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();

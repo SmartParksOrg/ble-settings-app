@@ -1440,11 +1440,43 @@ h2 {
 
 .app-version-footer {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
+    gap: 8px;
     width: 100%;
     padding: 18px 12px 28px;
     opacity: 0.85;
+}
+
+.app-footer-links {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+}
+
+.app-footer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: rgba(31, 42, 35, 0.72);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+}
+
+.app-footer-link:hover {
+    color: rgba(31, 42, 35, 0.92);
+}
+
+.app-footer-link .icon {
+    width: 14px;
+    height: 14px;
+    background-size: 14px 14px;
+    flex: 0 0 auto;
 }
 
 /* Floating bar at the bottom */
@@ -2309,10 +2341,28 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     line-height: 1.5;
 }
 
+.cmdq-result-note {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(160, 191, 195, 0.16);
+    border: 1px solid rgba(82, 115, 94, 0.18);
+    color: rgba(31, 42, 35, 0.82);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
 .cmdq-result-card {
     display: flex;
     flex-direction: column;
     gap: 12px;
+}
+
+.scan-progress-card {
+    padding: 14px;
+    border-radius: 16px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.96), rgba(241, 247, 244, 0.96));
+    border: 1px solid rgba(31, 42, 35, 0.08);
+    box-shadow: 0 12px 24px rgba(31, 42, 35, 0.08);
 }
 
 .cmdq-result-card.is-empty {
@@ -2325,6 +2375,25 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     gap: 4px;
     font-size: 12px;
     color: rgba(31, 42, 35, 0.78);
+}
+
+.scan-progress-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.scan-progress-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: rgba(31, 42, 35, 0.55);
+}
+
+.scan-progress-detail {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sp-ink);
 }
 
 .cmdq-result-grid {
@@ -2352,6 +2421,154 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
     word-break: break-word;
     color: rgba(31, 42, 35, 0.92);
+}
+
+.scan-results-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.scan-results-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 10px;
+}
+
+.scan-summary-block {
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.96), rgba(241, 247, 244, 0.96));
+    border: 1px solid rgba(31, 42, 35, 0.08);
+    box-shadow: 0 8px 18px rgba(31, 42, 35, 0.06);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.scan-summary-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: rgba(31, 42, 35, 0.55);
+}
+
+.scan-summary-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sp-ink);
+}
+
+.scan-entry-list {
+    display: grid;
+    gap: 10px;
+}
+
+.scan-entry-card {
+    position: relative;
+    border-radius: 16px;
+    padding: 14px;
+    background: linear-gradient(155deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 245, 0.96));
+    border: 1px solid rgba(31, 42, 35, 0.08);
+    box-shadow: 0 12px 24px rgba(31, 42, 35, 0.08);
+    overflow: hidden;
+}
+
+.scan-entry-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 5px;
+    border-radius: 16px 0 0 16px;
+    background: rgba(82, 115, 94, 0.28);
+}
+
+.scan-entry-strong::before {
+    background: linear-gradient(180deg, #1f9d55, #157347);
+}
+
+.scan-entry-medium::before {
+    background: linear-gradient(180deg, #d97706, #b45309);
+}
+
+.scan-entry-weak::before {
+    background: linear-gradient(180deg, #c2410c, #9a3412);
+}
+
+.scan-entry-main {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.scan-entry-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.scan-entry-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.scan-entry-title {
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+    font-size: 19px;
+    font-weight: 700;
+    color: var(--sp-ink);
+    word-break: break-word;
+}
+
+.scan-entry-subtitle {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.62);
+    letter-spacing: 0.2px;
+}
+
+.scan-entry-signal {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    text-align: right;
+}
+
+.scan-entry-rssi {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--sp-forest-dark);
+    white-space: nowrap;
+}
+
+.scan-entry-signal-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.35px;
+    color: rgba(31, 42, 35, 0.52);
+}
+
+.scan-entry-pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.scan-entry-pill {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    background: rgba(227, 236, 231, 0.9);
+    border: 1px solid rgba(82, 115, 94, 0.14);
+    color: rgba(31, 42, 35, 0.78);
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .fence-calibration {
@@ -2872,6 +3089,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M388.6%20235.1L345.7%20278L345.4%20192L388.6%20235.1zM345.4%20454.9L388.5%20411.8L345.6%20368.9L345.4%20454.9zM512%20323.4C512%20529%20440.1%20576%20326.9%20576C213.7%20576%20128%20529%20128%20323.4C128%20117.8%20211.4%2064%20324.6%2064C437.8%2064%20512%20117.9%20512%20323.4zM353.5%20323.4L432.9%20234.8L307.8%20100.5L307.8%20277.4L234%20203.6L207%20230.5L299.7%20323.5L207%20416.5L233.9%20443.4L307.7%20369.6L310%20539.6L437.4%20412.1L353.5%20323.4z%22/%3E%3C/svg%3E');
 }
 
+.icon.wifi-scan {
+    background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%20fill=%22none%22%20stroke=%22%231f2a23%22%20stroke-width=%2244%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M128%20272C234.1%20177.3%20405.9%20177.3%20512%20272%22/%3E%3Cpath%20d=%22M208%20352C270.9%20299%20369.1%20299%20432%20352%22/%3E%3Cpath%20d=%22M272%20432C301.9%20409.4%20338.1%20409.4%20368%20432%22/%3E%3Ccircle%20cx=%22320%22%20cy=%22496%22%20r=%2232%22%20fill=%22%231f2a23%22%20stroke=%22none%22/%3E%3Cpath%20d=%22M480%20168L532%20168%22/%3E%3Cpath%20d=%22M506%20142L506%20194%22/%3E%3C/svg%3E');
+}
+
 .icon.heart-pulse {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%20fill=%22none%22%20stroke=%22%231f2a23%22%20stroke-width=%2248%22%20stroke-linecap=%22round%22%20stroke-linejoin=%22round%22%3E%3Cpath%20d=%22M320%20536C206%20461.8%20136%20399.2%2097.5%20344.8C66.7%20301.3%2053.9%20255.4%2064.8%20209.6C82.1%20136.7%20146.1%2088%20212.4%2088C254.9%2088%20294%20108.1%20320%20140.7C346%20108.1%20385.1%2088%20427.6%2088C493.9%2088%20557.9%20136.7%20575.2%20209.6C586.1%20255.4%20573.3%20301.3%20542.5%20344.8C504%20399.2%20434%20461.8%20320%20536z%22/%3E%3Cpath%20d=%22M168%20328L244%20328L282%20258L336%20394L388%20278L472%20278%22/%3E%3C/svg%3E');
 }
@@ -2942,6 +3163,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 
 .icon.copy {
     background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20640%20640%22%3E%3C%21--%21Font%20Awesome%20Free%207.1.0%20by%20%40fontawesome%20-%20https://fontawesome.com%20License%20-%20https://fontawesome.com/license/free%20Copyright%202026%20Fonticons,%20Inc.--%3E%3Cpath%20d=%22M288%2064C252.7%2064%20224%2092.7%20224%20128L224%20384C224%20419.3%20252.7%20448%20288%20448L480%20448C515.3%20448%20544%20419.3%20544%20384L544%20183.4C544%20166%20536.9%20149.3%20524.3%20137.2L466.6%2081.8C454.7%2070.4%20438.8%2064%20422.3%2064L288%2064zM160%20192C124.7%20192%2096%20220.7%2096%20256L96%20512C96%20547.3%20124.7%20576%20160%20576L352%20576C387.3%20576%20416%20547.3%20416%20512L416%20496L352%20496L352%20512L160%20512L160%20256L176%20256L176%20192L160%20192z%22/%3E%3C/svg%3E');
+}
+
+.icon.github {
+    background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20viewBox=%220%200%20496%20512%22%20fill=%22%231f2a23%22%3E%3Cpath%20d=%22M248%208C111%208%200%20119%200%20256c0%20110.9%2071.8%20205%20171.4%20238.2c12.5%202.3%2017.1-5.4%2017.1-12v-42.2c-69.7%2015.2-84.4-29.6-84.4-29.6c-11.4-29-27.8-36.7-27.8-36.7c-22.7-15.5%201.7-15.2%201.7-15.2c25.1%201.8%2038.3%2025.8%2038.3%2025.8c22.3%2038.3%2058.6%2027.2%2072.9%2020.8c2.2-16.2%208.7-27.2%2015.8-33.4c-55.7-6.3-114.2-27.8-114.2-123.7c0-27.3%209.8-49.6%2025.8-67.1c-2.6-6.3-11.2-31.7%202.5-66.1c0%200%2021.1-6.8%2069.2%2025.6c20.1-5.6%2041.6-8.4%2063-8.5c21.4%20.1%2042.9%202.9%2063%208.5c48.1-32.4%2069.1-25.6%2069.1-25.6c13.8%2034.4%205.1%2059.8%202.5%2066.1c16.1%2017.5%2025.8%2039.8%2025.8%2067.1c0%2096.1-58.6%20117.3-114.5%20123.5c9%207.8%2017%2023.2%2017%2046.8v69.3c0%206.7%204.5%2014.4%2017.2%2012C424.2%20461%20496%20366.9%20496%20256C496%20119%20385%208%20248%208z%22/%3E%3C/svg%3E');
 }
 
 .log-footer {
