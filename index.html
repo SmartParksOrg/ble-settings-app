@@ -3101,73 +3101,64 @@
       return normalizeRenderableValue(setting.default);
     }
 
+    function getCmdqScopedId(base, settingId, extra = '') {
+      return `cmdq-${base}-${settingId}${extra}`;
+    }
+
+    function getCmdqInputValue(settingId) {
+      const el = document.getElementById(getCmdqScopedId('new-value', settingId));
+      if (el) {
+        return el.value.trim();
+      }
+      return undefined;
+    }
+
     function renderCmdqMirrorInput(key, setting, value) {
-      const safeValue = normalizeRenderableValue(value);
+      let html = sanitizeRenderedInputHtml(renderInputControl(key, setting, normalizeRenderableValue(value)));
+      const replacements = [
+        'new-value',
+        'raw-value',
+        'input-error',
+        'input-container',
+        'mac-value',
+        'mac-preview',
+        'pin-value',
+        'interval-num',
+        'interval-unit',
+        'datetime',
+        'utc-datetime-helper',
+        'hex-value',
+        'coord-value',
+        'byte',
+        'utc-hour-helper'
+      ];
 
-      if (key === 'cmdq_enabled' || key === 'cmdq_report_zero_messages_to_be_sent') {
-        const boolValue = String(safeValue).toLowerCase() === 'true';
-        return `
-          <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
-          <select id="cmdq-value-${setting.id}" onchange="updateCmdqMirrorValue('${setting.id}', this.value)">
-            <option value="true"${boolValue ? ' selected' : ''}>true</option>
-            <option value="false"${boolValue ? '' : ' selected'}>false</option>
-          </select>
-        `;
+      for (const base of replacements) {
+        const escapedBase = base.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedId = String(setting.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        html = html.replace(new RegExp(`([=\"'])${escapedBase}-${escapedId}((?:-[^\"']*)?)([\"'])`, 'g'), `$1cmdq-${base}-${setting.id}$2$3`);
       }
 
-      if (key === 'cmdq_searched_mac_address') {
-        const rawHex = stripBytes(String(safeValue || ''));
-        const mac = formatMacAddressForDisplay(rawHex, setting.length);
-        return `
-          <label class="input-label" for="cmdq-value-${setting.id}">MAC address</label>
-          <input
-            type="text"
-            id="cmdq-value-${setting.id}"
-            value="${mac}"
-            maxlength="${setting.length * 3 - 1}"
-            placeholder="FF:FF:FF:FF:FF:FF"
-            autocapitalize="characters"
-            spellcheck="false"
-            oninput="updateCmdqMirrorValue('${setting.id}', this.value)"
-          />
-          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value (hex bytes)</label>
-          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${rawHex}" readonly />
-          <div class="input-helper">MAC: ${mac || '—'}</div>
-        `;
+      const eventReplacements = [
+        ['updateMsValue', 'cmdqUpdateMsValue'],
+        ['updateSecondsValue', 'cmdqUpdateSecondsValue'],
+        ['updateUnixTimeValue', 'cmdqUpdateUnixTimeValue'],
+        ['updateHexValue', 'cmdqUpdateHexValue'],
+        ['updateCoordinateValue', 'cmdqUpdateCoordinateValue'],
+        ['updateDevicePinValue', 'cmdqUpdateDevicePinValue'],
+        ['updateUtcHourValue', 'cmdqUpdateUtcHourValue'],
+        ['updateIntervalValue', 'cmdqUpdateIntervalValue'],
+        ['updateIntervalUnit', 'cmdqUpdateIntervalUnit'],
+        ['updateMacAddressValue', 'cmdqUpdateMacAddressValue'],
+        ['updateLp0ByteArray', 'cmdqUpdateLp0ByteArray']
+      ];
+
+      html = html.replace(new RegExp(`__onInputChanged\\('${setting.id}'\\)`, 'g'), `cmdqOnInputChanged('${setting.id}')`);
+      for (const [source, target] of eventReplacements) {
+        html = html.replace(new RegExp(`${source}\\('${setting.id}'`, 'g'), `${target}('${setting.id}'`);
       }
 
-      if (key === 'cmdq_scan_duration') {
-        return `
-          <label class="input-label" for="cmdq-value-${setting.id}">Milliseconds</label>
-          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="0" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
-          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value</label>
-          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
-        `;
-      }
-
-      if (isIntervalSetting(key)) {
-        return `
-          <label class="input-label" for="cmdq-value-${setting.id}">Seconds</label>
-          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="0" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
-          <label class="raw-value-label" for="cmdq-raw-${setting.id}">Raw value</label>
-          <input type="text" id="cmdq-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
-          <div class="input-helper">${formatCmdqIntervalSummary(safeValue)}</div>
-        `;
-      }
-
-      if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-        const min = setting.min != undefined ? setting.min : '';
-        const max = setting.max != undefined ? setting.max : '';
-        return `
-          <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
-          <input type="number" id="cmdq-value-${setting.id}" value="${safeValue}" min="${min}" max="${max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
-        `;
-      }
-
-      return `
-        <label class="input-label" for="cmdq-value-${setting.id}">Value</label>
-        <input type="text" id="cmdq-value-${setting.id}" value="${escapeHtml(String(safeValue || ''))}" oninput="updateCmdqMirrorValue('${setting.id}', this.value)" />
-      `;
+      return html;
     }
 
     function renderCmdqSettingRow(key, setting) {
@@ -3234,21 +3225,211 @@
       row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
     }
 
-    function updateCmdqMirrorValue(settingId, rawValue) {
-      const [key, setting] = getById(settingId);
-      let normalized = rawValue;
+    function updateMainSettingFromCmdq(settingId, value, valid) {
+      setInputValue(settingId, value);
+      const mainRow = document.getElementById(`setting-${settingId}`);
+      if (mainRow) {
+        mainRow.classList.toggle('value-not-default', isValueNotDefault(settingId, value));
+      }
+      syncCmdqMirrorSetting(settingId, value);
+      const cmdqRow = document.getElementById(`cmdq-setting-${settingId}`);
+      if (cmdqRow) {
+        cmdqRow.classList.toggle('value-not-default', valid && isValueNotDefault(settingId, value));
+      }
+    }
 
-      if (key === 'cmdq_searched_mac_address') {
-        normalized = normalizeMacAddressInput(rawValue);
-      } else if (setting.conversion === 'bool') {
-        normalized = String(rawValue).toLowerCase() === 'true' ? 'true' : 'false';
+    function cmdqOnInputChanged(settingId) {
+      const [key, setting] = getById(settingId);
+      const value = getCmdqInputValue(setting.id);
+      const errorElement = document.getElementById(getCmdqScopedId('input-error', setting.id));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', setting.id));
+
+      let valid = true;
+      try {
+        validateInput(key, setting, value);
+        if (errorElement) {
+          errorElement.innerText = '';
+        }
+      } catch (error) {
+        valid = false;
+        if (errorElement) {
+          errorElement.innerText = error.message;
+        }
       }
 
-      setInputValue(settingId, normalized);
-      __onInputChanged(settingId);
-      syncCmdqMirrorSetting(settingId, getInputValue(settingId));
+      if (rawValueElement) {
+        rawValueElement.value = value ?? '';
+      }
+
+      updateMainSettingFromCmdq(setting.id, value, valid);
+      if (typeof window.handleSettingInputChange === 'function') {
+        window.handleSettingInputChange(setting.id, value, valid, key, setting);
+      }
     }
-    window.updateCmdqMirrorValue = updateCmdqMirrorValue;
+    window.cmdqOnInputChanged = cmdqOnInputChanged;
+
+    function cmdqUpdateMsValue(settingId) {
+      const input = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+      }
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateMsValue = cmdqUpdateMsValue;
+
+    function cmdqUpdateSecondsValue(settingId) {
+      const input = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      if (rawValueElement && input) {
+        rawValueElement.value = input.value ?? '';
+      }
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateSecondsValue = cmdqUpdateSecondsValue;
+
+    function cmdqUpdateUnixTimeValue(settingId) {
+      const dateInput = document.getElementById(getCmdqScopedId('datetime', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      const utcHelperElement = document.getElementById(getCmdqScopedId('utc-datetime-helper', settingId));
+      if (!dateInput || !hiddenField) {
+        return;
+      }
+      const date = dateInput.value ? new Date(dateInput.value) : null;
+      const seconds = date && !Number.isNaN(date.getTime()) ? Math.floor(date.getTime() / 1000) : '';
+      hiddenField.value = seconds.toString();
+      if (rawValueElement) rawValueElement.value = seconds.toString();
+      if (utcHelperElement) {
+        utcHelperElement.textContent = `UTC: ${date && !Number.isNaN(date.getTime()) ? date.toISOString().replace('.000Z', ' UTC') : '—'}`;
+      }
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateUnixTimeValue = cmdqUpdateUnixTimeValue;
+
+    function cmdqUpdateHexValue(settingId) {
+      const [_, setting] = getById(settingId);
+      const hexInput = document.getElementById(getCmdqScopedId('hex-value', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      if (!hexInput || !hiddenField) return;
+      const stripped = String(hexInput.value || '').trim().replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '').slice(0, 4);
+      hexInput.value = stripped ? `0x${stripped.toUpperCase()}` : '';
+      const parsed = stripped ? parseInt(stripped, 16) : '';
+      hiddenField.value = parsed === '' ? '' : String(parsed);
+      if (rawValueElement) rawValueElement.value = hiddenField.value;
+      cmdqOnInputChanged(setting.id);
+    }
+    window.cmdqUpdateHexValue = cmdqUpdateHexValue;
+
+    function cmdqUpdateCoordinateValue(settingId, min, max) {
+      const input = document.getElementById(getCmdqScopedId('coord-value', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      if (!input || !hiddenField) return;
+      const normalized = String(input.value || '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '');
+      input.value = normalized;
+      const degrees = normalized === '' || normalized === '-' ? NaN : parseFloat(normalized);
+      const clamped = Number.isFinite(degrees) ? Math.max(min, Math.min(max, degrees)) : NaN;
+      const raw = Number.isFinite(clamped) ? Math.round(clamped * 1e7).toString() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) rawValueElement.value = raw;
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateCoordinateValue = cmdqUpdateCoordinateValue;
+
+    function cmdqUpdateDevicePinValue(settingId) {
+      const input = document.getElementById(getCmdqScopedId('pin-value', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      if (!input || !hiddenField) return;
+      const digits = (input.value || '').replace(/\D/g, '').slice(0, 4);
+      if (input.value !== digits) input.value = digits;
+      const raw = digits.length === 4 ? digits.split('').map((digit) => `0${digit}`).join('').toUpperCase() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) rawValueElement.value = raw;
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateDevicePinValue = cmdqUpdateDevicePinValue;
+
+    function cmdqUpdateUtcHourValue(settingId) {
+      const input = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      const helperElement = document.getElementById(getCmdqScopedId('utc-hour-helper', settingId));
+      if (!input) return;
+      const normalized = String(input.value || '').replace(/[^\d]/g, '');
+      if (String(input.value) !== normalized) input.value = normalized;
+      let hour = normalized === '' ? '' : parseInt(normalized, 10);
+      if (hour !== '' && Number.isFinite(hour)) {
+        hour = Math.max(0, Math.min(23, hour));
+        input.value = hour.toString();
+      }
+      if (rawValueElement) rawValueElement.value = hour === '' ? '' : hour.toString();
+      if (helperElement) helperElement.textContent = formatUtcHourLabel(hour);
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateUtcHourValue = cmdqUpdateUtcHourValue;
+
+    function cmdqUpdateIntervalValue(settingId) {
+      const numericInput = document.getElementById(getCmdqScopedId('interval-num', settingId));
+      const unitSelect = document.getElementById(getCmdqScopedId('interval-unit', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) return;
+      let displayVal = parseFloat(numericInput.value) || 0;
+      if (displayVal < 0) displayVal = 0;
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateIntervalValue = cmdqUpdateIntervalValue;
+
+    function cmdqUpdateIntervalUnit(settingId) {
+      const numericInput = document.getElementById(getCmdqScopedId('interval-num', settingId));
+      const unitSelect = document.getElementById(getCmdqScopedId('interval-unit', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) return;
+      const currentSeconds = parseInt(hiddenField.value, 10) || 0;
+      const displayVal = Math.ceil(convertSecondsToUnit(currentSeconds, unitSelect.value));
+      numericInput.value = displayVal;
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateIntervalUnit = cmdqUpdateIntervalUnit;
+
+    function cmdqUpdateMacAddressValue(settingId) {
+      const [_, setting] = getById(settingId);
+      const input = document.getElementById(getCmdqScopedId('mac-value', settingId));
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      const macPreview = document.getElementById(getCmdqScopedId('mac-preview', settingId));
+      if (!input || !hiddenField) return;
+      const normalizedHex = normalizeMacAddressInput(input.value);
+      const formattedMac = formatMacAddressForDisplay(normalizedHex, setting.length);
+      input.value = formattedMac;
+      hiddenField.value = normalizedHex;
+      if (rawValueElement) rawValueElement.value = normalizedHex;
+      if (macPreview) macPreview.textContent = `MAC: ${formattedMac || '—'}`;
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateMacAddressValue = cmdqUpdateMacAddressValue;
+
+    function cmdqUpdateLp0ByteArray(settingId) {
+      const [_, setting] = getById(settingId);
+      const bytes = new Uint8Array(setting.length);
+      for (let i = 0; i < setting.length; i++) {
+        const input = document.getElementById(getCmdqScopedId('byte', settingId, `-${i}`));
+        let value = input ? parseInt(input.value, 10) : 0;
+        if (isNaN(value)) value = 0;
+        value = Math.min(255, Math.max(0, value));
+        if (input && !input.readOnly) input.value = value;
+        bytes[i] = value;
+      }
+      const hiddenField = document.getElementById(getCmdqScopedId('new-value', settingId));
+      if (hiddenField) hiddenField.value = bytesToHex(bytes);
+      const macPreview = document.getElementById(getCmdqScopedId('mac-preview', settingId));
+      if (macPreview) macPreview.textContent = `MAC: ${Array.from(bytes).map(toHex).join(':')}`;
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateLp0ByteArray = cmdqUpdateLp0ByteArray;
 
     async function updateCmdqSetting(settingId) {
       const row = document.getElementById(`cmdq-setting-${settingId}`);
@@ -3470,43 +3651,64 @@
       return String(getFenceSettingCurrentValue(setting)).toLowerCase() === 'true';
     }
 
+    function getFenceScopedId(base, settingId, extra = '') {
+      return `fence-${base}-${settingId}${extra}`;
+    }
+
+    function getFenceInputValue(settingId) {
+      const el = document.getElementById(getFenceScopedId('new-value', settingId));
+      if (el) {
+        return el.value.trim();
+      }
+      return undefined;
+    }
+
     function renderFenceMirrorInput(key, setting, value) {
-      const safeValue = normalizeRenderableValue(value);
+      let html = sanitizeRenderedInputHtml(renderInputControl(key, setting, normalizeRenderableValue(value)));
+      const replacements = [
+        'new-value',
+        'raw-value',
+        'input-error',
+        'input-container',
+        'mac-value',
+        'mac-preview',
+        'pin-value',
+        'interval-num',
+        'interval-unit',
+        'datetime',
+        'utc-datetime-helper',
+        'hex-value',
+        'coord-value',
+        'byte',
+        'utc-hour-helper'
+      ];
 
-      if (setting.conversion === 'bool') {
-        const boolValue = String(safeValue).toLowerCase() === 'true';
-        return `
-          <label class="input-label" for="fence-value-${setting.id}">Value</label>
-          <select id="fence-value-${setting.id}" onchange="updateFenceMirrorValue('${setting.id}', this.value)">
-            <option value="true"${boolValue ? ' selected' : ''}>true</option>
-            <option value="false"${boolValue ? '' : ' selected'}>false</option>
-          </select>
-        `;
+      for (const base of replacements) {
+        const escapedBase = base.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        const escapedId = String(setting.id).replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+        html = html.replace(new RegExp(`([=\"'])${escapedBase}-${escapedId}((?:-[^\"']*)?)([\"'])`, 'g'), `$1fence-${base}-${setting.id}$2$3`);
       }
 
-      if (isIntervalSetting(key)) {
-        return `
-          <label class="input-label" for="fence-value-${setting.id}">Seconds</label>
-          <input type="number" id="fence-value-${setting.id}" value="${safeValue}" min="0" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
-          <label class="raw-value-label" for="fence-raw-${setting.id}">Raw value</label>
-          <input type="text" id="fence-raw-${setting.id}" class="raw-value" value="${safeValue}" readonly />
-          <div class="input-helper">${formatCmdqIntervalSummary(safeValue)}</div>
-        `;
+      const eventReplacements = [
+        ['updateMsValue', 'fenceUpdateMsValue'],
+        ['updateSecondsValue', 'fenceUpdateSecondsValue'],
+        ['updateUnixTimeValue', 'fenceUpdateUnixTimeValue'],
+        ['updateHexValue', 'fenceUpdateHexValue'],
+        ['updateCoordinateValue', 'fenceUpdateCoordinateValue'],
+        ['updateDevicePinValue', 'fenceUpdateDevicePinValue'],
+        ['updateUtcHourValue', 'fenceUpdateUtcHourValue'],
+        ['updateIntervalValue', 'fenceUpdateIntervalValue'],
+        ['updateIntervalUnit', 'fenceUpdateIntervalUnit'],
+        ['updateMacAddressValue', 'fenceUpdateMacAddressValue'],
+        ['updateLp0ByteArray', 'fenceUpdateLp0ByteArray']
+      ];
+
+      html = html.replace(new RegExp(`__onInputChanged\\('${setting.id}'\\)`, 'g'), `fenceOnInputChanged('${setting.id}')`);
+      for (const [source, target] of eventReplacements) {
+        html = html.replace(new RegExp(`${source}\\('${setting.id}'`, 'g'), `${target}('${setting.id}'`);
       }
 
-      if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-        const min = setting.min != undefined ? setting.min : '';
-        const max = setting.max != undefined ? setting.max : '';
-        return `
-          <label class="input-label" for="fence-value-${setting.id}">Value</label>
-          <input type="number" id="fence-value-${setting.id}" value="${safeValue}" min="${min}" max="${max}" step="${setting.conversion === 'float' ? '0.01' : '1'}" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
-        `;
-      }
-
-      return `
-        <label class="input-label" for="fence-value-${setting.id}">Value</label>
-        <input type="text" id="fence-value-${setting.id}" value="${escapeHtml(String(safeValue || ''))}" oninput="updateFenceMirrorValue('${setting.id}', this.value)" />
-      `;
+      return html;
     }
 
     function renderFenceSettingRow(key, setting) {
@@ -3574,16 +3776,205 @@
       row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
     }
 
-    function updateFenceMirrorValue(settingId, rawValue) {
-      const [_, setting] = getById(settingId);
-      const normalized = setting.conversion === 'bool'
-        ? (String(rawValue).toLowerCase() === 'true' ? 'true' : 'false')
-        : rawValue;
-      setInputValue(settingId, normalized);
-      __onInputChanged(settingId);
-      syncFenceMirrorSetting(settingId, getInputValue(settingId));
+    function updateMainSettingFromFence(settingId, value, valid) {
+      setInputValue(settingId, value);
+      const mainRow = document.getElementById(`setting-${settingId}`);
+      if (mainRow) {
+        mainRow.classList.toggle('value-not-default', isValueNotDefault(settingId, value));
+      }
+      syncFenceMirrorSetting(settingId, value);
+      const fenceRow = document.getElementById(`fence-setting-${settingId}`);
+      if (fenceRow) {
+        fenceRow.classList.toggle('value-not-default', valid && isValueNotDefault(settingId, value));
+      }
     }
-    window.updateFenceMirrorValue = updateFenceMirrorValue;
+
+    function fenceOnInputChanged(settingId) {
+      const [key, setting] = getById(settingId);
+      const value = getFenceInputValue(setting.id);
+      const errorElement = document.getElementById(getFenceScopedId('input-error', setting.id));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', setting.id));
+
+      let valid = true;
+      try {
+        validateInput(key, setting, value);
+        if (errorElement) {
+          errorElement.innerText = '';
+        }
+      } catch (error) {
+        valid = false;
+        if (errorElement) {
+          errorElement.innerText = error.message;
+        }
+      }
+
+      if (rawValueElement) {
+        rawValueElement.value = value ?? '';
+      }
+
+      updateMainSettingFromFence(setting.id, value, valid);
+      if (typeof window.handleSettingInputChange === 'function') {
+        window.handleSettingInputChange(setting.id, value, valid, key, setting);
+      }
+    }
+    window.fenceOnInputChanged = fenceOnInputChanged;
+
+    function fenceUpdateMsValue(settingId) {
+      const input = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      if (rawValueElement && input) rawValueElement.value = input.value ?? '';
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateMsValue = fenceUpdateMsValue;
+
+    function fenceUpdateSecondsValue(settingId) {
+      const input = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      if (rawValueElement && input) rawValueElement.value = input.value ?? '';
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateSecondsValue = fenceUpdateSecondsValue;
+
+    function fenceUpdateUnixTimeValue(settingId) {
+      const dateInput = document.getElementById(getFenceScopedId('datetime', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      const utcHelperElement = document.getElementById(getFenceScopedId('utc-datetime-helper', settingId));
+      if (!dateInput || !hiddenField) return;
+      const date = dateInput.value ? new Date(dateInput.value) : null;
+      const seconds = date && !Number.isNaN(date.getTime()) ? Math.floor(date.getTime() / 1000) : '';
+      hiddenField.value = seconds.toString();
+      if (rawValueElement) rawValueElement.value = seconds.toString();
+      if (utcHelperElement) {
+        utcHelperElement.textContent = `UTC: ${date && !Number.isNaN(date.getTime()) ? date.toISOString().replace('.000Z', ' UTC') : '—'}`;
+      }
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateUnixTimeValue = fenceUpdateUnixTimeValue;
+
+    function fenceUpdateHexValue(settingId) {
+      const [_, setting] = getById(settingId);
+      const hexInput = document.getElementById(getFenceScopedId('hex-value', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      if (!hexInput || !hiddenField) return;
+      const stripped = String(hexInput.value || '').trim().replace(/^0x/i, '').replace(/[^0-9a-f]/gi, '').slice(0, 4);
+      hexInput.value = stripped ? `0x${stripped.toUpperCase()}` : '';
+      const parsed = stripped ? parseInt(stripped, 16) : '';
+      hiddenField.value = parsed === '' ? '' : String(parsed);
+      if (rawValueElement) rawValueElement.value = hiddenField.value;
+      fenceOnInputChanged(setting.id);
+    }
+    window.fenceUpdateHexValue = fenceUpdateHexValue;
+
+    function fenceUpdateCoordinateValue(settingId, min, max) {
+      const input = document.getElementById(getFenceScopedId('coord-value', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      if (!input || !hiddenField) return;
+      const normalized = String(input.value || '').replace(/,/g, '.').replace(/[^0-9.\-]/g, '');
+      input.value = normalized;
+      const degrees = normalized === '' || normalized === '-' ? NaN : parseFloat(normalized);
+      const clamped = Number.isFinite(degrees) ? Math.max(min, Math.min(max, degrees)) : NaN;
+      const raw = Number.isFinite(clamped) ? Math.round(clamped * 1e7).toString() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) rawValueElement.value = raw;
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateCoordinateValue = fenceUpdateCoordinateValue;
+
+    function fenceUpdateDevicePinValue(settingId) {
+      const input = document.getElementById(getFenceScopedId('pin-value', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      if (!input || !hiddenField) return;
+      const digits = (input.value || '').replace(/\D/g, '').slice(0, 4);
+      if (input.value !== digits) input.value = digits;
+      const raw = digits.length === 4 ? digits.split('').map((digit) => `0${digit}`).join('').toUpperCase() : '';
+      hiddenField.value = raw;
+      if (rawValueElement) rawValueElement.value = raw;
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateDevicePinValue = fenceUpdateDevicePinValue;
+
+    function fenceUpdateUtcHourValue(settingId) {
+      const input = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      const helperElement = document.getElementById(getFenceScopedId('utc-hour-helper', settingId));
+      if (!input) return;
+      const normalized = String(input.value || '').replace(/[^\d]/g, '');
+      if (String(input.value) !== normalized) input.value = normalized;
+      let hour = normalized === '' ? '' : parseInt(normalized, 10);
+      if (hour !== '' && Number.isFinite(hour)) {
+        hour = Math.max(0, Math.min(23, hour));
+        input.value = hour.toString();
+      }
+      if (rawValueElement) rawValueElement.value = hour === '' ? '' : hour.toString();
+      if (helperElement) helperElement.textContent = formatUtcHourLabel(hour);
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateUtcHourValue = fenceUpdateUtcHourValue;
+
+    function fenceUpdateIntervalValue(settingId) {
+      const numericInput = document.getElementById(getFenceScopedId('interval-num', settingId));
+      const unitSelect = document.getElementById(getFenceScopedId('interval-unit', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) return;
+      let displayVal = parseFloat(numericInput.value) || 0;
+      if (displayVal < 0) displayVal = 0;
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateIntervalValue = fenceUpdateIntervalValue;
+
+    function fenceUpdateIntervalUnit(settingId) {
+      const numericInput = document.getElementById(getFenceScopedId('interval-num', settingId));
+      const unitSelect = document.getElementById(getFenceScopedId('interval-unit', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      if (!numericInput || !unitSelect || !hiddenField) return;
+      const currentSeconds = parseInt(hiddenField.value, 10) || 0;
+      const displayVal = Math.ceil(convertSecondsToUnit(currentSeconds, unitSelect.value));
+      numericInput.value = displayVal;
+      hiddenField.value = Math.round(convertUnitToSeconds(displayVal, unitSelect.value)).toString();
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateIntervalUnit = fenceUpdateIntervalUnit;
+
+    function fenceUpdateMacAddressValue(settingId) {
+      const [_, setting] = getById(settingId);
+      const input = document.getElementById(getFenceScopedId('mac-value', settingId));
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      const macPreview = document.getElementById(getFenceScopedId('mac-preview', settingId));
+      if (!input || !hiddenField) return;
+      const normalizedHex = normalizeMacAddressInput(input.value);
+      const formattedMac = formatMacAddressForDisplay(normalizedHex, setting.length);
+      input.value = formattedMac;
+      hiddenField.value = normalizedHex;
+      if (rawValueElement) rawValueElement.value = normalizedHex;
+      if (macPreview) macPreview.textContent = `MAC: ${formattedMac || '—'}`;
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateMacAddressValue = fenceUpdateMacAddressValue;
+
+    function fenceUpdateLp0ByteArray(settingId) {
+      const [_, setting] = getById(settingId);
+      const bytes = new Uint8Array(setting.length);
+      for (let i = 0; i < setting.length; i++) {
+        const input = document.getElementById(getFenceScopedId('byte', settingId, `-${i}`));
+        let value = input ? parseInt(input.value, 10) : 0;
+        if (isNaN(value)) value = 0;
+        value = Math.min(255, Math.max(0, value));
+        if (input && !input.readOnly) input.value = value;
+        bytes[i] = value;
+      }
+      const hiddenField = document.getElementById(getFenceScopedId('new-value', settingId));
+      if (hiddenField) hiddenField.value = bytesToHex(bytes);
+      const macPreview = document.getElementById(getFenceScopedId('mac-preview', settingId));
+      if (macPreview) macPreview.textContent = `MAC: ${Array.from(bytes).map(toHex).join(':')}`;
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateLp0ByteArray = fenceUpdateLp0ByteArray;
 
     async function updateFenceSetting(settingId) {
       const row = document.getElementById(`fence-setting-${settingId}`);
