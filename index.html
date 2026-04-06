@@ -3307,6 +3307,11 @@
       renderCmdqResults();
     }
 
+    function shouldSkipFocusedMirrorRender(container) {
+      const activeElement = document.activeElement;
+      return Boolean(container && activeElement && container.contains(activeElement));
+    }
+
     function syncCmdqMirrorSetting(settingId, value = null) {
       if (!hasCmdqFeature()) {
         return;
@@ -3321,7 +3326,7 @@
       }
       const resolvedValue = value === null ? getCmdqSettingCurrentValue(setting) : value;
       const container = document.getElementById(`cmdq-input-container-${setting.id}`);
-      if (container) {
+      if (container && !shouldSkipFocusedMirrorRender(container)) {
         container.innerHTML = renderCmdqMirrorInput(key, setting, resolvedValue);
       }
       row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
@@ -3872,7 +3877,7 @@
       }
       const resolvedValue = value === null ? getFenceSettingCurrentValue(setting) : value;
       const container = document.getElementById(`fence-input-container-${setting.id}`);
-      if (container) {
+      if (container && !shouldSkipFocusedMirrorRender(container)) {
         container.innerHTML = renderFenceMirrorInput(key, setting, resolvedValue);
       }
       row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
@@ -4880,7 +4885,7 @@
       }
       const resolvedValue = value === null ? getScanSettingCurrentValue(setting) : value;
       const container = document.getElementById(`${kind}-scan-input-container-${setting.id}`);
-      if (container) {
+      if (container && !shouldSkipFocusedMirrorRender(container)) {
         container.innerHTML = renderScanMirrorInput(kind, key, setting, resolvedValue);
       }
       row.classList.toggle('value-not-default', isValueNotDefault(setting.id, resolvedValue));
