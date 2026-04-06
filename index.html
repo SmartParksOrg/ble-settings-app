@@ -786,12 +786,16 @@
         latestResult: null,
         pending: false,
         timeoutId: null,
+        requestSource: null,
+        flashBuffer: new Uint8Array(0),
         statusMessage: SCAN_FEATURES.wifi.emptyMessage
       },
       ble: {
         latestResult: null,
         pending: false,
         timeoutId: null,
+        requestSource: null,
+        flashBuffer: new Uint8Array(0),
         statusMessage: SCAN_FEATURES.ble.emptyMessage
       }
     };
@@ -1999,6 +2003,104 @@
         count,
         remainder: merged.slice(index)
       };
+    }
+
+    function parseFlashLogRecords(packetBytes, carryBuffer) {
+      const incoming = packetBytes.slice(1); // strip transport port byte
+      const merged = new Uint8Array((carryBuffer ? carryBuffer.length : 0) + incoming.length);
+      if (carryBuffer && carryBuffer.length) {
+        merged.set(carryBuffer, 0);
+      }
+      merged.set(incoming, carryBuffer ? carryBuffer.length : 0);
+
+      const records = [];
+      let index = 0;
+      while (index + 2 < merged.length) {
+        const nestedPort = merged[index];
+        const nestedId = merged[index + 1];
+        const payloadLen = merged[index + 2];
+        const frameStart = index + 3;
+        const frameEnd = frameStart + payloadLen;
+        const metadataLen = 4;
+        const recordEnd = frameEnd + metadataLen;
+        if (recordEnd > merged.length) {
+          break;
+        }
+        records.push({
+          port: nestedPort,
+          id: nestedId,
+          length: payloadLen,
+          payload: merged.slice(frameStart, frameEnd)
+        });
+        index = recordEnd;
+      }
+
+      return {
+        records,
+        remainder: merged.slice(index)
+      };
+    }
+
+    function findMessageByPortAndId(port, id) {
+      if (!settingsData || !settingsData.ports || !settingsData.messages) {
+        return null;
+      }
+      const portName = Object.keys(settingsData.ports).find((key) => settingsData.ports[key] === port);
+      if (!portName) {
+        return null;
+      }
+      const message = Object.entries(settingsData.messages)
+        .find(([, msg]) => msg.port === portName && msg.id.toUpperCase() === `0x${id.toString(16)}`.toUpperCase());
+      if (!message) {
+        return null;
+      }
+      const [key, meta] = message;
+      return { key, meta, portName };
+    }
+
+    function tryHandleScanFlashResponse(data) {
+      if (!settingsData) {
+        return false;
+      }
+
+      const state = scanState.ble;
+      if (!state || !state.pending || state.requestSource !== 'flash_latest') {
+        return false;
+      }
+
+      const config = getScanFeatureConfig('ble');
+      const port = data[0];
+      const flashLogPort = settingsData.ports ? settingsData.ports.port_flash_log : null;
+      const messagesPort = settingsData.ports ? settingsData.ports.port_messages : null;
+
+      if (Number.isFinite(messagesPort) && port === messagesPort && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_GET_FROM_HEAD) {
+        if (data[4] !== 0x01) {
+          clearScanRequestTimeout('ble');
+          resetScanRequestTransport('ble');
+          state.pending = false;
+          state.statusMessage = config.timeoutMessage;
+          renderScanResults('ble');
+          showToast(`Failed to request ${config.label} scan results: device returned status 0x${data[4].toString(16).padStart(2, '0')}`);
+        }
+        return true;
+      }
+
+      if (!Number.isFinite(flashLogPort) || port !== flashLogPort) {
+        return false;
+      }
+
+      const parsed = parseFlashLogRecords(data, state.flashBuffer);
+      state.flashBuffer = parsed.remainder;
+      for (const record of parsed.records) {
+        const message = findMessageByPortAndId(record.port, record.id);
+        if (!message || !config.messageKeys.includes(message.key)) {
+          continue;
+        }
+        const nestedData = new Uint8Array([record.port, record.id, record.length, ...record.payload]);
+        storeScanMessage('ble', message.key, nestedData, record.payload);
+        return true;
+      }
+      return true;
     }
 
     function finishFlashLogCapture(reason) {
@@ -4815,6 +4917,15 @@
       state.timeoutId = null;
     }
 
+    function resetScanRequestTransport(kind) {
+      const state = scanState[kind];
+      if (!state) {
+        return;
+      }
+      state.requestSource = null;
+      state.flashBuffer = new Uint8Array(0);
+    }
+
     function resetScanState(kind) {
       const config = getScanFeatureConfig(kind);
       const state = scanState[kind];
@@ -4822,10 +4933,38 @@
         return;
       }
       clearScanRequestTimeout(kind);
+      resetScanRequestTransport(kind);
       state.latestResult = null;
       state.pending = false;
       state.statusMessage = config.emptyMessage;
       renderScanResults(kind);
+    }
+
+    async function requestLatestStoredScanResult(kind) {
+      const config = getScanFeatureConfig(kind);
+      const state = scanState[kind];
+      if (!config || !state || !settingsData) {
+        return;
+      }
+
+      const flashCommand = settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+      const storedPort = settingsData.ports ? settingsData.ports.port_ble_scan : null;
+      if (!flashCommand || !Number.isFinite(storedPort)) {
+        throw new Error('Stored BLE scan retrieval is not available in this firmware.');
+      }
+
+      const payload = new Uint8Array(12);
+      const view = new DataView(payload.buffer);
+      view.setUint32(0, storedPort, true);
+      view.setUint32(4, 0, true);
+      view.setUint32(8, 1, true);
+
+      state.requestSource = 'flash_latest';
+      state.flashBuffer = new Uint8Array(0);
+      state.statusMessage = `Loading latest stored ${config.label} scan result...`;
+      renderScanResults(kind);
+
+      await executeBleCommand([0x20, parseInt(flashCommand.id, 16), payload.length, ...payload]);
     }
 
     async function requestScanResults(kind) {
@@ -4839,12 +4978,20 @@
         return;
       }
       const command = settingsData && settingsData.commands ? settingsData.commands[config.commandKey] : null;
-      if (!command) {
+      if (kind === 'ble') {
+        const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+        const storedPort = settingsData && settingsData.ports ? settingsData.ports.port_ble_scan : null;
+        if (!flashCommand || !Number.isFinite(storedPort)) {
+          showToast('Stored BLE scan retrieval is not available in this firmware.');
+          return;
+        }
+      } else if (!command) {
         showToast(`${config.label} scan command not available in this firmware.`);
         return;
       }
 
       clearScanRequestTimeout(kind);
+      resetScanRequestTransport(kind);
       state.latestResult = null;
       state.pending = true;
       state.statusMessage = config.pendingMessage;
@@ -4853,14 +5000,20 @@
       state.timeoutId = setTimeout(() => {
         state.pending = false;
         state.timeoutId = null;
+        resetScanRequestTransport(kind);
         state.statusMessage = config.timeoutMessage;
         renderScanResults(kind);
       }, SCAN_REQUEST_TIMEOUT_MS);
 
       try {
-        await executeCommand(command.id);
+        if (kind === 'ble') {
+          await requestLatestStoredScanResult(kind);
+        } else {
+          await executeCommand(command.id);
+        }
       } catch (error) {
         clearScanRequestTimeout(kind);
+        resetScanRequestTransport(kind);
         state.pending = false;
         state.statusMessage = `Failed to request ${config.label} scan results.`;
         renderScanResults(kind);
@@ -4885,6 +5038,7 @@
         decoded: decodeScanPayload(kind, messageKey, valueBytes)
       };
       clearScanRequestTimeout(kind);
+      resetScanRequestTransport(kind);
       state.pending = false;
       state.statusMessage = config.emptyMessage;
       renderScanResults(kind);
@@ -5801,6 +5955,9 @@
       const port = data[0];
       try {
         if (tryHandleTrackResponse(data)) {
+          return;
+        }
+        if (tryHandleScanFlashResponse(data)) {
           return;
         }
         const flashLogPort = settingsData && settingsData.ports ? settingsData.ports.port_flash_log : null;
