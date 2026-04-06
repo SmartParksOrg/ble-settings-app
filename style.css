@@ -120,11 +120,13 @@ body.composer-notes-visible #composer-firmware-notes {
 }
 
 .settings-section + .commands-section,
+.status-section + .dfu-waiting-overlay + .commands-section,
 .commands-section + .map-section,
 .settings-section + .map-section,
 .status-section + .settings-section,
 .status-section + .commands-section,
 .status-section + .map-section,
+.map-section + .commands-section,
 .commands-section + .settings-section,
 .commands-section + .commands-section {
     margin-top: 12px;
@@ -865,31 +867,55 @@ button {
 #commands-buttons-section {
     display: grid;
     gap: 10px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
 .command {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(180deg, rgba(248, 251, 249, 0.98), rgba(240, 246, 242, 0.92));
+    box-shadow: var(--sp-shadow);
 }
 
 .command-heading {
-    align-items: center;
+    align-items: flex-start;
 }
 
-.command-heading > button {
+.command-heading > .command-action-button {
     flex: 1 1 auto;
+}
+
+.command-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--sp-forest-dark);
+    line-height: 1.35;
 }
 
 .command-helper-label {
     font-size: 11px;
     color: rgba(31, 42, 35, 0.75);
     letter-spacing: 0.2px;
+    margin-bottom: 2px;
 }
 
 .command-helper-input {
     width: 100%;
+}
+
+.command-helper-fields {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.72);
+    border: 1px solid rgba(82, 115, 94, 0.12);
 }
 
 .command-meta {
@@ -905,10 +931,10 @@ button {
     grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
 }
 
-#commands-buttons-section button {
+#commands-buttons-section .command-action-button {
     width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    justify-content: center;
+    margin-top: auto;
 }
 
 .settings-container {
@@ -1721,8 +1747,38 @@ h2 {
 body:not(.connected) .hidden-when-disconnected,
 body.connected .hidden-when-connected,
 body:not(.has-settings) .hidden-when-no-settings,
-body:not(.has-status) .hidden-when-no-status {
+body:not(.has-status) .hidden-when-no-status,
+body:not(.bootstrapping) .hidden-when-not-bootstrapping {
     display: none !important;
+}
+
+body.bootstrapping .status-section,
+body.bootstrapping .settings-section,
+body.bootstrapping .commands-section:not(.hidden-when-not-bootstrapping),
+body.bootstrapping .map-section {
+    display: none !important;
+}
+
+body.bootstrapping .log-footer,
+body.bootstrapping .debug-toggle-fab {
+    z-index: 3002;
+}
+
+.connection-loading-overlay-card {
+    width: min(420px, 90vw);
+}
+
+.connection-loading-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--sp-forest-dark);
+    margin-bottom: 4px;
+}
+
+.connection-loading-text {
+    font-size: 14px;
+    color: rgba(31, 42, 35, 0.72);
+    font-weight: 500;
 }
 
 body.lr-update #settings-selection,

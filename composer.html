@@ -894,6 +894,13 @@
               ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
           `;
+        } else if (key === 'cmd_flash_get_all') {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Port</label>
+            <select id="command-select-${command.id}" class="command-helper-input" onchange="updateEncodedMessage()">
+              ${getKnownPortOptions()}
+            </select>
+          `;
         } else if (key === 'cmd_flash_get_from_head') {
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}-port">Port</label>

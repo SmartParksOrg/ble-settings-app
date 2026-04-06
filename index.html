@@ -134,11 +134,38 @@
     </details>
   </div>
 
+  <div id="connection-loading-overlay" class="dfu-waiting-overlay hidden-when-not-bootstrapping" role="status" aria-live="polite" aria-busy="true">
+    <div class="dfu-waiting-card connection-loading-overlay-card">
+        <div class="dfu-spinner" aria-hidden="true"></div>
+        <div>
+          <div id="connection-loading-title" class="connection-loading-title">Connecting...</div>
+          <div id="connection-loading-text" class="connection-loading-text">Preparing device data.</div>
+        </div>
+    </div>
+  </div>
+
   <div id="actions-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card" open>
       <summary class="section-card-title"><span class="icon power-off" aria-hidden="true"></span>Actions</summary>
       <div class="section-card-body">
         <div id="main-commands"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="map-area" class="map-section page-section hidden-when-no-status">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon location-dot" aria-hidden="true"></span>Map</summary>
+      <div class="section-card-body">
+        <div id="map-status" class="map-status">Waiting for location...</div>
+        <div class="map-frame">
+          <button id="map-view-toggle" class="map-view-toggle" type="button" onclick="toggleMapFullscreen()" aria-label="Toggle fullscreen map" title="Fullscreen map">Fullscreen</button>
+          <div id="device-map" class="map-canvas"></div>
+          <div id="map-overlay" class="map-overlay hidden">Offline: map unavailable</div>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button" onclick="getTracks()">Get tracks</button>
+        </div>
       </div>
     </details>
   </div>
@@ -306,23 +333,6 @@
       <summary class="section-card-title"><span class="icon play" aria-hidden="true"></span>Commands</summary>
       <div class="section-card-body">
         <div id="commands-buttons-section"></div>
-      </div>
-    </details>
-  </div>
-
-  <div id="map-area" class="map-section page-section hidden-when-no-status">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon location-dot" aria-hidden="true"></span>Map</summary>
-      <div class="section-card-body">
-        <div id="map-status" class="map-status">Waiting for location...</div>
-        <div class="map-frame">
-          <button id="map-view-toggle" class="map-view-toggle" type="button" onclick="toggleMapFullscreen()" aria-label="Toggle fullscreen map" title="Fullscreen map">Fullscreen</button>
-          <div id="device-map" class="map-canvas"></div>
-          <div id="map-overlay" class="map-overlay hidden">Offline: map unavailable</div>
-        </div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button" onclick="getTracks()">Get tracks</button>
-        </div>
       </div>
     </details>
   </div>
@@ -735,6 +745,7 @@
     let mapTrackLatestMarker = null;
     let mapReady = false;
     let mapFullscreen = false;
+    let mapDetailsUserToggled = false;
     let leafletPromise = null;
     let userRequestedDisconnect = false;
     let lrUpdateMode = false;
@@ -1152,6 +1163,22 @@
       }
     }
 
+    function setMapDetailsDefaultOpen() {
+      if (mapDetailsUserToggled) {
+        return;
+      }
+      const mapDetails = document.querySelector('#map-area details');
+      if (!mapDetails) {
+        return;
+      }
+      const hasKnownLocation = Boolean(
+        lastPositionMessage &&
+        Number.isFinite(lastPositionMessage.latitude) &&
+        Number.isFinite(lastPositionMessage.longitude)
+      );
+      mapDetails.open = hasKnownLocation;
+    }
+
     async function ensureMapReady() {
       if (!navigator.onLine) {
         updateMapOverlay();
@@ -1188,13 +1215,16 @@
     async function updateMapLocation() {
       if (!lastPositionMessage) {
         setMapStatus('Waiting for location...');
+        setMapDetailsDefaultOpen();
         return;
       }
       const { latitude, longitude } = lastPositionMessage;
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
         setMapStatus('Location unavailable.');
+        setMapDetailsDefaultOpen();
         return;
       }
+      setMapDetailsDefaultOpen();
       const ready = await ensureMapReady();
       if (!ready) {
         setMapStatus('Offline: map unavailable.');
@@ -1221,6 +1251,7 @@
           : 'Latest known position'
       );
       mapInstance.setView(coords, 14, { animate: false });
+      scheduleMapInvalidate();
     }
 
     function toggleMapFullscreen() {
@@ -1232,7 +1263,7 @@
         button.setAttribute('title', mapFullscreen ? 'Exit fullscreen map' : 'Fullscreen map');
       }
       if (mapInstance) {
-        setTimeout(() => mapInstance.invalidateSize(), 0);
+        scheduleMapInvalidate();
       }
     }
     window.toggleMapFullscreen = toggleMapFullscreen;
@@ -1279,6 +1310,42 @@
         return;
       }
       indicator.classList.toggle('hidden', !isBusy);
+    }
+
+    function setConnectionBootstrapState(active, title = 'Connecting...', text = 'Preparing device data.') {
+      document.body.classList.toggle('bootstrapping', Boolean(active));
+      const titleEl = document.getElementById('connection-loading-title');
+      const textEl = document.getElementById('connection-loading-text');
+      if (titleEl) {
+        titleEl.textContent = title;
+      }
+      if (textEl) {
+        textEl.textContent = text;
+      }
+      if (!active) {
+        scheduleMapInvalidate();
+      }
+    }
+
+    function scheduleMapInvalidate() {
+      if (!mapInstance) {
+        return;
+      }
+      const runInvalidate = () => {
+        if (!mapInstance) {
+          return;
+        }
+        const mapArea = document.getElementById('map-area');
+        const mapDetails = document.querySelector('#map-area details');
+        const visible = Boolean(mapArea && mapArea.offsetParent !== null);
+        const open = !mapDetails || mapDetails.open;
+        if (visible && open) {
+          mapInstance.invalidateSize();
+        }
+      };
+      requestAnimationFrame(runInvalidate);
+      setTimeout(runInvalidate, 120);
+      setTimeout(runInvalidate, 320);
     }
 
     function getRequiredCacheUrls() {
@@ -1761,11 +1828,13 @@
     const mapDetails = document.querySelector('#map-area details');
     if (mapDetails) {
       mapDetails.addEventListener('toggle', () => {
+        mapDetailsUserToggled = true;
         if (mapDetails.open && mapInstance) {
-          setTimeout(() => mapInstance.invalidateSize(), 0);
+          scheduleMapInvalidate();
         }
       });
     }
+    setMapDetailsDefaultOpen();
 
     function formatFilenameTimestamp(date) {
       const pad = (num) => num.toString().padStart(2, '0');
@@ -2206,6 +2275,7 @@
       }
 
       log(`Loading settings from ${selectedFile}...`);
+      setConnectionBootstrapState(true, 'Loading settings...', `Reading ${selectedFile}.`);
 
       try {
         document.getElementById('settings-search').value = '';
@@ -2224,6 +2294,7 @@
         displayCommands();
         populateFlashLogTypeOptions();
         document.body.classList.add('has-settings');
+        setConnectionBootstrapState(true, 'Syncing device values...', 'Requesting current values and preparing cards.');
         await fetchAllSettings();
         requestFlashLogCount();
         updateMessengerMeta();
@@ -2232,9 +2303,11 @@
         if (settingsSelection) {
           settingsSelection.classList.add('hidden');
         }
+        setConnectionBootstrapState(false);
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
+        setConnectionBootstrapState(false);
       }
     };
 
@@ -5247,6 +5320,13 @@
               ${settingOptions.map(option => `<option value="${option.id}">${option.name} (${option.id})</option>`).join('')}
             </select>
           `;
+        } else if (key === 'cmd_flash_get_all') {
+          helperHtml = `
+            <label class="command-helper-label" for="command-select-${command.id}">Port</label>
+            <select id="command-select-${command.id}" class="command-helper-input">
+              ${getKnownPortOptions()}
+            </select>
+          `;
         } else if (key === 'cmd_flash_get_from_head') {
           helperHtml = `
             <label class="command-helper-label" for="command-select-${command.id}-port">Port</label>
@@ -5274,12 +5354,16 @@
             <input id="command-input-${command.id}" class="command-helper-input" type="text" placeholder="${placeholder}" data-format="${dataFormat}" />
           `;
         }
+        const helperSectionHtml = helperHtml
+          ? `<div class="command-helper-fields">${helperHtml}</div>`
+          : '';
         row.innerHTML = `
           <div class="setting-heading command-heading">
-            <button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>
+            <div class="command-title">${label}</div>
             ${commandInfoTrigger}
           </div>
-          ${helperHtml}
+          ${helperSectionHtml}
+          <button id="command-button-${command.id}" class="command-action-button" onclick="executeCommand('${command.id}')">${label}</button>
         `;
         commandsSection.appendChild(row);
       }
@@ -5696,6 +5780,7 @@
         if (settingsSelection) {
           settingsSelection.classList.add('hidden');
         }
+        setConnectionBootstrapState(false);
         return;
       }
       const settingsDropdown = document.getElementById('settings-dropdown');
@@ -5714,6 +5799,9 @@
 
       if (settingsSelection) {
         settingsSelection.classList.toggle('hidden', matched);
+      }
+      if (!matched) {
+        setConnectionBootstrapState(false);
       }
     }
 
@@ -5745,6 +5833,7 @@
       setLrUpdateMode(false);
       setFirmwareV5Mode(false);
       document.body.classList.remove('connected');
+      setConnectionBootstrapState(false);
       const settingsSelection = document.getElementById('settings-selection');
       if (settingsSelection) {
         settingsSelection.classList.remove('hidden');
@@ -5780,8 +5869,10 @@
         const nameLabel = lastConnectedDeviceName ? ` ${lastConnectedDeviceName}` : ' the device';
         setBleReconnectOverlayVisible(true, `Lost connection to${nameLabel}. Reconnect or reset the app.`);
       }
+      mapDetailsUserToggled = false;
       lastPositionMessage = null;
       setMapStatus('Waiting for location...');
+      setMapDetailsDefaultOpen();
       if (mapMarker && mapInstance) {
         mapInstance.removeLayer(mapMarker);
       }
@@ -5843,6 +5934,7 @@
       try {
         connectButton.disabled = true;
         connectButton.textContent = 'Connecting...';
+        setConnectionBootstrapState(true, 'Connecting...', 'Opening Bluetooth connection.');
         userRequestedDisconnect = false;
 
         device = selectedDevice;
@@ -5874,10 +5966,12 @@
         lastConnectedDeviceName = device && device.name ? device.name : null;
         updateDebugFabState();
 
+        setConnectionBootstrapState(true, 'Loading device profile...', 'Fetching firmware status and matching settings.');
         loadAvailableSettings();
         await checkPin(document.getElementById('pincode').value);
       } catch (error) {
         log(`Error: ${error.message}`, true);
+        setConnectionBootstrapState(false);
       } finally {
         connectButton.textContent = connectLabel;
         connectButton.disabled = false;
@@ -6031,6 +6125,9 @@
           setLrUpdateMode(isLrUpdateFirmware(statusMessage) && !firmwareV5Mode);
           await displayStatusMessage(statusMessage);
           document.body.classList.add('has-status');
+          if (lrUpdateMode || firmwareV5Mode) {
+            setConnectionBootstrapState(false);
+          }
           if (!autoLoaded && !firmwareV5Mode) {
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);
