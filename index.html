@@ -3119,11 +3119,15 @@
           row.className = 'setting disabled with-controls';
           row.setAttribute('id', `setting-${setting.id}`);
           const settingDescription = getSettingDescription(key);
-          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription);
+          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
+            `Raw name: ${key}`,
+            `ID: ${setting.id}`,
+            ...getSettingConstraintDetails(key, setting)
+          ]);
           row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
           row.innerHTML = `
           <div class="setting-heading">
-            <h4>${setting.display_name} <small>${key} (${setting.id})</small></h4>
+            <h4>${setting.display_name}</h4>
             ${settingInfoTrigger}
           </div>
           
@@ -3274,8 +3278,8 @@
       }
       row.innerHTML = `
         <div class="setting-heading">
-          <h4>${getSettingLabel(key, 'cmdq')} <small>${key} (${setting.id})</small></h4>
-          ${renderSettingInfoTrigger(description)}
+          <h4>${getSettingLabel(key, 'cmdq')}</h4>
+          ${renderSettingInfoTrigger(description, [`Raw name: ${key}`, `ID: ${setting.id}`, ...getSettingConstraintDetails(key, setting)])}
         </div>
         <div class="input-container" id="cmdq-input-container-${setting.id}">${renderCmdqMirrorInput(key, setting, value)}</div>
         <div class="setting-controls">
@@ -3829,8 +3833,8 @@
       }
       row.innerHTML = `
         <div class="setting-heading">
-          <h4>${getSettingLabel(key, 'fence')} <small>${key} (${setting.id})</small></h4>
-          ${renderSettingInfoTrigger(description)}
+          <h4>${getSettingLabel(key, 'fence')}</h4>
+          ${renderSettingInfoTrigger(description, [`Raw name: ${key}`, `ID: ${setting.id}`, ...getSettingConstraintDetails(key, setting)])}
         </div>
         <div class="input-container" id="fence-input-container-${setting.id}">${renderFenceMirrorInput(key, setting, value)}</div>
         <div class="setting-controls">
@@ -4834,8 +4838,8 @@
       }
       row.innerHTML = `
         <div class="setting-heading">
-          <h4>${getSettingLabel(key, `${kind}_scan`)} <small>${key} (${setting.id})</small></h4>
-          ${renderSettingInfoTrigger(description)}
+          <h4>${getSettingLabel(key, `${kind}_scan`)}</h4>
+          ${renderSettingInfoTrigger(description, [`Raw name: ${key}`, `ID: ${setting.id}`, ...getSettingConstraintDetails(key, setting)])}
         </div>
         <div class="input-container" id="${kind}-scan-input-container-${setting.id}">${renderScanMirrorInput(kind, key, setting, value)}</div>
         <div class="setting-controls">
@@ -5221,6 +5225,10 @@
         row.setAttribute('id', `command-${command.id}`);
         const label = getCommandLabel(key);
         const description = getCommandDescription(key);
+        const commandInfoTrigger = renderSettingInfoTrigger(description, [
+          `Raw name: ${key}`,
+          `ID: ${command.id}`
+        ]);
         const commandInputMeta = getCommandInputMeta(key);
         let helperHtml = '';
         if (key === 'cmd_send_single_val') {
@@ -5267,11 +5275,11 @@
           `;
         }
         row.innerHTML = `
-          <button id="command-button-${command.id}" onclick="executeCommand('${command.id}')"${
-            description ? ` title="${description}"` : ""
-          }>${label}</button>
+          <div class="setting-heading command-heading">
+            <button id="command-button-${command.id}" onclick="executeCommand('${command.id}')">${label}</button>
+            ${commandInfoTrigger}
+          </div>
           ${helperHtml}
-          <div class="command-meta">${key} (${command.id})</div>
         `;
         commandsSection.appendChild(row);
       }

@@ -812,14 +812,18 @@
           row.className = 'setting transparent';
           row.setAttribute('id', `setting-${setting.id}`);
           const settingDescription = getSettingDescription(key);
-          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription);
+          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
+            `Raw name: ${key}`,
+            `ID: ${setting.id}`,
+            ...getSettingConstraintDetails(key, setting)
+          ]);
           row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
 
           // Build the "include" checkbox + label
           row.innerHTML = `
             <div class="checkbox-container setting-select-row">
               <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
-              <label for="checkbox-${setting.id}" class="setting-select-label"><h4 title="${key}">${setting.display_name} <small>${key} (${setting.id})</small></h4></label>
+              <label for="checkbox-${setting.id}" class="setting-select-label"><h4 title="${key}">${setting.display_name}</h4></label>
               ${settingInfoTrigger}
             </div>${renderInputContainer(key, setting)}
           `;
@@ -868,6 +872,10 @@
         // Build the "include" checkbox + label
         const commandLabel = getCommandLabel(key);
         const commandDescription = getCommandDescription(key);
+        const commandInfoTrigger = renderSettingInfoTrigger(commandDescription, [
+          `Raw name: ${key}`,
+          `ID: ${command.id}`
+        ]);
         const commandInputMeta = getCommandInputMeta(key);
         let helperHtml = '';
         if (commandInputMeta && commandInputMeta.source === 'values') {
@@ -916,9 +924,9 @@
         row.innerHTML = `
           <div class="checkbox-container">
             <input type="checkbox" id="checkbox-${command.id}" onchange="updateCheckBox(this, '${command.id}')"/>
-            <label for="checkbox-${command.id}"><h4>${commandLabel} <small>${key} (${command.id})</small></h4></label>
+            <label for="checkbox-${command.id}" class="setting-select-label"><h4>${commandLabel}</h4></label>
+            ${commandInfoTrigger}
           </div>${helperHtml ? `<div class="command-helper hidden" id="command-helper-${command.id}">${helperHtml}</div>` : ''}
-          ${commandDescription ? `<p class="setting-help">${commandDescription}</p>` : ""}
         `;
 
         commandsSection.appendChild(row);

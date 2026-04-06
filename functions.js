@@ -539,12 +539,23 @@ function getSettingDescription(key) {
     return meta && meta.description ? meta.description : "";
 }
 
-function renderSettingInfoTrigger(description) {
-    if (!description) {
+function renderSettingInfoTrigger(description, details = []) {
+    const parts = [];
+    if (description) {
+        parts.push(String(description).trim());
+    }
+    if (Array.isArray(details)) {
+        details
+            .map((detail) => String(detail || '').trim())
+            .filter(Boolean)
+            .forEach((detail) => parts.push(detail));
+    }
+    if (!parts.length) {
         return '';
     }
-    const safeDescription = escapeHtml(description);
-    return `<button type="button" class="setting-info-button" aria-label="${safeDescription}" data-tooltip="${safeDescription}" title="${safeDescription}">i</button>`;
+    const tooltipText = parts.join('\n');
+    const safeTooltip = escapeHtml(tooltipText);
+    return `<button type="button" class="setting-info-button" aria-label="${safeTooltip}" data-tooltip="${safeTooltip}" title="${safeTooltip}">i</button>`;
 }
 
 function getSettingOptions(key) {
@@ -1777,6 +1788,94 @@ function formatRangeLabel(key, min, max) {
     }
 
     return `${min} and ${max}`;
+}
+
+function formatSettingBoundLabel(key, setting, value) {
+    const numericValue = Number(value);
+    const msKeys = new Set([
+        'external_switch_detection_trigger_debounce_ms',
+        'vhf_time_between_packets_ms'
+    ]);
+    const utcHourKeys = new Set([
+        'ublox_interval1_start',
+        'ublox_interval2_start',
+        'satellite_interval1_start',
+        'satellite_send_interval2_start',
+        'vhf_interval1_start',
+        'vhf_interval2_start'
+    ]);
+
+    if (msKeys.has(key) && Number.isFinite(numericValue)) {
+        return `${numericValue} ms (${numericValue / 1000} sec)`;
+    }
+
+    if (isIntervalSetting(key) && Number.isFinite(numericValue)) {
+        const unit = (key === 'cold_fix_timeout' || key === 'hot_fix_timeout') ? '1' : guessTimeUnit(numericValue);
+        const displayValue = Math.round(convertSecondsToUnit(numericValue, unit));
+        const unitLabel = unit === '86400' ? 'day(s)'
+            : unit === '3600' ? 'hour(s)'
+                : unit === '60' ? 'minute(s)'
+                    : 'second(s)';
+        return `${displayValue} ${unitLabel} (raw: ${numericValue} sec)`;
+    }
+
+    if (key === 'init_time' && Number.isFinite(numericValue)) {
+        return `${formatLocalDateTimeDisplay(new Date(numericValue * 1000))} (unix: ${numericValue} sec)`;
+    }
+
+    if (key === 'ble_scan_manufacturer_id' && Number.isFinite(numericValue)) {
+        return `0x${Math.round(numericValue).toString(16).toUpperCase().padStart(4, '0')} (decimal: ${numericValue})`;
+    }
+
+    if ((key === 'gps_init_lat' || key === 'gps_init_lon') && Number.isFinite(numericValue)) {
+        return `${(numericValue / 1e7).toFixed(7)} degrees (raw: ${numericValue})`;
+    }
+
+    if (utcHourKeys.has(key) && Number.isFinite(numericValue)) {
+        return `${formatUtcHourLabel(numericValue)} (raw: ${Math.trunc(numericValue)})`;
+    }
+
+    if (setting.conversion === 'bool') {
+        return String(value) === 'true' || value === true || value === 1 ? 'true' : 'false';
+    }
+
+    return `${value}`;
+}
+
+function getSettingConstraintDetails(key, setting) {
+    const details = [];
+
+    if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        const mm = minMaxValues[setting.conversion] || {};
+        const min = setting.min != undefined ? setting.min : mm.min;
+        const max = setting.max != undefined ? setting.max : mm.max;
+        if (min != undefined) {
+            details.push(`Min: ${formatSettingBoundLabel(key, setting, min)}`);
+        }
+        if (max != undefined) {
+            details.push(`Max: ${formatSettingBoundLabel(key, setting, max)}`);
+        }
+        return details;
+    }
+
+    if (setting.conversion === 'bool') {
+        details.push('Min: false');
+        details.push('Max: true');
+        return details;
+    }
+
+    if (setting.conversion === 'string' && Number.isFinite(setting.length)) {
+        details.push(`Max length: ${setting.length} characters`);
+        return details;
+    }
+
+    if (key === 'device_pin') {
+        details.push('Min: 0000');
+        details.push('Max: 9999');
+        return details;
+    }
+
+    return details;
 }
 
 function validateInput(key, setting, value) {

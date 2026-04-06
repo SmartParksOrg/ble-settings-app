@@ -741,6 +741,7 @@ body.map-fullscreen #map-area .map-frame {
     font-size: 12px;
     font-weight: 400;
     line-height: 1.45;
+    white-space: pre-line;
     letter-spacing: 0;
     text-align: left;
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
@@ -871,6 +872,14 @@ button {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.command-heading {
+    align-items: center;
+}
+
+.command-heading > button {
+    flex: 1 1 auto;
 }
 
 .command-helper-label {
