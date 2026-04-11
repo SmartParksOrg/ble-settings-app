@@ -766,6 +766,7 @@
     let ubloxFixCountdownId = null;
     let ubloxBusyStatus = false;
     let ubloxDisableInProgress = false;
+    let satelliteDisableInProgress = false;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
     const currentSettingValues = new Map();
@@ -3120,7 +3121,8 @@
           `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
           `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
           `<div class="status-item"><span class="icon electric-fence"></span>FenceEdge support: ${statusMessage.fence ? 'yes' : 'no'}</div>`,
-          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`
+          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`,
+          `<div id="satellite-state-tag" class="status-item ublox-gps-tag unknown">Satellite: status unknown</div>`
         );
         lrUpdateBanner = `
           <div class="lr-update-banner">
@@ -3156,7 +3158,8 @@
           `<div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>`,
           `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
           `<div class="status-item"><span class="icon errors"></span>${errors}</div>`,
-          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`
+          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`,
+          `<div id="satellite-state-tag" class="status-item ublox-gps-tag unknown">Satellite: status unknown</div>`
         );
       }
 
@@ -3174,6 +3177,7 @@
       `;
       if (!firmwareV5Mode) {
         updateUbloxGpsStatusTag();
+        updateSatelliteStatusTag();
         displayMainCommands();
         renderFenceSection();
       }
@@ -5684,10 +5688,15 @@
         const disableUbloxButton = ubloxState && ubloxState.enabled
           ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableUbloxGps()"${ubloxDisableInProgress ? ' disabled' : ''}>Disable Ublox GPS</button>`
           : '';
+        const satelliteState = getSatelliteState();
+        const disableSatelliteButton = satelliteState && satelliteState.enabled
+          ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableSatellite()"${satelliteDisableInProgress ? ' disabled' : ''}>Disable Satellite</button>`
+          : '';
         mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
           ${disableUbloxButton}
+          ${disableSatelliteButton}
         ` + mainCommandsElement.innerHTML;
       }
     }
@@ -5740,6 +5749,27 @@
       };
     }
 
+    function getSatelliteState() {
+      const hasSettings = settingsData && settingsData.settings;
+      if (!hasSettings) {
+        return null;
+      }
+      const enabledRaw = getSettingValueByKey('satellite_enabled');
+      const interval1Raw = getSettingValueByKey('satellite_send_interval');
+      const multipleRaw = getSettingValueByKey('satellite_multiple_intervals');
+      const interval2Raw = getSettingValueByKey('satellite_send_interval2');
+      const enabled = parseBoolSettingValue(enabledRaw);
+      const interval1 = parseNumberSettingValue(interval1Raw);
+      const multipleIntervals = parseBoolSettingValue(multipleRaw);
+      const interval2 = parseNumberSettingValue(interval2Raw);
+      return {
+        enabled,
+        interval1,
+        multipleIntervals,
+        interval2
+      };
+    }
+
     function updateUbloxGpsStatusTag() {
       const tag = document.getElementById('ublox-gps-state-tag');
       if (!tag) {
@@ -5761,6 +5791,32 @@
         tag.classList.add('active');
       } else {
         tag.textContent = `UBLOX GPS: disabled (${suffix})`;
+        tag.classList.remove('active', 'unknown');
+        tag.classList.add('inactive');
+      }
+    }
+
+    function updateSatelliteStatusTag() {
+      const tag = document.getElementById('satellite-state-tag');
+      if (!tag) {
+        return;
+      }
+      const state = getSatelliteState();
+      if (!state) {
+        tag.textContent = 'Satellite: status unknown';
+        tag.classList.remove('active', 'inactive');
+        tag.classList.add('unknown');
+        return;
+      }
+      const interval1 = formatUbloxInterval(state.interval1);
+      const interval2 = formatUbloxInterval(state.interval2);
+      const suffix = `I1 ${interval1}, I2 ${interval2}, multi ${state.multipleIntervals ? 'on' : 'off'}`;
+      if (state.enabled) {
+        tag.textContent = `Satellite: enabled (${suffix})`;
+        tag.classList.remove('inactive', 'unknown');
+        tag.classList.add('active');
+      } else {
+        tag.textContent = `Satellite: disabled (${suffix})`;
         tag.classList.remove('active', 'unknown');
         tag.classList.add('inactive');
       }
@@ -5811,6 +5867,41 @@
       } finally {
         ubloxDisableInProgress = false;
         updateUbloxGpsStatusTag();
+        displayMainCommands();
+      }
+    }
+
+    async function disableSatellite() {
+      if (satelliteDisableInProgress) {
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const setting = settingsData && settingsData.settings ? settingsData.settings.satellite_enabled : null;
+      if (!setting) {
+        showToast('Satellite enabled setting is not available in this firmware.');
+        return;
+      }
+      const state = getSatelliteState();
+      if (!state || !state.enabled) {
+        showToast('Satellite is already disabled.');
+        return;
+      }
+
+      satelliteDisableInProgress = true;
+      displayMainCommands();
+      try {
+        await updateBleSetting(setting.id, 'false');
+        await sleep(300);
+        await requestBleValue(setting.id, CMD_SINGLE_SETTING);
+        showToast('Satellite disabled.');
+      } catch (error) {
+        showToast(`Failed to disable Satellite: ${error.message}`);
+      } finally {
+        satelliteDisableInProgress = false;
+        updateSatelliteStatusTag();
         displayMainCommands();
       }
     }
@@ -6930,6 +7021,10 @@
       }
       if (key === 'ublox_send_interval' || key === 'ublox_multiple_intervals' || key === 'ublox_send_interval_2') {
         updateUbloxGpsStatusTag();
+        displayMainCommands();
+      }
+      if (key === 'satellite_enabled' || key === 'satellite_send_interval' || key === 'satellite_multiple_intervals' || key === 'satellite_send_interval2') {
+        updateSatelliteStatusTag();
         displayMainCommands();
       }
 
