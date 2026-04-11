@@ -487,6 +487,16 @@
     </div>
   </div>
 
+  <div id="cmdq-enable-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text">Warning: enabling CMDQ will disconnect this app from the device. After the device starts scanning for the CMDQ device, this app will not be able to reconnect until the CMDQ scan is ready. This can take up to 5 minutes.</div>
+      <div class="dfu-confirmation-actions">
+        <button id="cmdq-enable-cancel" class="secondary" type="button">Cancel</button>
+        <button id="cmdq-enable-confirm" type="button">Continue</button>
+      </div>
+    </div>
+  </div>
+
   <div id="dfu-section" class="page-section hidden">
     <div id="dfu-waiting-overlay" class="dfu-waiting-overlay hidden">
       <div class="dfu-waiting-card">
@@ -758,6 +768,8 @@
     let ubloxDisableInProgress = false;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
+    const currentSettingValues = new Map();
+    let cmdqEnableConfirmResolver = null;
     let reloadOnDisconnect = false;
     let lastConnectedDeviceName = null;
     let mapTrackState = {
@@ -867,6 +879,47 @@
       executeCommand(command.id);
     }
     window.confirmReboot = confirmReboot;
+
+    function setCmdqEnableConfirmVisible(visible) {
+      const overlay = document.getElementById('cmdq-enable-confirm-overlay');
+      if (!overlay) return;
+      overlay.classList.toggle('hidden', !visible);
+    }
+
+    function resolveCmdqEnableConfirm(confirmed) {
+      if (typeof cmdqEnableConfirmResolver === 'function') {
+        const resolver = cmdqEnableConfirmResolver;
+        cmdqEnableConfirmResolver = null;
+        setCmdqEnableConfirmVisible(false);
+        resolver(Boolean(confirmed));
+        return;
+      }
+      setCmdqEnableConfirmVisible(false);
+    }
+
+    function requestCmdqEnableConfirm() {
+      return new Promise((resolve) => {
+        cmdqEnableConfirmResolver = resolve;
+        setCmdqEnableConfirmVisible(true);
+      });
+    }
+
+    function shouldConfirmCmdqEnable(settingId, newValue) {
+      const [settingKey] = getById(settingId);
+      const normalizedValue = String(newValue ?? '').trim().toLowerCase();
+      if (settingKey !== 'cmdq_enabled' || normalizedValue !== 'true') {
+        return false;
+      }
+      const currentValue = String(currentSettingValues.get(String(settingId)) ?? '').trim().toLowerCase();
+      return currentValue !== 'true' && document.body.classList.contains('connected');
+    }
+
+    function restoreSettingValue(settingId) {
+      if (!currentSettingValues.has(String(settingId))) {
+        return;
+      }
+      updateSettingDisplay(settingId, currentSettingValues.get(String(settingId)));
+    }
 
     function isLrUpdateFirmware(statusMessage) {
       // Firmware major v5 is handled by the dedicated firmwareV5Mode flow.
@@ -6860,6 +6913,7 @@
     }
 
     function updateSettingDisplay(settingId, value) {
+      currentSettingValues.set(String(settingId), value);
       setInputValue(settingId, value);
       const [key] = getById(settingId);
       if (String(key).startsWith('cmdq_')) {
@@ -7219,14 +7273,32 @@
 
     async function updateSetting(settingId) {
       const rowElement = document.getElementById(`setting-${settingId}`);
+      const newValue = getInputValue(settingId);
+      if (shouldConfirmCmdqEnable(settingId, newValue)) {
+        const confirmed = await requestCmdqEnableConfirm();
+        if (!confirmed) {
+          restoreSettingValue(settingId);
+          return;
+        }
+      }
       try {
         rowElement.classList.add('disabled');
-        await updateBleSetting(settingId, getInputValue(settingId));
+        await updateBleSetting(settingId, newValue);
         await sleep(1000);
         await requestBleValue(settingId, CMD_SINGLE_SETTING);
       } finally {
         rowElement.classList.remove('disabled');
       }
+    }
+
+    const cmdqEnableCancelButton = document.getElementById('cmdq-enable-cancel');
+    if (cmdqEnableCancelButton) {
+      cmdqEnableCancelButton.addEventListener('click', () => resolveCmdqEnableConfirm(false));
+    }
+
+    const cmdqEnableConfirmButton = document.getElementById('cmdq-enable-confirm');
+    if (cmdqEnableConfirmButton) {
+      cmdqEnableConfirmButton.addEventListener('click', () => resolveCmdqEnableConfirm(true));
     }
 
     const messengerInput = document.getElementById('messenger-text');
