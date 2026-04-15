@@ -1067,6 +1067,90 @@ function formatUtcHourLabel(value) {
     return `${String(hour).padStart(2, '0')}:00 UTC`;
 }
 
+function formatUtcOffsetLabelFromTimezoneOffset(offsetMinutes) {
+    const safeOffset = Number.isFinite(offsetMinutes) ? offsetMinutes : 0;
+    const sign = safeOffset <= 0 ? '+' : '-';
+    const absolute = Math.abs(safeOffset);
+    const hours = Math.floor(absolute / 60);
+    const minutes = absolute % 60;
+    return `UTC${sign}${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function getBrowserTimezoneLabel() {
+    const timezoneName = typeof Intl !== 'undefined' && Intl.DateTimeFormat
+        ? Intl.DateTimeFormat().resolvedOptions().timeZone
+        : '';
+    const offsetLabel = formatUtcOffsetLabelFromTimezoneOffset(new Date().getTimezoneOffset());
+    return timezoneName ? `${timezoneName} (${offsetLabel})` : offsetLabel;
+}
+
+function formatTimeOfDay(minutesSinceMidnight) {
+    const safeMinutes = ((Math.trunc(minutesSinceMidnight) % 1440) + 1440) % 1440;
+    const hours = Math.floor(safeMinutes / 60);
+    const minutes = safeMinutes % 60;
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function normalizeUtcHourValue(rawValue) {
+    const normalized = String(rawValue || '').replace(/[^\d]/g, '');
+    let hour = normalized === '' ? '' : parseInt(normalized, 10);
+    if (hour !== '' && Number.isFinite(hour)) {
+        hour = Math.max(0, Math.min(23, hour));
+    }
+    return hour;
+}
+
+function formatLocalTimeValueFromUtcHour(value) {
+    if (!Number.isFinite(value)) {
+        return '';
+    }
+    const hour = Math.max(0, Math.min(23, Math.trunc(value)));
+    const timezoneOffset = new Date().getTimezoneOffset();
+    const localMinutes = (hour * 60) - timezoneOffset;
+    return formatTimeOfDay(localMinutes);
+}
+
+function getUtcHourLocalHelperLabel() {
+    return `Browser timezone: ${getBrowserTimezoneLabel()}. Local time is converted back to a whole UTC hour.`;
+}
+
+function syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement) {
+    if (rawValueElement) {
+        rawValueElement.value = hour === '' ? '' : hour.toString();
+    }
+    if (helperElement) {
+        helperElement.textContent = formatUtcHourLabel(hour);
+    }
+    if (localTimeElement) {
+        localTimeElement.value = hour === '' ? '' : formatLocalTimeValueFromUtcHour(hour);
+    }
+    if (localHelperElement) {
+        localHelperElement.textContent = getUtcHourLocalHelperLabel();
+    }
+}
+
+function convertLocalTimeInputToUtcHour(localTimeValue) {
+    const match = String(localTimeValue || '').match(/^(\d{2}):(\d{2})$/);
+    if (!match) {
+        return { hour: '', normalizedLocalValue: '' };
+    }
+
+    const localHours = parseInt(match[1], 10);
+    const localMinutes = parseInt(match[2], 10);
+    if (!Number.isFinite(localHours) || !Number.isFinite(localMinutes)) {
+        return { hour: '', normalizedLocalValue: '' };
+    }
+
+    const timezoneOffset = new Date().getTimezoneOffset();
+    const utcMinutesRaw = ((localHours * 60) + localMinutes + timezoneOffset + 1440) % 1440;
+    const roundedUtcMinutes = (Math.round(utcMinutesRaw / 60) * 60) % 1440;
+    const hour = ((roundedUtcMinutes / 60) % 24 + 24) % 24;
+    return {
+        hour,
+        normalizedLocalValue: formatLocalTimeValueFromUtcHour(hour)
+    };
+}
+
 function renderUtcHourInput(setting, value) {
     const hourValue = value === '' || value === undefined || value === null ? '' : Number(value);
     const safeValue = Number.isFinite(hourValue) ? Math.max(0, Math.min(23, Math.trunc(hourValue))) : '';
@@ -1074,6 +1158,9 @@ function renderUtcHourInput(setting, value) {
         <label class="input-label" for="new-value-${setting.id}">UTC hour</label>
         <input type="number" id="new-value-${setting.id}" value="${safeValue}" min="0" max="23" step="1" oninput="updateUtcHourValue('${setting.id}')" />
         <div class="input-helper" id="utc-hour-helper-${setting.id}">${formatUtcHourLabel(safeValue)}</div>
+        <label class="input-label" for="local-time-${setting.id}">Local time (browser)</label>
+        <input type="time" id="local-time-${setting.id}" value="${safeValue === '' ? '' : formatLocalTimeValueFromUtcHour(safeValue)}" step="60" oninput="updateLocalUtcHourValue('${setting.id}')" />
+        <div class="input-helper" id="local-timezone-helper-${setting.id}">${getUtcHourLocalHelperLabel()}</div>
         <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
         <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${safeValue}" readonly />
     `;
@@ -1170,28 +1257,33 @@ function updateUtcHourValue(settingId) {
     const input = document.getElementById(`new-value-${settingId}`);
     const rawValueElement = document.getElementById(`raw-value-${settingId}`);
     const helperElement = document.getElementById(`utc-hour-helper-${settingId}`);
+    const localTimeElement = document.getElementById(`local-time-${settingId}`);
+    const localHelperElement = document.getElementById(`local-timezone-helper-${settingId}`);
     if (!input) {
         return;
     }
 
-    const normalized = String(input.value || '').replace(/[^\d]/g, '');
-    if (String(input.value) !== normalized) {
-        input.value = normalized;
+    const hour = normalizeUtcHourValue(input.value);
+    input.value = hour === '' ? '' : hour.toString();
+    syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
+
+    __onInputChanged(settingId);
+}
+
+function updateLocalUtcHourValue(settingId) {
+    const input = document.getElementById(`new-value-${settingId}`);
+    const rawValueElement = document.getElementById(`raw-value-${settingId}`);
+    const helperElement = document.getElementById(`utc-hour-helper-${settingId}`);
+    const localTimeElement = document.getElementById(`local-time-${settingId}`);
+    const localHelperElement = document.getElementById(`local-timezone-helper-${settingId}`);
+    if (!input || !localTimeElement) {
+        return;
     }
 
-    let hour = normalized === '' ? '' : parseInt(normalized, 10);
-    if (hour !== '' && Number.isFinite(hour)) {
-        hour = Math.max(0, Math.min(23, hour));
-        input.value = hour.toString();
-    }
-
-    if (rawValueElement) {
-        rawValueElement.value = hour === '' ? '' : hour.toString();
-    }
-    if (helperElement) {
-        helperElement.textContent = formatUtcHourLabel(hour);
-    }
-
+    const { hour, normalizedLocalValue } = convertLocalTimeInputToUtcHour(localTimeElement.value);
+    localTimeElement.value = normalizedLocalValue;
+    input.value = hour === '' ? '' : hour.toString();
+    syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
     __onInputChanged(settingId);
 }
 

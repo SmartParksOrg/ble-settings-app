@@ -3418,7 +3418,9 @@
         'hex-value',
         'coord-value',
         'byte',
-        'utc-hour-helper'
+        'utc-hour-helper',
+        'local-time',
+        'local-timezone-helper'
       ];
 
       for (const base of replacements) {
@@ -3435,6 +3437,7 @@
         ['updateCoordinateValue', 'cmdqUpdateCoordinateValue'],
         ['updateDevicePinValue', 'cmdqUpdateDevicePinValue'],
         ['updateUtcHourValue', 'cmdqUpdateUtcHourValue'],
+        ['updateLocalUtcHourValue', 'cmdqUpdateLocalUtcHourValue'],
         ['updateIntervalValue', 'cmdqUpdateIntervalValue'],
         ['updateIntervalUnit', 'cmdqUpdateIntervalUnit'],
         ['updateMacAddressValue', 'cmdqUpdateMacAddressValue'],
@@ -3649,19 +3652,30 @@
       const input = document.getElementById(getCmdqScopedId('new-value', settingId));
       const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
       const helperElement = document.getElementById(getCmdqScopedId('utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getCmdqScopedId('local-time', settingId));
+      const localHelperElement = document.getElementById(getCmdqScopedId('local-timezone-helper', settingId));
       if (!input) return;
-      const normalized = String(input.value || '').replace(/[^\d]/g, '');
-      if (String(input.value) !== normalized) input.value = normalized;
-      let hour = normalized === '' ? '' : parseInt(normalized, 10);
-      if (hour !== '' && Number.isFinite(hour)) {
-        hour = Math.max(0, Math.min(23, hour));
-        input.value = hour.toString();
-      }
-      if (rawValueElement) rawValueElement.value = hour === '' ? '' : hour.toString();
-      if (helperElement) helperElement.textContent = formatUtcHourLabel(hour);
+      const hour = normalizeUtcHourValue(input.value);
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
       cmdqOnInputChanged(settingId);
     }
     window.cmdqUpdateUtcHourValue = cmdqUpdateUtcHourValue;
+
+    function cmdqUpdateLocalUtcHourValue(settingId) {
+      const input = document.getElementById(getCmdqScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getCmdqScopedId('raw-value', settingId));
+      const helperElement = document.getElementById(getCmdqScopedId('utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getCmdqScopedId('local-time', settingId));
+      const localHelperElement = document.getElementById(getCmdqScopedId('local-timezone-helper', settingId));
+      if (!input || !localTimeElement) return;
+      const { hour, normalizedLocalValue } = convertLocalTimeInputToUtcHour(localTimeElement.value);
+      localTimeElement.value = normalizedLocalValue;
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
+      cmdqOnInputChanged(settingId);
+    }
+    window.cmdqUpdateLocalUtcHourValue = cmdqUpdateLocalUtcHourValue;
 
     function cmdqUpdateIntervalValue(settingId) {
       const numericInput = document.getElementById(getCmdqScopedId('interval-num', settingId));
@@ -3973,7 +3987,9 @@
         'hex-value',
         'coord-value',
         'byte',
-        'utc-hour-helper'
+        'utc-hour-helper',
+        'local-time',
+        'local-timezone-helper'
       ];
 
       for (const base of replacements) {
@@ -3990,6 +4006,7 @@
         ['updateCoordinateValue', 'fenceUpdateCoordinateValue'],
         ['updateDevicePinValue', 'fenceUpdateDevicePinValue'],
         ['updateUtcHourValue', 'fenceUpdateUtcHourValue'],
+        ['updateLocalUtcHourValue', 'fenceUpdateLocalUtcHourValue'],
         ['updateIntervalValue', 'fenceUpdateIntervalValue'],
         ['updateIntervalUnit', 'fenceUpdateIntervalUnit'],
         ['updateMacAddressValue', 'fenceUpdateMacAddressValue'],
@@ -4194,19 +4211,30 @@
       const input = document.getElementById(getFenceScopedId('new-value', settingId));
       const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
       const helperElement = document.getElementById(getFenceScopedId('utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getFenceScopedId('local-time', settingId));
+      const localHelperElement = document.getElementById(getFenceScopedId('local-timezone-helper', settingId));
       if (!input) return;
-      const normalized = String(input.value || '').replace(/[^\d]/g, '');
-      if (String(input.value) !== normalized) input.value = normalized;
-      let hour = normalized === '' ? '' : parseInt(normalized, 10);
-      if (hour !== '' && Number.isFinite(hour)) {
-        hour = Math.max(0, Math.min(23, hour));
-        input.value = hour.toString();
-      }
-      if (rawValueElement) rawValueElement.value = hour === '' ? '' : hour.toString();
-      if (helperElement) helperElement.textContent = formatUtcHourLabel(hour);
+      const hour = normalizeUtcHourValue(input.value);
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
       fenceOnInputChanged(settingId);
     }
     window.fenceUpdateUtcHourValue = fenceUpdateUtcHourValue;
+
+    function fenceUpdateLocalUtcHourValue(settingId) {
+      const input = document.getElementById(getFenceScopedId('new-value', settingId));
+      const rawValueElement = document.getElementById(getFenceScopedId('raw-value', settingId));
+      const helperElement = document.getElementById(getFenceScopedId('utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getFenceScopedId('local-time', settingId));
+      const localHelperElement = document.getElementById(getFenceScopedId('local-timezone-helper', settingId));
+      if (!input || !localTimeElement) return;
+      const { hour, normalizedLocalValue } = convertLocalTimeInputToUtcHour(localTimeElement.value);
+      localTimeElement.value = normalizedLocalValue;
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
+      fenceOnInputChanged(settingId);
+    }
+    window.fenceUpdateLocalUtcHourValue = fenceUpdateLocalUtcHourValue;
 
     function fenceUpdateIntervalValue(settingId) {
       const numericInput = document.getElementById(getFenceScopedId('interval-num', settingId));
@@ -4630,7 +4658,9 @@
         'hex-value',
         'coord-value',
         'byte',
-        'utc-hour-helper'
+        'utc-hour-helper',
+        'local-time',
+        'local-timezone-helper'
       ];
 
       for (const base of replacements) {
@@ -4647,6 +4677,7 @@
         ['updateCoordinateValue', 'scanUpdateCoordinateValue'],
         ['updateDevicePinValue', 'scanUpdateDevicePinValue'],
         ['updateUtcHourValue', 'scanUpdateUtcHourValue'],
+        ['updateLocalUtcHourValue', 'scanUpdateLocalUtcHourValue'],
         ['updateIntervalValue', 'scanUpdateIntervalValue'],
         ['updateIntervalUnit', 'scanUpdateIntervalUnit'],
         ['updateMacAddressValue', 'scanUpdateMacAddressValue'],
@@ -4808,27 +4839,34 @@
       const input = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
       const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
       const helperElement = document.getElementById(getScanScopedId(kind, 'utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getScanScopedId(kind, 'local-time', settingId));
+      const localHelperElement = document.getElementById(getScanScopedId(kind, 'local-timezone-helper', settingId));
       if (!input) {
         return;
       }
-      const normalized = String(input.value || '').replace(/[^\d]/g, '');
-      if (String(input.value) !== normalized) {
-        input.value = normalized;
-      }
-      let hour = normalized === '' ? '' : parseInt(normalized, 10);
-      if (hour !== '' && Number.isFinite(hour)) {
-        hour = Math.max(0, Math.min(23, hour));
-        input.value = hour.toString();
-      }
-      if (rawValueElement) {
-        rawValueElement.value = hour === '' ? '' : hour.toString();
-      }
-      if (helperElement) {
-        helperElement.textContent = formatUtcHourLabel(hour);
-      }
+      const hour = normalizeUtcHourValue(input.value);
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
       scanOnInputChanged(kind, settingId);
     }
     window.scanUpdateUtcHourValue = scanUpdateUtcHourValue;
+
+    function scanUpdateLocalUtcHourValue(kind, settingId) {
+      const input = document.getElementById(getScanScopedId(kind, 'new-value', settingId));
+      const rawValueElement = document.getElementById(getScanScopedId(kind, 'raw-value', settingId));
+      const helperElement = document.getElementById(getScanScopedId(kind, 'utc-hour-helper', settingId));
+      const localTimeElement = document.getElementById(getScanScopedId(kind, 'local-time', settingId));
+      const localHelperElement = document.getElementById(getScanScopedId(kind, 'local-timezone-helper', settingId));
+      if (!input || !localTimeElement) {
+        return;
+      }
+      const { hour, normalizedLocalValue } = convertLocalTimeInputToUtcHour(localTimeElement.value);
+      localTimeElement.value = normalizedLocalValue;
+      input.value = hour === '' ? '' : hour.toString();
+      syncUtcHourDisplay(hour, rawValueElement, helperElement, localTimeElement, localHelperElement);
+      scanOnInputChanged(kind, settingId);
+    }
+    window.scanUpdateLocalUtcHourValue = scanUpdateLocalUtcHourValue;
 
     function scanUpdateIntervalValue(kind, settingId) {
       const numericInput = document.getElementById(getScanScopedId(kind, 'interval-num', settingId));
