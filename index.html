@@ -3224,6 +3224,73 @@
       }
     }
 
+    const GPS_MOTION_TRIGGER_SECTION = {
+      title: 'Motion-triggered GPS',
+      description: 'Groups the accelerometer-based motion GPS controls, including skip-fix behavior and trigger-window mode.',
+      keys: [
+        'enable_motion_trig_gps',
+        'motion_ths',
+        'gps_skipped_triggered_interval',
+        'gps_triggered_interval',
+        'gps_motion_triggered_min_num_of_triggers_per_interval'
+      ]
+    };
+
+    function createSettingRow(key, setting) {
+      const row = document.createElement('div');
+      row.className = 'setting disabled with-controls';
+      row.setAttribute('id', `setting-${setting.id}`);
+      const settingDescription = getSettingDescription(key);
+      const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
+        `Raw name: ${key}`,
+        `ID: ${setting.id}`,
+        ...getSettingConstraintDetails(key, setting)
+      ]);
+      row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
+      row.innerHTML = `
+        <div class="setting-heading">
+          <h4>${setting.display_name}</h4>
+          ${settingInfoTrigger}
+        </div>
+
+        ${renderInput(key, setting)}
+
+        <div class="setting-controls">
+          <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
+          <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${normalizeRenderableValue(setting.default)}">Set default</button>
+        </div>
+      `;
+      return row;
+    }
+
+    function appendGpsMotionTriggeredSection(settingsContainer, group) {
+      const motionEntries = GPS_MOTION_TRIGGER_SECTION.keys
+        .filter(key => group[key])
+        .map(key => [key, group[key]]);
+      if (!motionEntries.length) {
+        return new Set();
+      }
+
+      const section = document.createElement('section');
+      section.className = 'settings-subsection settings-subsection-gps-motion';
+      section.setAttribute('aria-label', GPS_MOTION_TRIGGER_SECTION.title);
+      section.innerHTML = `
+        <div class="settings-subsection-header">
+          <h4>${GPS_MOTION_TRIGGER_SECTION.title}</h4>
+          <p>${GPS_MOTION_TRIGGER_SECTION.description}</p>
+        </div>
+      `;
+
+      const sectionGrid = document.createElement('div');
+      sectionGrid.className = 'settings-subsection-grid';
+      for (const [key, setting] of motionEntries) {
+        sectionGrid.appendChild(createSettingRow(key, setting));
+      }
+      section.appendChild(sectionGrid);
+      settingsContainer.appendChild(section);
+      return new Set(motionEntries.map(([key]) => key));
+    }
+
     function displaySettings() {
       const settingsSection = document.getElementById('settings-section');
       settingsSection.innerHTML = '';
@@ -3244,31 +3311,16 @@
         const settingsContainer = document.createElement('div');
         settingsContainer.className = 'settings-container';
 
-        for (const [key, setting] of Object.entries(group)) {
-          const row = document.createElement('div');
-          row.className = 'setting disabled with-controls';
-          row.setAttribute('id', `setting-${setting.id}`);
-          const settingDescription = getSettingDescription(key);
-          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
-            `Raw name: ${key}`,
-            `ID: ${setting.id}`,
-            ...getSettingConstraintDetails(key, setting)
-          ]);
-          row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
-          row.innerHTML = `
-          <div class="setting-heading">
-            <h4>${setting.display_name}</h4>
-            ${settingInfoTrigger}
-          </div>
-          
-          ${renderInput(key, setting)}
+        let groupedKeys = new Set();
+        if (groupName === 'gps') {
+          groupedKeys = appendGpsMotionTriggeredSection(settingsContainer, group);
+        }
 
-          <div class="setting-controls">
-            <button id="update-button-${setting.id}" onclick="updateSetting('${setting.id}')">Update</button>
-            <button id="reset-button-${setting.id}" onclick="setDefaultValue('${setting.id}')" class="secondary" title="Default value: ${normalizeRenderableValue(setting.default)}">Set default</button>
-          </div>
-        `;
-          settingsContainer.appendChild(row);
+        for (const [key, setting] of Object.entries(group)) {
+          if (groupedKeys.has(key)) {
+            continue;
+          }
+          settingsContainer.appendChild(createSettingRow(key, setting));
         }
         groupWrapper.appendChild(groupToggle);
         groupWrapper.appendChild(settingsContainer);

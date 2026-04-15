@@ -201,9 +201,9 @@
     },
     "enable_motion_trig_gps": {
       "category": "gps",
-      "label": "enable motion trig gps",
-      "description": "Turn motion trig gps on or off.",
-      "display_name": "enable motion trig gps"
+      "label": "motion-triggered GPS enabled",
+      "description": "Enables motion-triggered GPS. When enabled, motion is checked using the accelerometer and motion_ths threshold. This feature supports two behaviors: the default skip-fix mode based on ublox_send_interval, and an optional trigger-window mode based on gps_triggered_interval plus gps_motion_triggered_min_num_of_triggers_per_interval.",
+      "display_name": "motion-triggered GPS enabled"
     },
     "external_switch_counter_enabled": {
       "category": "switch",
@@ -357,9 +357,9 @@
     },
     "gps_motion_triggered_min_num_of_triggers_per_interval": {
       "category": "gps",
-      "label": "motion triggered min num of triggers per interval",
-      "description": "Minimum number of motion triggers required within each motion-triggered GPS interval.",
-      "display_name": "motion triggered min num of triggers per interval"
+      "label": "motion triggers needed per window",
+      "description": "Used by motion-triggered GPS window mode. A fresh GPS fix is performed when this many motion events are detected within gps_triggered_interval seconds. Default is 5. Set this to 0, or set gps_triggered_interval to 0, to disable window mode and fall back to the default skip-fix behavior. Motion events are still counted during the fixed 30-second failsafe between GPS fixes, but no new fix is started during that failsafe.",
+      "display_name": "motion triggers needed per window"
     },
     "gps_open_sky_detection_avg_rssi_threshold_dbm": {
       "category": "gps_open_sky_detection",
@@ -387,15 +387,15 @@
     },
     "gps_skipped_triggered_interval": {
       "category": "gps",
-      "label": "skipped triggered interval",
+      "label": "max skipped fix intervals",
       "description": "In default motion-triggered GPS mode, this sets how many consecutive ublox_send_interval periods may be skipped when no motion is detected before the device performs a fresh GPS fix anyway. Set to 0 to perform a fix on every ublox_send_interval.",
-      "display_name": "skipped triggered interval"
+      "display_name": "max skipped fix intervals"
     },
     "gps_triggered_interval": {
       "category": "gps",
-      "label": "triggered interval",
-      "description": "Controls the GPS interval used when motion-triggered GPS is active.",
-      "display_name": "triggered interval"
+      "label": "motion trigger window",
+      "description": "Used by motion-triggered GPS window mode. Each detected motion event temporarily increases an internal trigger counter for this many seconds. When the counter reaches gps_motion_triggered_min_num_of_triggers_per_interval, the device performs a fresh GPS fix independently of ublox_send_interval. Default is 60 seconds. Set this to 0, or set gps_motion_triggered_min_num_of_triggers_per_interval to 0, to disable window mode and use the default skip-fix behavior.",
+      "display_name": "motion trigger window"
     },
     "horizontal_accuracy": {
       "category": "gps",
@@ -549,9 +549,9 @@
     },
     "motion_ths": {
       "category": "gps",
-      "label": "motion ths",
-      "description": "The threshold for this behavior.",
-      "display_name": "motion ths"
+      "label": "motion threshold",
+      "description": "Accelerometer sensitivity threshold used by motion-triggered GPS to detect movement. Default is 6. Refer to the LIS2DW12 datasheet for the detailed threshold behavior.",
+      "display_name": "motion threshold"
     },
     "outdoor_detection_enabled": {
       "category": "outdoor",

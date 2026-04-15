@@ -11,7 +11,9 @@ const intervalPatterns = [
 ];
 
 const intervalPatternExclusions = new Set([
-    'satellite_max_messages_per_interval'
+    'satellite_max_messages_per_interval',
+    'gps_motion_triggered_min_num_of_triggers_per_interval',
+    'gps_skipped_triggered_interval'
 ]);
 
 function isIntervalSetting(key) {
@@ -207,6 +209,7 @@ function __onInputChanged(settingId) {
     if (typeof window.handleSettingInputChange === 'function') {
         window.handleSettingInputChange(setting.id, value, valid, key, setting);
     }
+    refreshDynamicSettingHelpers(key);
 }
 
 function setInputValue(settingId, value) {
@@ -216,14 +219,17 @@ function setInputValue(settingId, value) {
         setting,
         normalizeRenderableValue(value)
     ));
+    refreshDynamicSettingHelpers(key);
 }
 
 function clearInputValue(settingId) {
+    const [key] = getById(settingId);
     const container = document.getElementById(`input-container-${settingId}`);
     if (!container) {
         return;
     }
     container.innerHTML = '';
+    refreshDynamicSettingHelpers(key);
 }
 
 function setDefaultValue(settingId) {
@@ -235,6 +241,7 @@ function setDefaultValue(settingId) {
     container.innerHTML = sanitizeRenderedInputHtml(
         renderInputControl(key, setting, normalizeRenderableValue(setting.default))
     );
+    refreshDynamicSettingHelpers(key);
 }
 
 function getInputValue(settingId) {
@@ -796,8 +803,111 @@ function renderInputControl(key, setting, value) {
     }
 
     html += `<div class="input-error" id="input-error-${setting.id}">${errorText}</div>`; // close input-container
+    html += renderDynamicSettingHelper(key, setting);
 
     return html;
+}
+
+function formatDurationCompact(totalSeconds) {
+    const seconds = Number(totalSeconds);
+    if (!Number.isFinite(seconds) || seconds < 0) {
+        return '—';
+    }
+    if (seconds === 0) {
+        return '0 seconds';
+    }
+
+    const units = [
+        { size: 86400, label: 'day' },
+        { size: 3600, label: 'hour' },
+        { size: 60, label: 'minute' },
+        { size: 1, label: 'second' }
+    ];
+    const parts = [];
+    let remaining = Math.round(seconds);
+
+    for (const unit of units) {
+        if (remaining < unit.size) {
+            continue;
+        }
+        const count = Math.floor(remaining / unit.size);
+        remaining -= count * unit.size;
+        parts.push(`${count} ${unit.label}${count === 1 ? '' : 's'}`);
+        if (parts.length === 2) {
+            break;
+        }
+    }
+
+    return parts.join(' ');
+}
+
+function getSettingEffectiveValue(key) {
+    if (!settingsData || !settingsData.settings || !settingsData.settings[key]) {
+        return null;
+    }
+    const setting = settingsData.settings[key];
+    const currentValue = getInputValue(setting.id);
+    if (currentValue !== undefined && currentValue !== null && String(currentValue).trim() !== '') {
+        return currentValue;
+    }
+    return normalizeRenderableValue(setting.default);
+}
+
+function getGpsSkippedTriggeredIntervalHelperText() {
+    const skippedRaw = getSettingEffectiveValue('gps_skipped_triggered_interval');
+    const intervalRaw = getSettingEffectiveValue('ublox_send_interval');
+    const skippedCount = Number.parseInt(skippedRaw, 10);
+    const intervalSeconds = Number.parseInt(intervalRaw, 10);
+
+    if (!Number.isFinite(intervalSeconds) || intervalSeconds < 0) {
+        return 'Set ublox send interval to estimate how long the device may wait before forcing a GPS fix.';
+    }
+
+    const intervalLabel = formatDurationCompact(intervalSeconds);
+    if (!Number.isFinite(skippedCount) || skippedCount < 0) {
+        return `Ublox send interval is currently ${intervalLabel}.`;
+    }
+
+    if (skippedCount === 0) {
+        return `0 means the device performs a GPS fix on every ublox send interval (${intervalLabel}).`;
+    }
+
+    const maxSkipDuration = skippedCount * intervalSeconds;
+    return `With ublox send interval at ${intervalLabel}, the device may skip fixes for about ${formatDurationCompact(maxSkipDuration)} before forcing a new fix if no motion is detected.`;
+}
+
+function getDynamicSettingHelperText(key) {
+    if (key === 'gps_skipped_triggered_interval') {
+        return getGpsSkippedTriggeredIntervalHelperText();
+    }
+    return '';
+}
+
+function renderDynamicSettingHelper(key, setting) {
+    const text = getDynamicSettingHelperText(key);
+    if (!text) {
+        return '';
+    }
+    return `<div class="input-helper dynamic-setting-helper" id="dynamic-helper-${setting.id}">${escapeHtml(text)}</div>`;
+}
+
+function refreshDynamicSettingHelperByKey(key) {
+    const setting = settingsData && settingsData.settings ? settingsData.settings[key] : null;
+    if (!setting) {
+        return;
+    }
+    const helper = document.getElementById(`dynamic-helper-${setting.id}`);
+    if (!helper) {
+        return;
+    }
+    helper.textContent = getDynamicSettingHelperText(key);
+}
+
+function refreshDynamicSettingHelpers(key) {
+    const normalizedKey = String(key || '');
+    if (normalizedKey === 'gps_skipped_triggered_interval' || normalizedKey === 'ublox_send_interval') {
+        refreshDynamicSettingHelperByKey('gps_skipped_triggered_interval');
+    }
 }
 
 function parseByteArrayValue(value, expectedLength) {

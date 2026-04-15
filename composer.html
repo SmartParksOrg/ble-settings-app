@@ -783,6 +783,67 @@
       reader.readAsText(file);
     }
 
+    const GPS_MOTION_TRIGGER_SECTION = {
+      title: 'Motion-triggered GPS',
+      description: 'Groups the accelerometer-based motion GPS controls, including skip-fix behavior and trigger-window mode.',
+      keys: [
+        'enable_motion_trig_gps',
+        'motion_ths',
+        'gps_skipped_triggered_interval',
+        'gps_triggered_interval',
+        'gps_motion_triggered_min_num_of_triggers_per_interval'
+      ]
+    };
+
+    function createComposerSettingRow(key, setting) {
+      const row = document.createElement('div');
+      row.className = 'setting transparent';
+      row.setAttribute('id', `setting-${setting.id}`);
+      const settingDescription = getSettingDescription(key);
+      const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
+        `Raw name: ${key}`,
+        `ID: ${setting.id}`,
+        ...getSettingConstraintDetails(key, setting)
+      ]);
+      row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
+      row.innerHTML = `
+        <div class="checkbox-container setting-select-row">
+          <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
+          <label for="checkbox-${setting.id}" class="setting-select-label"><h4 title="${key}">${setting.display_name}</h4></label>
+          ${settingInfoTrigger}
+        </div>${renderInputContainer(key, setting)}
+      `;
+      return row;
+    }
+
+    function appendComposerGpsMotionTriggeredSection(settingsContainer, group) {
+      const motionEntries = GPS_MOTION_TRIGGER_SECTION.keys
+        .filter(key => group[key])
+        .map(key => [key, group[key]]);
+      if (!motionEntries.length) {
+        return new Set();
+      }
+
+      const section = document.createElement('section');
+      section.className = 'settings-subsection settings-subsection-gps-motion';
+      section.setAttribute('aria-label', GPS_MOTION_TRIGGER_SECTION.title);
+      section.innerHTML = `
+        <div class="settings-subsection-header">
+          <h4>${GPS_MOTION_TRIGGER_SECTION.title}</h4>
+          <p>${GPS_MOTION_TRIGGER_SECTION.description}</p>
+        </div>
+      `;
+
+      const sectionGrid = document.createElement('div');
+      sectionGrid.className = 'settings-subsection-grid';
+      for (const [key, setting] of motionEntries) {
+        sectionGrid.appendChild(createComposerSettingRow(key, setting));
+      }
+      section.appendChild(sectionGrid);
+      settingsContainer.appendChild(section);
+      return new Set(motionEntries.map(([key]) => key));
+    }
+
     function displaySettings() {
       const settingsSection = document.getElementById('settings-section');
       settingsSection.innerHTML = '';
@@ -806,29 +867,16 @@
         const settingsContainer = document.createElement('div');
         settingsContainer.className = 'settings-container';
 
+        let groupedKeys = new Set();
+        if (groupName === 'gps') {
+          groupedKeys = appendComposerGpsMotionTriggeredSection(settingsContainer, group);
+        }
+
         for (const [key, setting] of Object.entries(group)) {
-          // Create the top-level container
-          const row = document.createElement('div');
-          row.className = 'setting transparent';
-          row.setAttribute('id', `setting-${setting.id}`);
-          const settingDescription = getSettingDescription(key);
-          const settingInfoTrigger = renderSettingInfoTrigger(settingDescription, [
-            `Raw name: ${key}`,
-            `ID: ${setting.id}`,
-            ...getSettingConstraintDetails(key, setting)
-          ]);
-          row.setAttribute('data-search', `${key} ${setting.display_name} ${settingDescription}`.trim());
-
-          // Build the "include" checkbox + label
-          row.innerHTML = `
-            <div class="checkbox-container setting-select-row">
-              <input type="checkbox" id="checkbox-${setting.id}" onchange="updateCheckBox(this, '${setting.id}')"/>
-              <label for="checkbox-${setting.id}" class="setting-select-label"><h4 title="${key}">${setting.display_name}</h4></label>
-              ${settingInfoTrigger}
-            </div>${renderInputContainer(key, setting)}
-          `;
-
-          settingsContainer.appendChild(row);
+          if (groupedKeys.has(key)) {
+            continue;
+          }
+          settingsContainer.appendChild(createComposerSettingRow(key, setting));
         }
 
         groupWrapper.appendChild(groupToggle);
