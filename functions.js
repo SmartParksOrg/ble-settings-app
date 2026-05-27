@@ -13,11 +13,20 @@ const intervalPatterns = [
 const intervalPatternExclusions = new Set([
     'satellite_max_messages_per_interval',
     'gps_motion_triggered_min_num_of_triggers_per_interval',
-    'gps_skipped_triggered_interval'
+    'gps_skipped_triggered_interval',
+    'ublox_cold_fix_hour_interval'
+]);
+
+const hourIntervalSettings = new Set([
+    'ublox_cold_fix_hour_interval'
 ]);
 
 function isIntervalSetting(key) {
     return !intervalPatternExclusions.has(key) && intervalPatterns.some(rx => rx.test(key));
+}
+
+function isHourIntervalSetting(key) {
+    return hourIntervalSettings.has(key);
 }
 
 const grouping = {
@@ -59,6 +68,7 @@ const customInputRenderers = {
     gps_init_lon: renderLongitudeInput,
     ublox_interval1_start: renderUtcHourInput,
     ublox_interval2_start: renderUtcHourInput,
+    ublox_cold_fix_hour_interval: renderHoursInput,
     satellite_interval1_start: renderUtcHourInput,
     satellite_send_interval2_start: renderUtcHourInput,
     vhf_interval1_start: renderUtcHourInput,
@@ -1059,6 +1069,18 @@ function renderSecondsInput(setting, value) {
     `;
 }
 
+function renderHoursInput(setting, value) {
+    const hourValue = value === '' || value === undefined || value === null ? '' : Number(value);
+    const days = Number.isFinite(hourValue) ? (hourValue / 24) : '';
+    return `
+        <label class="input-label" for="new-value-${setting.id}">Hours</label>
+        <input type="number" id="new-value-${setting.id}" value="${value ?? ''}" min="0" step="1" oninput="__onInputChanged('${setting.id}')" />
+        <div class="input-helper">Days: ${days === '' ? '—' : days}</div>
+        <label class="raw-value-label" for="raw-value-${setting.id}">Raw value</label>
+        <input type="text" id="raw-value-${setting.id}" class="raw-value" value="${value ?? ''}" readonly />
+    `;
+}
+
 function formatUtcHourLabel(value) {
     if (!Number.isFinite(value)) {
         return 'UTC hour not set';
@@ -1637,6 +1659,13 @@ function formatSettingValueForPreview(key, setting, value, compareValue = null, 
         return formatBitmaskPreview(key, value, compareValue, mode);
     }
 
+    if (isHourIntervalSetting(key)) {
+        const hours = Number(value);
+        const display = Number.isFinite(hours) ? hours : value;
+        const days = Number.isFinite(hours) ? (hours / 24) : value;
+        return `<div class="import-preview-value">${escapeHtml(display)} <span class="import-preview-muted">hour(s)</span><div class="import-preview-subvalue">${escapeHtml(days)} day(s)</div></div>`;
+    }
+
     if (isIntervalSetting(key)) {
         const seconds = parseInt(value, 10) || 0;
         const guessedUnit = guessTimeUnit(seconds);
@@ -1961,6 +1990,10 @@ function formatRangeLabel(key, min, max) {
     const minNum = Number(min);
     const maxNum = Number(max);
 
+    if (isHourIntervalSetting(key) && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
+        return `${minNum}–${maxNum} hour(s)`;
+    }
+
     if (isIntervalSetting(key) && Number.isFinite(minNum) && Number.isFinite(maxNum)) {
         const unit = (key === 'cold_fix_timeout' || key === 'hot_fix_timeout') ? '1' : guessTimeUnit(Math.max(minNum, maxNum));
         const displayMin = Math.round(convertSecondsToUnit(minNum, unit));
@@ -2009,6 +2042,10 @@ function formatSettingBoundLabel(key, setting, value) {
 
     if (msKeys.has(key) && Number.isFinite(numericValue)) {
         return `${numericValue} ms (${numericValue / 1000} sec)`;
+    }
+
+    if (isHourIntervalSetting(key) && Number.isFinite(numericValue)) {
+        return `${numericValue} hour(s)`;
     }
 
     if (isIntervalSetting(key) && Number.isFinite(numericValue)) {
