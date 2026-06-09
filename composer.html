@@ -956,7 +956,7 @@
               ${getKnownPortOptions()}
             </select>
             <label class="command-helper-label" for="command-input-${command.id}-start">Start</label>
-            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
+            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" value="0" placeholder="0" data-format="uint32" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
             <label class="command-helper-label" for="command-input-${command.id}-count">How many</label>
             <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" oninput="updateEncodedMessage()" onchange="updateEncodedMessage()" />
           `;
@@ -1012,7 +1012,7 @@
           }
           const inputEl = helper.querySelector('input');
           if (inputEl) {
-            inputEl.value = '';
+            inputEl.value = inputEl.defaultValue || '';
           }
         }
       }
@@ -1042,6 +1042,15 @@
     // ---------------------------------------------
     // Build final payload
     // ---------------------------------------------
+    function buildFlashGetFromHeadPayload(port, start, count) {
+      const payload = new Uint8Array(12);
+      const view = new DataView(payload.buffer);
+      view.setUint32(0, port >>> 0, false);
+      view.setUint32(4, start >>> 0, false);
+      view.setUint32(8, count >>> 0, false);
+      return payload;
+    }
+
     function updateEncodedMessage() {
       const hexOutput = document.getElementById('hex-output');
       const payloadType = document.getElementById('payload-type');
@@ -1167,12 +1176,7 @@
             const port = parseUint32(portEl, 'port');
             const start = parseUint32(startEl, 'start index');
             const count = parseUint32(countEl, 'count');
-            const payload = new Uint8Array(12);
-            const view = new DataView(payload.buffer);
-            view.setUint32(0, port, true);
-            view.setUint32(4, start, true);
-            view.setUint32(8, count, true);
-            valueBytes = payload;
+            valueBytes = buildFlashGetFromHeadPayload(port, start, count);
           } else {
             valueBytes = settingToBytes(settingKey, settingObj, getInputValue(settingObj.id));
           }

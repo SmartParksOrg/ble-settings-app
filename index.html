@@ -1612,16 +1612,21 @@
       setMapStatus(`Track loaded: ${points.length} point(s).`);
     }
 
+    function buildFlashGetFromHeadPayload(port, start, count) {
+      const payload = new Uint8Array(12);
+      const view = new DataView(payload.buffer);
+      view.setUint32(0, port >>> 0, false);
+      view.setUint32(4, start >>> 0, false);
+      view.setUint32(8, count >>> 0, false);
+      return payload;
+    }
+
     function buildTrackPayloadPlans(port, startIndex, useSingleRequest) {
       const startIndexFromHead = Math.max(0, startIndex);
       const plans = [];
       const totalCount = TRACK_POINTS_LIMIT;
       if (useSingleRequest) {
-        const payload12 = new Uint8Array(12);
-        const view12 = new DataView(payload12.buffer);
-        view12.setUint32(0, port, true);
-        view12.setUint32(4, startIndexFromHead, true);
-        view12.setUint32(8, totalCount, true);
+        const payload12 = buildFlashGetFromHeadPayload(port, startIndexFromHead, totalCount);
         plans.push({
           key: `u32-port,u32-index=${startIndexFromHead},u32-count=${totalCount}`,
           bytes: payload12
@@ -1629,11 +1634,7 @@
         return plans;
       }
       for (let offset = 0; offset < totalCount; offset++) {
-        const payload12 = new Uint8Array(12);
-        const view12 = new DataView(payload12.buffer);
-        view12.setUint32(0, port, true);
-        view12.setUint32(4, startIndexFromHead + offset, true);
-        view12.setUint32(8, 1, true);
+        const payload12 = buildFlashGetFromHeadPayload(port, startIndexFromHead + offset, 1);
         plans.push({
           key: `u32-port,u32-index=${startIndexFromHead + offset},u32-count=1`,
           bytes: payload12
@@ -5182,11 +5183,7 @@
         throw new Error('Stored BLE scan retrieval is not available in this firmware.');
       }
 
-      const payload = new Uint8Array(12);
-      const view = new DataView(payload.buffer);
-      view.setUint32(0, storedPort, true);
-      view.setUint32(4, 0, true);
-      view.setUint32(8, 1, true);
+      const payload = buildFlashGetFromHeadPayload(storedPort, 0, 1);
 
       state.requestSource = 'flash_latest';
       state.flashBuffer = new Uint8Array(0);
@@ -5481,7 +5478,7 @@
               ${getKnownPortOptions()}
             </select>
             <label class="command-helper-label" for="command-input-${command.id}-start">Start</label>
-            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" placeholder="50" data-format="uint32" />
+            <input id="command-input-${command.id}-start" class="command-helper-input" type="text" value="0" placeholder="0" data-format="uint32" />
             <label class="command-helper-label" for="command-input-${command.id}-count">How many</label>
             <input id="command-input-${command.id}-count" class="command-helper-input" type="text" placeholder="10" data-format="uint32" />
           `;
@@ -7184,11 +7181,7 @@
           showToast(error.message);
           return;
         }
-        const payload = new Uint8Array(12);
-        const view = new DataView(payload.buffer);
-        view.setUint32(0, port, true);
-        view.setUint32(4, start, true);
-        view.setUint32(8, count, true);
+        const payload = buildFlashGetFromHeadPayload(port, start, count);
         return executeBleCommand([0x20, cmd, payload.length, ...payload]);
       }
       if (key === 'cmd_flash_get_all') {
