@@ -1613,21 +1613,28 @@
     }
 
     function buildFlashGetFromHeadPayload(port, start, count) {
-      if (!Number.isFinite(port) || port < 0 || port > 0xFF) {
-        throw new Error('Invalid port (uint8)');
-      }
-      if (!Number.isFinite(start) || start < 0 || start > 0xFFFF) {
-        throw new Error('Invalid start index (uint16)');
-      }
-      if (!Number.isFinite(count) || count < 0 || count > 0xFFFF) {
-        throw new Error('Invalid count (uint16)');
-      }
       const payload = new Uint8Array(12);
-      const view = new DataView(payload.buffer);
-      payload[0] = port & 0xFF;
-      view.setUint16(4, start & 0xFFFF, false);
-      view.setUint16(8, count & 0xFFFF, false);
+      writeLeftAlignedHexSlot(payload, 0, port, 'port');
+      writeLeftAlignedHexSlot(payload, 4, start, 'start index');
+      writeLeftAlignedHexSlot(payload, 8, count, 'count');
       return payload;
+    }
+
+    function writeLeftAlignedHexSlot(payload, offset, value, label) {
+      if (!Number.isInteger(value) || value < 0 || value > 0xFFFFFFFF) {
+        throw new Error(`Invalid ${label} (uint32)`);
+      }
+      let hex = value.toString(16);
+      if (hex.length % 2) {
+        hex = `0${hex}`;
+      }
+      const bytes = hex.match(/../g) || ['00'];
+      if (bytes.length > 4) {
+        throw new Error(`Invalid ${label} (uint32)`);
+      }
+      bytes.forEach((byte, index) => {
+        payload[offset + index] = parseInt(byte, 16);
+      });
     }
 
     function buildTrackPayloadPlans(port, startIndex, useSingleRequest) {
