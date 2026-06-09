@@ -1043,11 +1043,20 @@
     // Build final payload
     // ---------------------------------------------
     function buildFlashGetFromHeadPayload(port, start, count) {
+      if (!Number.isFinite(port) || port < 0 || port > 0xFF) {
+        throw new Error('Invalid port (uint8)');
+      }
+      if (!Number.isFinite(start) || start < 0 || start > 0xFFFF) {
+        throw new Error('Invalid start index (uint16)');
+      }
+      if (!Number.isFinite(count) || count < 0 || count > 0xFFFF) {
+        throw new Error('Invalid count (uint16)');
+      }
       const payload = new Uint8Array(12);
       const view = new DataView(payload.buffer);
-      view.setUint32(0, port >>> 0, false);
-      view.setUint32(4, start >>> 0, false);
-      view.setUint32(8, count >>> 0, false);
+      payload[0] = port & 0xFF;
+      view.setUint16(4, start & 0xFFFF, false);
+      view.setUint16(8, count & 0xFFFF, false);
       return payload;
     }
 
