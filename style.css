@@ -71,6 +71,7 @@ body {
 
 #header-section,
 .status-section,
+.features-section,
 .settings-section,
 .commands-section,
 .map-section {
@@ -82,11 +83,12 @@ body.connected #header-section {
 }
 
 .status-section,
+.features-section,
 .settings-section,
 .commands-section,
 .map-section {
     padding: 0 16px;
-    margin-top: 8px;
+    margin-top: 12px;
     margin-bottom: 0;
 }
 
@@ -124,6 +126,10 @@ body.composer-notes-visible #composer-firmware-notes {
 .commands-section + .map-section,
 .settings-section + .map-section,
 .status-section + .settings-section,
+.status-section + .features-section,
+.features-section + .settings-section,
+.features-section + .commands-section,
+.features-section + .map-section,
 .status-section + .commands-section,
 .status-section + .map-section,
 .map-section + .commands-section,
@@ -315,6 +321,15 @@ body.map-fullscreen #map-area .map-frame {
     margin: 0 auto;
     width: 100%;
     box-sizing: border-box;
+}
+
+/* Keep the gap between cards even when hidden sections sit between them in the DOM. */
+.status-section.page-section,
+.features-section.page-section,
+.settings-section.page-section,
+.commands-section.page-section,
+.map-section.page-section {
+    margin: 12px auto 0;
 }
 
 .controls button {
@@ -1715,6 +1730,76 @@ h2 {
     border: 1px solid rgba(197, 121, 0, 0.35);
 }
 
+.features-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 8px;
+}
+
+.feature-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    min-height: 58px;
+    padding: 10px 12px;
+    color: inherit;
+    text-align: left;
+    background: rgba(123, 135, 151, 0.12);
+    border: 1px solid rgba(123, 135, 151, 0.3);
+    border-radius: var(--radius-sm);
+    box-shadow: none;
+}
+
+.feature-item:hover,
+.feature-item:focus-visible {
+    transform: none;
+    box-shadow: 0 0 0 3px rgba(52, 168, 83, 0.18);
+}
+
+.feature-item.enabled {
+    background: rgba(52, 168, 83, 0.12);
+    border-color: rgba(52, 168, 83, 0.38);
+}
+
+.feature-item-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+}
+
+.feature-name {
+    font-weight: 650;
+}
+
+.feature-detail {
+    color: rgba(31, 42, 35, 0.68);
+    font-size: 12px;
+    line-height: 1.3;
+}
+
+.feature-status {
+    flex: 0 0 auto;
+    padding: 3px 7px;
+    color: #496252;
+    font-size: 12px;
+    font-weight: 650;
+    background: rgba(52, 168, 83, 0.18);
+    border-radius: var(--radius-pill);
+}
+
+.feature-item.disabled .feature-status {
+    color: #697484;
+    background: rgba(123, 135, 151, 0.18);
+}
+
+.features-empty {
+    color: rgba(31, 42, 35, 0.68);
+    font-size: 13px;
+}
+
 .ublox-disable-button {
     background: linear-gradient(145deg, #f59e0b, #d97706);
     border-color: transparent;
@@ -1789,6 +1874,7 @@ body:not(.bootstrapping) .hidden-when-not-bootstrapping {
 }
 
 body.bootstrapping .status-section,
+body.bootstrapping .features-section,
 body.bootstrapping .settings-section,
 body.bootstrapping .commands-section:not(.hidden-when-not-bootstrapping),
 body.bootstrapping .map-section {
@@ -1820,6 +1906,7 @@ body.bootstrapping .debug-toggle-fab {
 body.lr-update #settings-selection,
 body.lr-update .settings-section,
 body.lr-update .status-section,
+body.lr-update .features-section,
 body.lr-update #actions-area,
 body.lr-update #logs-area,
 body.lr-update .commands-section,

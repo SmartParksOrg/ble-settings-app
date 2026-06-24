@@ -134,6 +134,15 @@
     </details>
   </div>
 
+  <div id="features-area" class="features-section page-section hidden-when-no-settings">
+    <details class="section section-card" open>
+      <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Features</summary>
+      <div class="section-card-body">
+        <div id="features-list" class="features-list" aria-live="polite"></div>
+      </div>
+    </details>
+  </div>
+
   <div id="connection-loading-overlay" class="dfu-waiting-overlay hidden-when-not-bootstrapping" role="status" aria-live="polite" aria-busy="true">
     <div class="dfu-waiting-card connection-loading-overlay-card">
         <div class="dfu-spinner" aria-hidden="true"></div>
@@ -3137,9 +3146,7 @@
           `<div class="status-item"><span class="icon uptime"></span>${statusMessage.uptime} day(s)</div>`,
           `<div class="status-item"><span class="icon temperature"></span>${statusMessage.temp.toFixed(1)}°C</div>`,
           `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
-          `<div class="status-item"><span class="icon electric-fence"></span>FenceEdge support: ${statusMessage.fence ? 'yes' : 'no'}</div>`,
-          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`,
-          `<div id="satellite-state-tag" class="status-item ublox-gps-tag unknown">Satellite: status unknown</div>`
+          `<div class="status-item"><span class="icon electric-fence"></span>FenceEdge support: ${statusMessage.fence ? 'yes' : 'no'}</div>`
         );
         lrUpdateBanner = `
           <div class="lr-update-banner">
@@ -3174,9 +3181,7 @@
           `<div class="status-item"><span class="icon reset"></span>${decodeReset(statusMessage.reset)}</div>`,
           `<div class="status-item"><span class="icon ublox-time"></span><span id="ublox-timestamp">fetching time...</span></div>`,
           `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
-          `<div class="status-item"><span class="icon errors"></span>${errors}</div>`,
-          `<div id="ublox-gps-state-tag" class="status-item ublox-gps-tag unknown">UBLOX GPS: status unknown</div>`,
-          `<div id="satellite-state-tag" class="status-item ublox-gps-tag unknown">Satellite: status unknown</div>`
+          `<div class="status-item"><span class="icon errors"></span>${errors}</div>`
         );
       }
 
@@ -3193,8 +3198,7 @@
         </div>
       `;
       if (!firmwareV5Mode) {
-        updateUbloxGpsStatusTag();
-        updateSatelliteStatusTag();
+        renderFeatures();
         displayMainCommands();
         renderFenceSection();
       }
@@ -3306,6 +3310,11 @@
       section.appendChild(sectionGrid);
       settingsContainer.appendChild(section);
       return new Set(motionEntries.map(([key]) => key));
+    }
+
+    function toggleGroup(groupWrapper) {
+      const isCollapsed = groupWrapper.classList.toggle('is-collapsed');
+      groupWrapper.querySelector('.group-toggle')?.setAttribute('aria-expanded', String(!isCollapsed));
     }
 
     function displaySettings() {
@@ -5581,6 +5590,7 @@
     function toggleDfuView(showDfu) {
       const sectionsToHide = [
         document.getElementById('status-area'),
+        document.getElementById('features-area'),
         document.getElementById('actions-area'),
         document.getElementById('cmdq-area'),
         document.getElementById('fence-area'),
@@ -5873,55 +5883,124 @@
       };
     }
 
-    function updateUbloxGpsStatusTag() {
-      const tag = document.getElementById('ublox-gps-state-tag');
-      if (!tag) {
-        return;
-      }
-      const state = getUbloxGpsState();
-      if (!state) {
-        tag.textContent = 'UBLOX GPS: status unknown';
-        tag.classList.remove('active', 'inactive');
-        tag.classList.add('unknown');
-        return;
-      }
-      const interval1 = formatUbloxInterval(state.interval1);
-      const interval2 = formatUbloxInterval(state.interval2);
-      const suffix = `I1 ${interval1}, I2 ${interval2}, multi ${state.multipleIntervals ? 'on' : 'off'}`;
-      if (state.enabled) {
-        tag.textContent = `UBLOX GPS: enabled (${suffix})`;
-        tag.classList.remove('inactive', 'unknown');
-        tag.classList.add('active');
-      } else {
-        tag.textContent = `UBLOX GPS: disabled (${suffix})`;
-        tag.classList.remove('active', 'unknown');
-        tag.classList.add('inactive');
-      }
+    function getFirstAvailableSettingKey(keys) {
+      return keys.find(key => settingsData && settingsData.settings && settingsData.settings[key]) || null;
     }
 
-    function updateSatelliteStatusTag() {
-      const tag = document.getElementById('satellite-state-tag');
-      if (!tag) {
+    function getBooleanFeatureState(keys) {
+      const settingKey = getFirstAvailableSettingKey(keys);
+      if (!settingKey) {
+        return null;
+      }
+      return { enabled: parseBoolSettingValue(getSettingValueByKey(settingKey)), settingKey };
+    }
+
+    function getBleScanFeatureState() {
+      const intervalKey = getFirstAvailableSettingKey(['ble_scan_interval']);
+      const aggregateKey = getFirstAvailableSettingKey(['ble_scan_aggregate_interval', 'ble_scan_aggregated_interval']);
+      if (!intervalKey && !aggregateKey) {
+        return null;
+      }
+      const interval = intervalKey ? parseNumberSettingValue(getSettingValueByKey(intervalKey)) : 0;
+      const aggregateInterval = aggregateKey ? parseNumberSettingValue(getSettingValueByKey(aggregateKey)) : 0;
+      return {
+        enabled: interval > 0 || aggregateInterval > 0,
+        settingKey: intervalKey || aggregateKey,
+        detail: `Scan ${formatUbloxInterval(interval)}, aggregate ${formatUbloxInterval(aggregateInterval)}`
+      };
+    }
+
+    function getFeatureDefinitions() {
+      const ublox = getUbloxGpsState();
+      const satellite = getSatelliteState();
+      const ubloxSettingKey = getFirstAvailableSettingKey(['ublox_send_interval']);
+      const satelliteSettingKey = getFirstAvailableSettingKey(['satellite_enabled']);
+      return [
+        ublox && ubloxSettingKey && {
+          name: 'Ublox GPS',
+          state: ublox,
+          settingKey: ubloxSettingKey,
+          detail: `I1 ${formatUbloxInterval(ublox.interval1)}, I2 ${formatUbloxInterval(ublox.interval2)}`
+        },
+        satellite && satelliteSettingKey && {
+          name: 'Satellite',
+          state: satellite,
+          settingKey: satelliteSettingKey,
+          detail: `I1 ${formatUbloxInterval(satellite.interval1)}, I2 ${formatUbloxInterval(satellite.interval2)}`
+        },
+        (() => {
+          const state = getBooleanFeatureState(['cmdq_enabled']);
+          const macKey = getFirstAvailableSettingKey(['cmdq_searched_mac_address']);
+          const mac = macKey ? formatMacAddressForDisplay(getSettingValueByKey(macKey)) : '';
+          return state && { name: 'CMDQ', state, settingKey: state.settingKey, detail: `Scans ${mac || '—'}` };
+        })(),
+        (() => {
+          const state = getBleScanFeatureState();
+          return state && { name: 'BLE scan', state, settingKey: state.settingKey, detail: state.detail };
+        })(),
+        (() => {
+          const state = getBooleanFeatureState(['fence_enabled']);
+          const intervalKey = getFirstAvailableSettingKey(['fence_interval']);
+          const interval = intervalKey ? formatUbloxInterval(getSettingValueByKey(intervalKey)) : '—';
+          return state && { name: 'Fence', state, settingKey: state.settingKey, detail: `Interval ${interval}` };
+        })(),
+        (() => {
+          const state = getBooleanFeatureState(['outdoor_detection_enabled']);
+          return state && { name: 'Outdoor Detection', state, settingKey: state.settingKey };
+        })(),
+        (() => {
+          const state = getBooleanFeatureState(['switch_detection_enable', 'switch_detection_enabled', 'external_switch_detection_enabled']);
+          return state && { name: 'Switch', state, settingKey: state.settingKey };
+        })(),
+        (() => {
+          const state = getBooleanFeatureState(['vhf_enable', 'vhf_enabled']);
+          return state && { name: 'VHF', state, settingKey: state.settingKey };
+        })()
+      ].filter(Boolean);
+    }
+
+    function renderFeatures() {
+      const list = document.getElementById('features-list');
+      if (!list) {
         return;
       }
-      const state = getSatelliteState();
-      if (!state) {
-        tag.textContent = 'Satellite: status unknown';
-        tag.classList.remove('active', 'inactive');
-        tag.classList.add('unknown');
+      const features = getFeatureDefinitions();
+      if (!features.length) {
+        list.innerHTML = '<div class="features-empty">Feature settings are not available for this firmware.</div>';
         return;
       }
-      const interval1 = formatUbloxInterval(state.interval1);
-      const interval2 = formatUbloxInterval(state.interval2);
-      const suffix = `I1 ${interval1}, I2 ${interval2}, multi ${state.multipleIntervals ? 'on' : 'off'}`;
-      if (state.enabled) {
-        tag.textContent = `Satellite: enabled (${suffix})`;
-        tag.classList.remove('inactive', 'unknown');
-        tag.classList.add('active');
-      } else {
-        tag.textContent = `Satellite: disabled (${suffix})`;
-        tag.classList.remove('active', 'unknown');
-        tag.classList.add('inactive');
+      list.innerHTML = features.map(feature => {
+        const status = feature.state.enabled ? 'Enabled' : 'Disabled';
+        const detail = feature.detail ? `<span class="feature-detail">${feature.detail}</span>` : '';
+        return `<button class="feature-item ${feature.state.enabled ? 'enabled' : 'disabled'}" type="button" onclick="openFeatureSetting('${feature.settingKey}')">
+          <span class="feature-item-content"><span class="feature-name">${feature.name}</span>${detail}</span>
+          <span class="feature-status">${status}</span>
+        </button>`;
+      }).join('');
+    }
+
+    function openFeatureSetting(settingKey) {
+      const setting = settingsData && settingsData.settings ? settingsData.settings[settingKey] : null;
+      if (!setting) {
+        return;
+      }
+      const row = document.getElementById(`setting-${setting.id}`);
+      if (!row) {
+        return;
+      }
+      const settingsDetails = document.querySelector('#settings-area details');
+      if (settingsDetails && !settingsDetails.open) {
+        settingsDetails.open = true;
+      }
+      const group = row.closest('.settings-group');
+      if (group && group.classList.contains('is-collapsed')) {
+        group.classList.remove('is-collapsed');
+        group.querySelector('.group-toggle')?.setAttribute('aria-expanded', 'true');
+      }
+      row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const input = row.querySelector('input, select, textarea, button');
+      if (input) {
+        input.focus({ preventScroll: true });
       }
     }
 
@@ -5969,7 +6048,7 @@
         showToast(`Failed to disable UBLOX GPS: ${error.message}`);
       } finally {
         ubloxDisableInProgress = false;
-        updateUbloxGpsStatusTag();
+        renderFeatures();
         displayMainCommands();
       }
     }
@@ -6004,7 +6083,7 @@
         showToast(`Failed to disable Satellite: ${error.message}`);
       } finally {
         satelliteDisableInProgress = false;
-        updateSatelliteStatusTag();
+        renderFeatures();
         displayMainCommands();
       }
     }
@@ -7123,12 +7202,19 @@
         updateMessengerMeta();
       }
       if (key === 'ublox_send_interval' || key === 'ublox_multiple_intervals' || key === 'ublox_send_interval_2') {
-        updateUbloxGpsStatusTag();
+        renderFeatures();
         displayMainCommands();
       }
       if (key === 'satellite_enabled' || key === 'satellite_send_interval' || key === 'satellite_multiple_intervals' || key === 'satellite_send_interval2') {
-        updateSatelliteStatusTag();
+        renderFeatures();
         displayMainCommands();
+      }
+      if ([
+        'cmdq_enabled', 'cmdq_searched_mac_address', 'ble_scan_interval', 'ble_scan_aggregate_interval', 'ble_scan_aggregated_interval',
+        'fence_enabled', 'fence_interval', 'outdoor_detection_enabled', 'switch_detection_enable', 'switch_detection_enabled',
+        'external_switch_detection_enabled', 'vhf_enable', 'vhf_enabled'
+      ].includes(key)) {
+        renderFeatures();
       }
 
       const rowElement = document.getElementById(`setting-${settingId}`);
