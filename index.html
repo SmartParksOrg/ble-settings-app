@@ -267,6 +267,26 @@
     </details>
   </div>
 
+  <div id="status-log-area" class="commands-section page-section hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon square-poll-horizontal" aria-hidden="true"></span>Recent Status Logs</summary>
+      <div class="section-card-body status-log-card">
+        <div class="status-header">
+          <div class="status-item"><span class="icon messages"></span>Last 10 status messages</div>
+          <a href="#" onclick="requestRecentStatusLogs(); return false;">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestRecentStatusLogs()">Load latest status logs</button>
+        </div>
+        <div id="status-log-results" class="status-log-results">
+          <div class="cmdq-empty">No status logs loaded yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="firmware-notes-anchor"></div>
   <div id="firmware-notes-area" class="commands-section page-section hidden">
     <details class="section section-card">
@@ -805,6 +825,15 @@
       lastFilename: '',
       lastError: '',
       lastRequest: null
+    };
+    const RECENT_STATUS_LOG_LIMIT = 10;
+    const STATUS_LOG_TIMEOUT_MS = 12000;
+    let statusLogState = {
+      active: false,
+      records: [],
+      flashBuffer: new Uint8Array(0),
+      timeoutId: null,
+      requestedCount: RECENT_STATUS_LOG_LIMIT
     };
     let flashLogCountTotal = null;
     let cmdqLatestResult = null;
@@ -2188,6 +2217,240 @@
         records,
         remainder: merged.slice(index)
       };
+    }
+
+    function clearStatusLogTimeout() {
+      if (statusLogState.timeoutId) {
+        clearTimeout(statusLogState.timeoutId);
+        statusLogState.timeoutId = null;
+      }
+    }
+
+    function getStatusLogMessageMeta() {
+      if (!settingsData || !settingsData.ports || !settingsData.messages) {
+        return null;
+      }
+      const meta = settingsData.messages.msg_status;
+      const port = settingsData.ports.port_status;
+      if (!meta || !Number.isFinite(port)) {
+        return null;
+      }
+      return {
+        port,
+        id: parseInt(meta.id, 16),
+        length: meta.length
+      };
+    }
+
+    function buildStatusLogErrorLabel(statusMessage) {
+      return Object.entries(statusMessage)
+        .filter(([key, hasError]) => key.startsWith('err_') && hasError)
+        .map(([key]) => key.slice(4).toUpperCase())
+        .join(', ') || 'none';
+    }
+
+    function formatStatusLogCell(value, fallback = 'N/A') {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return String(value);
+      }
+      if (typeof value === 'string' && value) {
+        return value;
+      }
+      return fallback;
+    }
+
+    function renderStatusLogResults(message = '') {
+      const resultsEl = document.getElementById('status-log-results');
+      if (!resultsEl) {
+        return;
+      }
+
+      if (message) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(message)}</div>`;
+        return;
+      }
+
+      if (!statusLogState.records.length) {
+        resultsEl.innerHTML = '<div class="cmdq-empty">No status logs found.</div>';
+        return;
+      }
+
+      const rows = statusLogState.records.map((record, index) => {
+        const status = record.status;
+        const version = `${status.ver_fw_major}.${status.ver_fw_minor}`;
+        const hardware = `${status.ver_hw_major}.${status.ver_hw_minor}`;
+        const resetLabel = `${decodeReset(status.reset)} (${status.reset})`;
+        const chargeLabel = status.chg ? 'charging' : 'discharging';
+        const gpsLabel = status.ublox_busy ? 'busy' : 'idle';
+        const lrLabel = status.err_lr_join ? 'join err' : `${status.lr_sat} sat`;
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${escapeHtml(resetLabel)}</td>
+            <td>${formatStatusLogCell(status.uptime)}</td>
+            <td>${escapeHtml(status.temp.toFixed(1))}</td>
+            <td>${formatStatusLogCell(status.bat)}</td>
+            <td>${escapeHtml(chargeLabel)}</td>
+            <td>${formatStatusLogCell(status.msg)}</td>
+            <td>${escapeHtml(status.locked ? 'PIN set' : 'PIN not set')}</td>
+            <td>${escapeHtml(gpsLabel)}</td>
+            <td>${escapeHtml(lrLabel)}</td>
+            <td>${escapeHtml(buildStatusLogErrorLabel(status))}</td>
+            <td>${escapeHtml(version)}</td>
+            <td>${escapeHtml(hardware)}</td>
+            <td><code>${escapeHtml(record.raw)}</code></td>
+          </tr>
+        `;
+      }).join('');
+
+      resultsEl.innerHTML = `
+        <div class="status-log-table-wrap">
+          <table class="status-log-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Reset</th>
+                <th>Uptime d</th>
+                <th>Temp C</th>
+                <th>Bat mV</th>
+                <th>Charge</th>
+                <th>Msg</th>
+                <th>Lock</th>
+                <th>UBLOX</th>
+                <th>LR</th>
+                <th>Errors</th>
+                <th>FW</th>
+                <th>HW</th>
+                <th>Raw</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function finishStatusLogRequest(message = '') {
+      clearStatusLogTimeout();
+      statusLogState.active = false;
+      renderStatusLogResults(message);
+    }
+
+    function failStatusLogRequest(message) {
+      clearStatusLogTimeout();
+      statusLogState.active = false;
+      renderStatusLogResults(message);
+      showToast(message);
+    }
+
+    function tryHandleStatusLogResponse(data) {
+      if (!statusLogState.active || !settingsData) {
+        return false;
+      }
+
+      const port = data[0];
+      const flashLogPort = settingsData.ports ? settingsData.ports.port_flash_log : null;
+      const messagesPort = settingsData.ports ? settingsData.ports.port_messages : null;
+
+      if (Number.isFinite(messagesPort) && port === messagesPort && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_GET_FROM_HEAD) {
+        if (data[4] !== 0x01) {
+          failStatusLogRequest(`Failed to request status logs: device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
+        } else if (!statusLogState.records.length) {
+          finishStatusLogRequest('No status logs found.');
+        } else {
+          finishStatusLogRequest();
+        }
+        return true;
+      }
+
+      if (!Number.isFinite(flashLogPort) || port !== flashLogPort) {
+        return false;
+      }
+
+      clearStatusLogTimeout();
+      statusLogState.timeoutId = setTimeout(() => {
+        if (statusLogState.active) {
+          finishStatusLogRequest(statusLogState.records.length ? '' : 'No new status log data received.');
+        }
+      }, STATUS_LOG_TIMEOUT_MS);
+
+      const expected = getStatusLogMessageMeta();
+      const parsed = parseFlashLogRecords(data, statusLogState.flashBuffer);
+      statusLogState.flashBuffer = parsed.remainder;
+
+      for (const record of parsed.records) {
+        if (!expected || record.port !== expected.port || record.id !== expected.id) {
+          continue;
+        }
+        const framedPayload = new Uint8Array([record.id, record.length, ...record.payload]);
+        const decoded = decodeStatusMessage(framedPayload);
+        statusLogState.records.push({
+          status: decoded,
+          raw: bytesToHex(new Uint8Array([record.port, record.id, record.length, ...record.payload]))
+        });
+        if (statusLogState.records.length >= statusLogState.requestedCount) {
+          statusLogState.records = statusLogState.records.slice(0, statusLogState.requestedCount);
+          finishStatusLogRequest();
+          return true;
+        }
+      }
+
+      renderStatusLogResults(statusLogState.records.length
+        ? ''
+        : `Loading latest ${statusLogState.requestedCount} status messages...`);
+      return true;
+    }
+
+    async function requestRecentStatusLogs() {
+      if (statusLogState.active) {
+        showToast('Status log request already running.');
+        return;
+      }
+      if (flashLogState.active || mapTrackState.active) {
+        showToast('Another flash log request is already running.');
+        return;
+      }
+      if (Object.values(scanState).some(state => state.pending && state.requestSource === 'flash_latest')) {
+        showToast('Wait for the stored scan request to finish first.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+
+      const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+      const statusMeta = getStatusLogMessageMeta();
+      if (!flashCommand || !statusMeta) {
+        showToast('Status log retrieval is not available in this firmware.');
+        return;
+      }
+
+      const payload = new Uint8Array(12);
+      const view = new DataView(payload.buffer);
+      view.setUint32(0, statusMeta.port, true);
+      view.setUint32(4, 0, true);
+      view.setUint32(8, RECENT_STATUS_LOG_LIMIT, true);
+
+      clearStatusLogTimeout();
+      statusLogState = {
+        active: true,
+        records: [],
+        flashBuffer: new Uint8Array(0),
+        timeoutId: setTimeout(() => {
+          if (statusLogState.active) {
+            failStatusLogRequest('Timed out while loading status logs.');
+          }
+        }, STATUS_LOG_TIMEOUT_MS),
+        requestedCount: RECENT_STATUS_LOG_LIMIT
+      };
+      renderStatusLogResults(`Loading latest ${RECENT_STATUS_LOG_LIMIT} status messages...`);
+
+      try {
+        await executeBleCommand([0x20, parseInt(flashCommand.id, 16), payload.length, ...payload]);
+      } catch (error) {
+        failStatusLogRequest(`Failed to request status logs: ${error.message}`);
+      }
     }
 
     function findMessageByPortAndId(port, id) {
@@ -6392,6 +6655,9 @@
         if (tryHandleTrackResponse(data)) {
           return;
         }
+        if (tryHandleStatusLogResponse(data)) {
+          return;
+        }
         if (tryHandleScanFlashResponse(data)) {
           return;
         }
@@ -6727,6 +6993,10 @@
         showToast('A log download is already in progress.');
         return;
       }
+      if (statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
+        return;
+      }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
       if (!flashCommand) {
         showToast('Flash log command not available in this firmware.');
@@ -6771,6 +7041,10 @@
     function retryFlashLogDownload() {
       if (flashLogState.active) {
         showToast('A log download is already in progress.');
+        return;
+      }
+      if (statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
         return;
       }
       const request = flashLogState.lastRequest;
@@ -6835,6 +7109,10 @@
         showToast('Cancel the current log download first.');
         return;
       }
+      if (statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
+        return;
+      }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
       if (!flashCommand) {
         showToast('Flash log command not available in this firmware.');
@@ -6852,6 +7130,11 @@
     }
 
     function confirmFlashLogDownloadAll() {
+      if (statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
+        setFlashLogDownloadConfirmVisible(false);
+        return;
+      }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
       if (!flashCommand) {
         showToast('Flash log command not available in this firmware.');
@@ -6865,6 +7148,10 @@
     function requestEraseAllLogs() {
       if (flashLogState.active) {
         showToast('Cancel the current log download first.');
+        return;
+      }
+      if (statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
         return;
       }
       const flashClear = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_clear : null;
@@ -7248,6 +7535,10 @@
       }
       if (key === 'cmd_flash_get_all' && flashLogState.active) {
         showToast('A log download is already in progress.');
+        return;
+      }
+      if ((key === 'cmd_flash_get_all' || key === 'cmd_flash_get_from_head') && statusLogState.active) {
+        showToast('Wait for the status log request to finish first.');
         return;
       }
       if (key === 'cmd_get_ublox_fix') {
