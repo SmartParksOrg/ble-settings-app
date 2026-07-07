@@ -2572,7 +2572,7 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 
 .status-log-table {
     width: 100%;
-    min-width: 1080px;
+    min-width: 980px;
     border-collapse: collapse;
     font-size: 12px;
 }
@@ -2599,6 +2599,13 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 .status-log-table code {
     font-size: 11px;
     white-space: nowrap;
+}
+
+.status-log-age {
+    width: 1%;
+    max-width: 64px;
+    color: rgba(31, 42, 35, 0.72);
+    font-variant-numeric: tabular-nums;
 }
 
 .cmdq-result-card {

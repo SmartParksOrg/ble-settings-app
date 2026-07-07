@@ -2200,15 +2200,23 @@
         const frameStart = index + 3;
         const frameEnd = frameStart + payloadLen;
         const metadataLen = 4;
+        const metadataStart = frameEnd;
         const recordEnd = frameEnd + metadataLen;
         if (recordEnd > merged.length) {
           break;
         }
+        const timestamp = (
+          (merged[metadataStart] || 0)
+          | ((merged[metadataStart + 1] || 0) << 8)
+          | ((merged[metadataStart + 2] || 0) << 16)
+          | ((merged[metadataStart + 3] || 0) << 24)
+        ) >>> 0;
         records.push({
           port: nestedPort,
           id: nestedId,
           length: payloadLen,
-          payload: merged.slice(frameStart, frameEnd)
+          payload: merged.slice(frameStart, frameEnd),
+          timestamp
         });
         index = recordEnd;
       }
@@ -2259,6 +2267,44 @@
       return fallback;
     }
 
+    function formatStatusLogDecimal(value, decimals = 1, fallback = 'N/A') {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value.toFixed(decimals);
+      }
+      return fallback;
+    }
+
+    function formatStatusLogAge(timestamp) {
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        return 'N/A';
+      }
+
+      const diffSeconds = Math.round((Date.now() - (timestamp * 1000)) / 1000);
+      const isFuture = diffSeconds < 0;
+      const absSeconds = Math.abs(diffSeconds);
+      const units = [
+        ['y', 365 * 24 * 60 * 60],
+        ['mo', 30 * 24 * 60 * 60],
+        ['d', 24 * 60 * 60],
+        ['h', 60 * 60],
+        ['m', 60],
+        ['s', 1],
+      ];
+      const [suffix, unitSeconds] = units.find(([, seconds]) => absSeconds >= seconds) || ['s', 1];
+      const value = Math.max(1, Math.round(absSeconds / unitSeconds));
+      if (absSeconds < 5) {
+        return 'now';
+      }
+      return isFuture ? `in ${value}${suffix}` : `${value}${suffix} ago`;
+    }
+
+    function formatStatusLogTimestampTitle(timestamp) {
+      if (!Number.isFinite(timestamp) || timestamp <= 0) {
+        return 'No timestamp available';
+      }
+      return `${new Date(timestamp * 1000).toLocaleString('nl-NL')} - Unix ${timestamp}`;
+    }
+
     function renderStatusLogResults(message = '') {
       const resultsEl = document.getElementById('status-log-results');
       if (!resultsEl) {
@@ -2275,7 +2321,18 @@
         return;
       }
 
-      const rows = statusLogState.records.map((record, index) => {
+      const sortedRecords = statusLogState.records
+        .slice()
+        .sort((a, b) => {
+          const aTime = Number.isFinite(a.timestamp) && a.timestamp > 0 ? a.timestamp : -Infinity;
+          const bTime = Number.isFinite(b.timestamp) && b.timestamp > 0 ? b.timestamp : -Infinity;
+          if (bTime !== aTime) {
+            return bTime - aTime;
+          }
+          return (a.sequence || 0) - (b.sequence || 0);
+        });
+
+      const rows = sortedRecords.map((record, index) => {
         const status = record.status;
         const version = `${status.ver_fw_major}.${status.ver_fw_minor}`;
         const hardware = `${status.ver_hw_major}.${status.ver_hw_minor}`;
@@ -2283,9 +2340,12 @@
         const chargeLabel = status.chg ? 'charging' : 'discharging';
         const gpsLabel = status.ublox_busy ? 'busy' : 'idle';
         const lrLabel = status.err_lr_join ? 'join err' : `${status.lr_sat} sat`;
+        const ageLabel = formatStatusLogAge(record.timestamp);
+        const timestampTitle = formatStatusLogTimestampTitle(record.timestamp);
         return `
           <tr>
             <td>${index + 1}</td>
+            <td class="status-log-age" title="${escapeHtml(timestampTitle)}">${escapeHtml(ageLabel)}</td>
             <td>${escapeHtml(resetLabel)}</td>
             <td>${formatStatusLogCell(status.uptime)}</td>
             <td>${escapeHtml(status.temp.toFixed(1))}</td>
@@ -2295,10 +2355,12 @@
             <td>${escapeHtml(status.locked ? 'PIN set' : 'PIN not set')}</td>
             <td>${escapeHtml(gpsLabel)}</td>
             <td>${escapeHtml(lrLabel)}</td>
+            <td>${escapeHtml(formatStatusLogDecimal(status.acc_x))}</td>
+            <td>${escapeHtml(formatStatusLogDecimal(status.acc_y))}</td>
+            <td>${escapeHtml(formatStatusLogDecimal(status.acc_z))}</td>
             <td>${escapeHtml(buildStatusLogErrorLabel(status))}</td>
             <td>${escapeHtml(version)}</td>
             <td>${escapeHtml(hardware)}</td>
-            <td><code>${escapeHtml(record.raw)}</code></td>
           </tr>
         `;
       }).join('');
@@ -2309,6 +2371,7 @@
             <thead>
               <tr>
                 <th>#</th>
+                <th>Age</th>
                 <th>Reset</th>
                 <th>Uptime d</th>
                 <th>Temp C</th>
@@ -2318,10 +2381,12 @@
                 <th>Lock</th>
                 <th>UBLOX</th>
                 <th>LR</th>
+                <th>Acc X</th>
+                <th>Acc Y</th>
+                <th>Acc Z</th>
                 <th>Errors</th>
                 <th>FW</th>
                 <th>HW</th>
-                <th>Raw</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
@@ -2386,7 +2451,8 @@
         const decoded = decodeStatusMessage(framedPayload);
         statusLogState.records.push({
           status: decoded,
-          raw: bytesToHex(new Uint8Array([record.port, record.id, record.length, ...record.payload]))
+          timestamp: record.timestamp,
+          sequence: statusLogState.records.length
         });
         if (statusLogState.records.length >= statusLogState.requestedCount) {
           statusLogState.records = statusLogState.records.slice(0, statusLogState.requestedCount);
