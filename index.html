@@ -5695,6 +5695,9 @@
       } else if (normalizedKey.startsWith('ble_scan_')) {
         syncScanMirrorSetting('ble', settingId, value);
       }
+      if (isFeatureDisplaySettingKey(normalizedKey)) {
+        renderFeatures();
+      }
     };
 
     function displayCommands() {
@@ -6110,17 +6113,22 @@
       if (!hasSettings) {
         return null;
       }
-      const interval1Raw = getSettingValueByKey('ublox_send_interval');
-      const multipleRaw = getSettingValueByKey('ublox_multiple_intervals');
-      const interval2Raw = getSettingValueByKey('ublox_send_interval_2');
-      const interval1 = parseNumberSettingValue(interval1Raw);
-      const multipleIntervals = parseBoolSettingValue(multipleRaw);
-      const interval2 = parseNumberSettingValue(interval2Raw);
+      const schedule = getMultipleIntervalSchedule({
+        interval1Key: 'ublox_send_interval',
+        interval2Key: 'ublox_send_interval_2',
+        interval1StartKey: 'ublox_interval1_start',
+        interval2StartKey: 'ublox_interval2_start',
+        multipleKey: 'ublox_multiple_intervals'
+      });
+      const interval1 = schedule ? schedule.interval1 : 0;
+      const multipleIntervals = schedule ? schedule.multipleIntervals : false;
+      const interval2 = schedule ? schedule.interval2 : 0;
       const enabled = interval1 > 0 || (multipleIntervals && interval2 > 0);
       return {
         interval1,
         multipleIntervals,
         interval2,
+        schedule,
         enabled
       };
     }
@@ -6131,18 +6139,38 @@
         return null;
       }
       const enabledRaw = getSettingValueByKey('satellite_enabled');
-      const interval1Raw = getSettingValueByKey('satellite_send_interval');
-      const multipleRaw = getSettingValueByKey('satellite_multiple_intervals');
-      const interval2Raw = getSettingValueByKey('satellite_send_interval2');
       const enabled = parseBoolSettingValue(enabledRaw);
-      const interval1 = parseNumberSettingValue(interval1Raw);
-      const multipleIntervals = parseBoolSettingValue(multipleRaw);
-      const interval2 = parseNumberSettingValue(interval2Raw);
+      const schedule = getMultipleIntervalSchedule({
+        interval1Key: 'satellite_send_interval',
+        interval2Key: 'satellite_send_interval2',
+        interval1StartKey: 'satellite_interval1_start',
+        interval2StartKey: 'satellite_send_interval2_start',
+        multipleKey: 'satellite_multiple_intervals'
+      });
+      const interval1 = schedule ? schedule.interval1 : 0;
+      const multipleIntervals = schedule ? schedule.multipleIntervals : false;
+      const interval2 = schedule ? schedule.interval2 : 0;
       return {
         enabled,
         interval1,
         multipleIntervals,
-        interval2
+        interval2,
+        schedule
+      };
+    }
+
+    function getMultipleIntervalSchedule({ interval1Key, interval2Key, interval1StartKey, interval2StartKey, multipleKey }) {
+      const requiredKey = getFirstAvailableSettingKey([interval1Key]);
+      if (!requiredKey) {
+        return null;
+      }
+      const multipleIntervals = multipleKey ? parseBoolSettingValue(getSettingValueByKey(multipleKey)) : false;
+      return {
+        interval1: parseNumberSettingValue(getSettingValueByKey(interval1Key)),
+        interval2: interval2Key ? parseNumberSettingValue(getSettingValueByKey(interval2Key)) : 0,
+        interval1Start: interval1StartKey ? parseNumberSettingValue(getSettingValueByKey(interval1StartKey)) : 0,
+        interval2Start: interval2StartKey ? parseNumberSettingValue(getSettingValueByKey(interval2StartKey)) : 0,
+        multipleIntervals
       };
     }
 
@@ -6173,6 +6201,75 @@
       };
     }
 
+    function getVhfFeatureState() {
+      const state = getBooleanFeatureState(['vhf_enable', 'vhf_enabled']);
+      if (!state) {
+        return null;
+      }
+      return {
+        ...state,
+        schedule: getMultipleIntervalSchedule({
+          interval1Key: 'vhf_interval1',
+          interval2Key: 'vhf_interval2',
+          interval1StartKey: 'vhf_interval1_start',
+          interval2StartKey: 'vhf_interval2_start',
+          multipleKey: 'vhf_multiple_intervals'
+        })
+      };
+    }
+
+    function formatUtcHourLabel(hourRaw) {
+      const hour = Math.max(0, Math.min(23, Math.round(parseNumberSettingValue(hourRaw))));
+      return `${String(hour).padStart(2, '0')}:00`;
+    }
+
+    function formatScheduleInterval(secondsRaw) {
+      const seconds = Math.max(0, Math.round(parseNumberSettingValue(secondsRaw)));
+      if (seconds === 0) {
+        return 'off';
+      }
+      return formatUbloxInterval(seconds);
+    }
+
+    function formatMultipleIntervalDetail(schedule) {
+      if (!schedule) {
+        return '';
+      }
+      const multipleLabel = schedule.multipleIntervals ? 'Multiple intervals enabled' : 'Multiple intervals disabled';
+      if (!schedule.multipleIntervals) {
+        const intervalLabel = schedule.interval1 > 0
+          ? `Every ${formatScheduleInterval(schedule.interval1)}`
+          : 'Off';
+        return [
+          `<span>${escapeHtml(intervalLabel)}</span>`,
+          `<span>${escapeHtml(multipleLabel)}</span>`
+        ].join('');
+      }
+      const firstStart = formatUtcHourLabel(schedule.interval1Start);
+      const secondStart = formatUtcHourLabel(schedule.interval2Start);
+      return [
+        `<span>${escapeHtml(`${firstStart}-${secondStart} every ${formatScheduleInterval(schedule.interval1)}`)}</span>`,
+        `<span>${escapeHtml(`${secondStart}-${firstStart} every ${formatScheduleInterval(schedule.interval2)}`)}</span>`,
+        `<span>${escapeHtml(multipleLabel)}</span>`
+      ].join('');
+    }
+
+    function isFeatureDisplaySettingKey(key) {
+      return [
+        'ublox_send_interval', 'ublox_multiple_intervals', 'ublox_send_interval_2',
+        'ublox_interval1_start', 'ublox_interval2_start',
+        'satellite_enabled', 'satellite_send_interval', 'satellite_multiple_intervals',
+        'satellite_send_interval2', 'satellite_interval1_start', 'satellite_send_interval2_start',
+        'vhf_enable', 'vhf_enabled', 'vhf_interval1', 'vhf_interval2',
+        'vhf_interval1_start', 'vhf_interval2_start', 'vhf_multiple_intervals',
+        'cmdq_enabled', 'cmdq_searched_mac_address',
+        'ble_scan_interval', 'ble_scan_aggregate_interval', 'ble_scan_aggregated_interval',
+        'fence_enabled', 'fence_interval',
+        'outdoor_detection_enabled',
+        'switch_detection_enable', 'switch_detection_enabled', 'external_switch_detection_enabled'
+      ].includes(String(key || ''));
+    }
+
     function getFeatureDefinitions() {
       const ublox = getUbloxGpsState();
       const satellite = getSatelliteState();
@@ -6183,13 +6280,13 @@
           name: 'Ublox GPS',
           state: ublox,
           settingKey: ubloxSettingKey,
-          detail: `I1 ${formatUbloxInterval(ublox.interval1)}, I2 ${formatUbloxInterval(ublox.interval2)}`
+          detail: formatMultipleIntervalDetail(ublox.schedule)
         },
         satellite && satelliteSettingKey && {
           name: 'Satellite',
           state: satellite,
           settingKey: satelliteSettingKey,
-          detail: `I1 ${formatUbloxInterval(satellite.interval1)}, I2 ${formatUbloxInterval(satellite.interval2)}`
+          detail: formatMultipleIntervalDetail(satellite.schedule)
         },
         (() => {
           const state = getBooleanFeatureState(['cmdq_enabled']);
@@ -6216,8 +6313,8 @@
           return state && { name: 'Switch', state, settingKey: state.settingKey };
         })(),
         (() => {
-          const state = getBooleanFeatureState(['vhf_enable', 'vhf_enabled']);
-          return state && { name: 'VHF', state, settingKey: state.settingKey };
+          const state = getVhfFeatureState();
+          return state && { name: 'VHF', state, settingKey: state.settingKey, detail: formatMultipleIntervalDetail(state.schedule) };
         })()
       ].filter(Boolean);
     }
@@ -7488,19 +7585,19 @@
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();
       }
-      if (key === 'ublox_send_interval' || key === 'ublox_multiple_intervals' || key === 'ublox_send_interval_2') {
-        renderFeatures();
-        displayMainCommands();
-      }
-      if (key === 'satellite_enabled' || key === 'satellite_send_interval' || key === 'satellite_multiple_intervals' || key === 'satellite_send_interval2') {
-        renderFeatures();
+      if ([
+        'ublox_send_interval', 'ublox_multiple_intervals', 'ublox_send_interval_2',
+        'ublox_interval1_start', 'ublox_interval2_start'
+      ].includes(key)) {
         displayMainCommands();
       }
       if ([
-        'cmdq_enabled', 'cmdq_searched_mac_address', 'ble_scan_interval', 'ble_scan_aggregate_interval', 'ble_scan_aggregated_interval',
-        'fence_enabled', 'fence_interval', 'outdoor_detection_enabled', 'switch_detection_enable', 'switch_detection_enabled',
-        'external_switch_detection_enabled', 'vhf_enable', 'vhf_enabled'
+        'satellite_enabled', 'satellite_send_interval', 'satellite_multiple_intervals',
+        'satellite_send_interval2', 'satellite_interval1_start', 'satellite_send_interval2_start'
       ].includes(key)) {
+        displayMainCommands();
+      }
+      if (isFeatureDisplaySettingKey(key)) {
         renderFeatures();
       }
 
