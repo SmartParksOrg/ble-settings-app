@@ -6,6 +6,89 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>OpenCollar Edge BLE Web Connect</title>
   <script>
+    (function () {
+      let appRefreshPending = false;
+      let appRefreshTimer = null;
+
+      function isAppRefreshBlocked() {
+        const body = document.body;
+        return Boolean(body && body.classList.contains('connected'))
+          || Boolean(body && body.classList.contains('bootstrapping'))
+          || Boolean(body && body.classList.contains('dfu-active'))
+          || Boolean(window.isDfuSessionActive && window.isDfuSessionActive())
+          || Boolean(window.hasPendingDfuSelection && window.hasPendingDfuSelection());
+      }
+
+      async function clearBrowserCaches() {
+        if (!('caches' in window)) {
+          return;
+        }
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
+      }
+
+      function retryPendingAppRefresh() {
+        if (!window.__pendingAppRefresh || isAppRefreshBlocked()) {
+          return;
+        }
+        const pending = window.__pendingAppRefresh;
+        window.__pendingAppRefresh = null;
+        if (appRefreshTimer) {
+          clearInterval(appRefreshTimer);
+          appRefreshTimer = null;
+        }
+        window.requestAppRefresh(pending.reason, pending.options);
+      }
+
+      window.requestAppRefresh = function requestAppRefresh(reason = 'app update', options = {}) {
+        if (appRefreshPending) {
+          return;
+        }
+        if (isAppRefreshBlocked()) {
+          console.log(`Deferring app refresh for ${reason}.`);
+          window.__pendingAppRefresh = { reason, options };
+          if (!appRefreshTimer) {
+            appRefreshTimer = setInterval(retryPendingAppRefresh, 5000);
+          }
+          return;
+        }
+        appRefreshPending = true;
+        Promise.resolve()
+          .then(() => options.clearCaches ? clearBrowserCaches() : null)
+          .catch(error => console.warn('Failed to clear app caches:', error))
+          .finally(() => {
+            window.location.reload();
+          });
+      };
+
+      window.handleAppVersionInfo = function handleAppVersionInfo(versionInfo) {
+        if (!versionInfo) {
+          return;
+        }
+        const versionKey = [
+          versionInfo.version || '',
+          versionInfo.commit || '',
+          versionInfo.built_at || ''
+        ].join('|');
+        if (!versionKey.trim()) {
+          return;
+        }
+        const storageKey = 'ble-settings-app-version';
+        let previousVersion = null;
+        try {
+          previousVersion = localStorage.getItem(storageKey);
+          localStorage.setItem(storageKey, versionKey);
+        } catch (error) {
+          return;
+        }
+        if (previousVersion && previousVersion !== versionKey) {
+          window.requestAppRefresh('version change', { clearCaches: true });
+        }
+      };
+
+      window.flushPendingAppRefresh = retryPendingAppRefresh;
+    }());
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
@@ -13,16 +96,22 @@
           if (typeof reg.update === 'function') {
             reg.update();
           }
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+          reg.addEventListener('updatefound', () => {
+            const worker = reg.installing;
+            if (!worker) {
+              return;
+            }
+            worker.addEventListener('statechange', () => {
+              if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                worker.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
           navigator.serviceWorker.addEventListener('controllerchange', () => {
-            if (window.isDfuSessionActive && window.isDfuSessionActive()) {
-              console.log('Skipping auto-reload: DFU session active.');
-              return;
-            }
-            if (window.hasPendingDfuSelection && window.hasPendingDfuSelection()) {
-              console.log('Skipping auto-reload: DFU selection pending.');
-              return;
-            }
-            window.location.reload();
+            window.requestAppRefresh('service worker update');
           });
         })
         .catch(err => console.error('Service Worker registration failed:', err));
@@ -6683,6 +6772,9 @@
         reloadOnDisconnect = false;
         window.location.reload();
         return;
+      }
+      if (window.flushPendingAppRefresh) {
+        window.flushPendingAppRefresh();
       }
       if (!wasUserRequestedDisconnect && !inDfuMode) {
         const nameLabel = lastConnectedDeviceName ? ` ${lastConnectedDeviceName}` : ' the device';

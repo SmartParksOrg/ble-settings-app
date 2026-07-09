@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v17';
+const CACHE_NAME = 'app-cache-v18';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const DFU_MANIFEST_URL = toUrl('assets/dfu/manifest.json');
@@ -66,28 +66,61 @@ self.addEventListener('install', event => {
     self.skipWaiting();
 });
 
-// Activate Event: Cleanup old caches
-self.addEventListener('activate', event => {
-    event.waitUntil(
-        caches.keys().then(cacheNames => {
-            return Promise.all(
-                cacheNames.map(cache => {
-                    if (cache !== CACHE_NAME) {
-                        console.log('Deleting old cache:', cache);
-                        return caches.delete(cache);
-                    }
-                })
-            );
+async function clearOldCaches() {
+    const cacheNames = await caches.keys();
+    await Promise.all(
+        cacheNames.map(cache => {
+            if (cache !== CACHE_NAME) {
+                console.log('Deleting old cache:', cache);
+                return caches.delete(cache);
+            }
+            return Promise.resolve();
         })
     );
+}
+
+function shouldBypassBrowserCache(request) {
+    const url = new URL(request.url);
+    return request.mode === 'navigate'
+        || url.pathname.endsWith('/')
+        || url.pathname.endsWith('/index.html')
+        || url.pathname.endsWith('/composer.html')
+        || url.pathname.endsWith('/version.json')
+        || url.pathname.endsWith('/service-worker.js');
+}
+
+function makeNetworkRequest(request) {
+    if (!shouldBypassBrowserCache(request)) {
+        return request;
+    }
+    return new Request(request, { cache: 'reload' });
+}
+
+// Activate Event: Cleanup old caches and take control of open app tabs.
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        clearOldCaches().then(() => self.clients.claim())
+    );
+});
+
+self.addEventListener('message', event => {
+    if (!event.data || event.data.type !== 'SKIP_WAITING') {
+        return;
+    }
+    event.waitUntil(self.skipWaiting());
 });
 
 // Fetch Event: Network first, fallback to cache
 self.addEventListener('fetch', event => {
+    if (event.request.method !== 'GET') {
+        return;
+    }
     event.respondWith(
-        fetch(event.request)
+        fetch(makeNetworkRequest(event.request))
             .then(response => {
-                // Cache the updated file
+                if (!response || !response.ok || response.type === 'opaque') {
+                    return response;
+                }
                 return caches.open(CACHE_NAME).then(cache => {
                     cache.put(event.request, response.clone());
                     return response;

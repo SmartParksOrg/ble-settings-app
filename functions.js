@@ -121,6 +121,9 @@ async function updateAppVersionBadge() {
             throw new Error(`HTTP ${response.status}`);
         }
         const versionInfo = await response.json();
+        if (window.handleAppVersionInfo) {
+            window.handleAppVersionInfo(versionInfo);
+        }
         const version = versionInfo.version || 'unknown';
         const commit = versionInfo.commit ? ` (${String(versionInfo.commit).slice(0, 7)})` : '';
         const buildDate = formatBuildTime(versionInfo.built_at);
