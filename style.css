@@ -827,7 +827,8 @@ textarea {
 input,
 select,
 textarea,
-button {
+button,
+.button {
     font-size: 14px;
 }
 
@@ -2054,12 +2055,6 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     margin-bottom: 10px;
 }
 
-#dfu-bundled-use {
-    width: 100%;
-    justify-content: center;
-    font-size: 14px;
-}
-
 .dfu-bundled-select {
     width: 100%;
     min-width: 0;
@@ -2080,12 +2075,13 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     pointer-events: none;
 }
 
+#dfu-bundled-use,
 .dfu-file-button {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
     justify-content: center;
+    width: 100%;
+    line-height: 1.2;
 }
 
 .dfu-file-hint {
@@ -2097,6 +2093,28 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     font-size: 13px;
     margin-bottom: 8px;
     color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-user-status {
+    font-size: 14px;
+    margin-bottom: 12px;
+    color: rgba(31, 42, 35, 0.8);
+}
+
+.dfu-user-status.success {
+    color: #1e7b3a;
+    font-weight: 600;
+}
+
+.dfu-user-status.warning {
+    color: #8a5800;
+    font-weight: 600;
+}
+
+.dfu-user-status.danger,
+.dfu-user-status.error {
+    color: #b42318;
+    font-weight: 600;
 }
 
 .dfu-check-status {
@@ -2188,6 +2206,10 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     flex-wrap: wrap;
     gap: 10px;
     margin-bottom: 12px;
+}
+
+.dfu-upload-panel {
+    margin-top: 14px;
 }
 
 .dfu-upload-settings {

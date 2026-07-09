@@ -572,21 +572,15 @@
     </section>
 
     <section class="section section-card dfu-card">
-      <div class="section-card-title"><span class="icon file" aria-hidden="true"></span>Step 1: Select DFU file</div>
+      <div class="section-card-title"><span class="icon file" aria-hidden="true"></span>Device Firmware Update</div>
       <div class="section-card-body">
         <div class="dfu-bundled-picker" id="dfu-bundled-picker">
           <select id="dfu-bundled-select" class="dfu-bundled-select">
-            <option value="">Built-in DFU files (loading...)</option>
+            <option value="">Available firmware versions (loading...)</option>
           </select>
-          <button id="dfu-bundled-use" type="button" class="scan-button">Use built-in file</button>
+          <button id="dfu-bundled-use" type="button" class="scan-button">Use selected update</button>
         </div>
-        <div class="dfu-file-picker">
-          <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
-          <label for="dfu-file" class="button dfu-file-button">Upload DFU file</label>
-        </div>
-        <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
-        <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
-        <div id="dfu-file-match" class="dfu-file-match hidden"></div>
+        <div id="dfu-user-status" class="dfu-user-status hidden"></div>
         <div id="dfu-confirmation" class="dfu-confirmation hidden">
           <div class="dfu-confirmation-text">File checked. Do you want to continue with DFU?</div>
           <div class="dfu-confirmation-actions">
@@ -594,12 +588,31 @@
             <button id="dfu-confirm-proceed" type="button">Proceed</button>
           </div>
         </div>
+        <div class="dfu-upload-panel hidden" id="dfu-upload-section">
+          <div class="dfu-upload-actions">
+            <button id="dfu-upload" disabled>Start DFU upload</button>
+            <button id="dfu-cancel" class="secondary" disabled>Cancel</button>
+            <button id="dfu-finish" class="secondary">Finish DFU</button>
+          </div>
+          <div class="dfu-progress">
+            <div class="dfu-progress-bar" id="dfu-progress-bar"></div>
+          </div>
+          <div id="dfu-progress-text" class="dfu-progress-text">Upload progress: 0%</div>
+        </div>
       </div>
     </section>
 
-    <section class="section section-card dfu-card hidden" id="dfu-upload-section">
-      <div class="section-card-title"><span class="icon file-arrow-up" aria-hidden="true"></span>Step 2: Upload firmware</div>
+    <details class="section section-card dfu-card dfu-advanced-card" id="dfu-advanced-card">
+      <summary class="section-card-title"><span class="icon screwdriver-wrench" aria-hidden="true"></span>Advanced</summary>
       <div class="section-card-body">
+        <div class="dfu-file-picker">
+          <input type="file" id="dfu-file" class="dfu-file-input" accept=".bin,.zip" />
+          <label for="dfu-file" class="button dfu-file-button">Upload DFU file manually</label>
+        </div>
+        <div id="dfu-bundled-status" class="dfu-file-status">No built-in update selected.</div>
+        <div id="dfu-file-status" class="dfu-file-status">No file selected.</div>
+        <div id="dfu-check-status" class="dfu-check-status">Waiting for file selection.</div>
+        <div id="dfu-file-match" class="dfu-file-match hidden"></div>
         <div class="dfu-upload-status">
           <div class="dfu-upload-status-title">Upload status</div>
           <ul class="dfu-upload-status-list" id="dfu-upload-status-list">
@@ -615,11 +628,6 @@
             <li data-step="confirm"><span class="status-label">Confirmed</span><span class="status-detail"></span></li>
           </ul>
         </div>
-        <div class="dfu-upload-actions">
-          <button id="dfu-upload" disabled>Start DFU upload</button>
-          <button id="dfu-cancel" class="secondary" disabled>Cancel</button>
-          <button id="dfu-finish" class="secondary">Finish DFU</button>
-        </div>
         <div class="dfu-upload-settings">
           <label class="dfu-upload-setting">
             MTU budget (bytes)
@@ -630,16 +638,6 @@
             <input id="dfu-upload-timeout" type="number" min="1000" step="500" value="5000" />
           </label>
         </div>
-        <div class="dfu-progress">
-          <div class="dfu-progress-bar" id="dfu-progress-bar"></div>
-        </div>
-        <div id="dfu-progress-text" class="dfu-progress-text">Upload progress: 0%</div>
-      </div>
-    </section>
-
-    <details class="section section-card dfu-card dfu-advanced-card" id="dfu-advanced-card">
-      <summary class="section-card-title"><span class="icon screwdriver-wrench" aria-hidden="true"></span>Advanced tools</summary>
-      <div class="section-card-body">
         <div class="dfu-upload-actions">
           <button id="dfu-refresh-state" class="secondary">Refresh image state</button>
           <button id="dfu-test-image" class="secondary">Test uploaded image</button>
@@ -775,6 +773,22 @@
     window.server = server;
     window.txCharacteristic = txCharacteristic;
     window.rxCharacteristic = rxCharacteristic;
+    let dfuMainBleAllowDepth = 0;
+    let dfuMainBleLockActive = false;
+
+    function isDfuMainBleLocked() {
+      return (dfuMainBleLockActive || document.body.classList.contains('dfu-active')) && dfuMainBleAllowDepth === 0;
+    }
+
+    async function runMainBleDuringDfu(task) {
+      dfuMainBleAllowDepth += 1;
+      try {
+        return await task();
+      } finally {
+        dfuMainBleAllowDepth = Math.max(0, dfuMainBleAllowDepth - 1);
+      }
+    }
+    window.runMainBleDuringDfu = runMainBleDuringDfu;
     let readAllSettings = null;
     let autoLoaded = false;
     let lastPositionMessage = null;
@@ -1219,7 +1233,7 @@
     function startMessengerPolling() {
       stopMessengerPolling();
       messengerState.pollId = setInterval(() => {
-        if (!document.body.classList.contains('connected')) {
+        if (!document.body.classList.contains('connected') || document.body.classList.contains('dfu-active')) {
           return;
         }
         requestMessengerUnreadCount();
@@ -5919,6 +5933,41 @@
       await loadScript('dfu/dfu.js');
     }
 
+    function suspendMainBleActivityForDfu() {
+      dfuMainBleLockActive = true;
+      stopMessengerPolling();
+      if (flashLogState.active) {
+        cancelFlashLogDownload();
+      }
+      if (statusLogState.active) {
+        clearStatusLogTimeout();
+        statusLogState.active = false;
+      }
+      mapTrackState.active = false;
+      mapTrackState.pendingPlans = [];
+      setMapTracksOverlayVisible(false);
+      resetScanState('wifi');
+      resetScanState('ble');
+      fenceMeasurementPending = false;
+      clearFenceMeasurementTimeout();
+      ubloxFixPending = false;
+      clearUbloxFixTimeout();
+      clearUbloxFixCountdown();
+      setUbloxFixOverlayVisible(false);
+    }
+
+    async function waitForMainBleIdleForDfu(timeoutMs = 1500) {
+      const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+      try {
+        await Promise.race([
+          bleWriteQueue.catch(() => {}),
+          timeout
+        ]);
+      } catch (error) {
+        log(`Main BLE queue wait before DFU failed: ${error.message}`, true);
+      }
+    }
+
     function toggleDfuView(showDfu) {
       const sectionsToHide = [
         document.getElementById('status-area'),
@@ -5930,6 +5979,7 @@
         document.getElementById('ble-scan-area'),
         document.getElementById('settings-area'),
         document.getElementById('logs-area'),
+        document.getElementById('status-log-area'),
         document.getElementById('messenger-area'),
         document.getElementById('other-commands'),
         document.getElementById('map-area'),
@@ -5941,6 +5991,7 @@
       const notesAnchor = document.getElementById('firmware-notes-anchor');
       const connectedCard = dfuSection ? dfuSection.querySelector('.dfu-card') : null;
       if (showDfu) {
+        suspendMainBleActivityForDfu();
         sectionsToHide.forEach(section => section && section.classList.add('hidden'));
         container && container.classList.add('hidden');
         dfuContainer && dfuContainer.classList.remove('hidden');
@@ -5960,6 +6011,10 @@
         dfuContainer && dfuContainer.classList.add('hidden');
         dfuSection && dfuSection.classList.add('hidden');
         document.body.classList.remove('dfu-active');
+        dfuMainBleLockActive = false;
+        if (document.body.classList.contains('connected') && document.body.classList.contains('has-settings')) {
+          startMessengerPolling();
+        }
         if (notesArea && notesAnchor) {
           notesArea.classList.remove('dfu-notes-mode');
           notesAnchor.insertAdjacentElement('afterend', notesArea);
@@ -6023,11 +6078,16 @@
           return;
         }
         await loadDfuScriptsIfNeeded();
+        suspendMainBleActivityForDfu();
+        await waitForMainBleIdleForDfu();
         if (window.DfuApp && window.DfuApp.init) {
           window.DfuApp.init({ device, useExistingConnection: true });
         }
         toggleDfuView(true);
       } catch (error) {
+        if (!document.body.classList.contains('dfu-active')) {
+          dfuMainBleLockActive = false;
+        }
         showToast('Failed to load DFU tools.');
         console.error(error);
       }
@@ -6038,6 +6098,13 @@
     }
 
     document.getElementById('dfu-back-top').addEventListener('click', () => {
+      if (window.isDfuSessionActive && window.isDfuSessionActive()) {
+        showToast('DFU is in progress. Finish or reset the DFU session before leaving.');
+        return;
+      }
+      if (window.DfuApp && window.DfuApp.resetUi) {
+        window.DfuApp.resetUi();
+      }
       toggleDfuView(false);
     });
 
@@ -6764,9 +6831,17 @@
     document.getElementById('disconnect-button').addEventListener('click', function () {
       const inDfuMode = document.body.classList.contains('dfu-active');
       const dfuUploading = window.isDfuUploadInProgress && window.isDfuUploadInProgress();
+      const dfuSessionActive = window.isDfuSessionActive && window.isDfuSessionActive();
       if (inDfuMode && dfuUploading) {
         showToast('DFU upload in progress. Please wait before disconnecting.');
         return;
+      }
+      if (inDfuMode && dfuSessionActive) {
+        showToast('DFU is in progress. Finish or reset the DFU session before disconnecting.');
+        return;
+      }
+      if (inDfuMode && window.DfuApp && window.DfuApp.resetUi) {
+        window.DfuApp.resetUi();
       }
       if (device && device.gatt.connected) {
         userRequestedDisconnect = true;
@@ -7957,7 +8032,25 @@
       return executeBleCommand([0x20, CMD_SEND_ALL_SETTINGS, 0x00])
     }
 
+    function formatGattBuffer(buffer) {
+      try {
+        if (buffer instanceof ArrayBuffer) {
+          return bytesToHex(new Uint8Array(buffer));
+        }
+        if (ArrayBuffer.isView(buffer)) {
+          return bytesToHex(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
+        }
+      } catch (error) {
+        return 'unknown';
+      }
+      return 'unknown';
+    }
+
     async function writeGattValue(characteristic, buffer) {
+      if (isDfuMainBleLocked()) {
+        log(`Skipped main BLE GATT write during DFU: ${formatGattBuffer(buffer)}`);
+        return false;
+      }
       if (characteristic.writeValueWithResponse) {
         return characteristic.writeValueWithResponse(buffer);
       }
@@ -7970,6 +8063,10 @@
     let bleWriteQueue = Promise.resolve();
 
     async function executeBleCommand(command) {
+      if (isDfuMainBleLocked()) {
+        log(`Skipped main BLE command during DFU: ${bytesToHex(command)}`);
+        return false;
+      }
       log(`Sending command ${bytesToHex(command)}`);
 
       const commandBuffer = new Uint8Array(command).buffer;
@@ -7986,6 +8083,10 @@
     }
 
     async function updateBleSetting(settingId, newValue) {
+      if (isDfuMainBleLocked()) {
+        log(`Skipped setting update during DFU: ${settingId}`);
+        return false;
+      }
       const [settingKey, setting] = getById(settingId);
 
       let valueBytes = settingToBytes(settingKey, setting, newValue);

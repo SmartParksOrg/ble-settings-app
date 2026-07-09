@@ -120,9 +120,18 @@ const dfuState = {
   validHwVersionsByType: new Map(),
   uploadInProgress: false,
   bundledLoaded: false,
+  firmwarePresence: 'unknown',
+  presenceCheckId: 0,
+  selectionInProgress: false,
+  selectionRequestId: 0,
 };
 
-window.isDfuSessionActive = () => Boolean(dfuState.connected || dfuState.connecting || dfuState.uploadReady || dfuState.awaitingReboot);
+window.isDfuSessionActive = () => Boolean(
+  dfuState.uploadInProgress
+  || dfuState.awaitingReboot
+  || dfuState.autoActivateInProgress
+);
+window.isDfuConnectionBusy = () => Boolean(dfuState.connected || dfuState.connecting);
 window.hasPendingDfuSelection = () => Boolean(dfuState.fileData || dfuState.file);
 window.isDfuUploadInProgress = () => Boolean(dfuState.uploadInProgress);
 
@@ -149,6 +158,7 @@ function bindElements() {
     fileStatus: document.getElementById('dfu-file-status'),
     checkStatus: document.getElementById('dfu-check-status'),
     fileMatchStatus: document.getElementById('dfu-file-match'),
+    userStatus: document.getElementById('dfu-user-status'),
     bundledSelect: document.getElementById('dfu-bundled-select'),
     bundledUseButton: document.getElementById('dfu-bundled-use'),
     bundledStatus: document.getElementById('dfu-bundled-status'),
@@ -201,6 +211,16 @@ function setBundledStatus(message) {
   elements.bundledStatus.textContent = message;
 }
 
+function setUserStatus(message, status = '') {
+  if (!elements || !elements.userStatus) return;
+  elements.userStatus.textContent = message;
+  elements.userStatus.classList.toggle('hidden', !message);
+  elements.userStatus.classList.remove('success', 'warning', 'danger', 'error');
+  if (status) {
+    elements.userStatus.classList.add(status);
+  }
+}
+
 function buildBundledLabel(entry) {
   const release = entry.releaseId || entry.firmwareVersion || 'unknown';
   const hwTypeLabel = entry.hwType ? formatHwTypeLabel(entry.hwType) : 'unknown hardware';
@@ -221,7 +241,7 @@ function renderBundledOptions(entries, selectedPath = '') {
     }
     const option = document.createElement('option');
     option.value = '';
-    option.textContent = 'No built-in updates available';
+    option.textContent = 'No updates available';
     elements.bundledSelect.appendChild(option);
     elements.bundledSelect.disabled = true;
     return;
@@ -232,7 +252,7 @@ function renderBundledOptions(entries, selectedPath = '') {
   }
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = 'Select a built-in update';
+  placeholder.textContent = 'Select firmware version';
   elements.bundledSelect.appendChild(placeholder);
 
   entries.forEach(entry => {
@@ -322,6 +342,7 @@ async function loadBundledManifest() {
   dfuState.bundledLoaded = false;
   elements.bundledSelect.disabled = true;
   setBundledStatus('Loading built-in updates...');
+  setUserStatus('Loading available firmware versions...');
   try {
     assertHardwareTypesReady();
     const manifest = await window.loadDfuManifest();
@@ -347,15 +368,19 @@ async function loadBundledManifest() {
     applyBundledFilter();
     if (!entries.length) {
       setBundledStatus('No built-in updates available.');
+      setUserStatus('No firmware updates are available for this device.', 'warning');
     } else if (!dfuState.bundledEntries.length && dfuState.deviceInfo) {
       setBundledStatus('No built-in updates match this device.');
+      setUserStatus('No firmware updates match this device.', 'warning');
     } else {
       setBundledStatus('Built-in updates available.');
+      setUserStatus('');
     }
   } catch (error) {
     dfuState.bundledEntriesAll = [];
     renderBundledOptions([]);
     setBundledStatus('Built-in update list unavailable.');
+    setUserStatus('Firmware update list unavailable.', 'error');
     logDfu(`Bundled DFU manifest load failed: ${error.message || error}`, true);
   } finally {
     dfuState.bundledLoaded = true;
@@ -371,22 +396,50 @@ async function loadBundledManifest() {
 
 async function loadBundledFile(entry) {
   if (!entry || !entry.path || !entry.fileName) return;
+  const selectionRequestId = ++dfuState.selectionRequestId;
+  dfuState.selectionInProgress = true;
   setBundledStatus(`Loading ${entry.fileName}...`);
+  setUserStatus('Checking selected update...');
+  updateMainDfuFlowUi();
   try {
     const response = await fetch(entry.path);
     if (!response.ok) {
       throw new Error(`File fetch failed: ${response.status}`);
     }
     const blob = await response.blob();
+    if (selectionRequestId !== dfuState.selectionRequestId) {
+      return false;
+    }
     const file = new File([blob], entry.fileName, { type: 'application/octet-stream' });
     if (elements.fileInput) {
       elements.fileInput.value = '';
     }
     await handleFileSelection({ target: { files: [file] } });
+    if (selectionRequestId !== dfuState.selectionRequestId) {
+      return false;
+    }
     setBundledStatus(`Loaded ${entry.fileName}.`);
+    if (isCheckAllowed(dfuState.checkResult)) {
+      dfuState.userConfirmed = true;
+      showConfirmationPanel(false);
+      showUploadSection();
+      updateUploadButtons();
+      setSelectionReadyStatus('start');
+      if (dfuState.connected) {
+        evaluateSelectedFirmwarePresence();
+      }
+    }
+    return true;
   } catch (error) {
     setBundledStatus('Failed to load built-in update.');
+    setUserStatus('Failed to load the selected update.', 'error');
     logDfu(`Bundled DFU file load failed: ${error.message || error}`, true);
+    return false;
+  } finally {
+    if (selectionRequestId === dfuState.selectionRequestId) {
+      dfuState.selectionInProgress = false;
+      updateMainDfuFlowUi();
+    }
   }
 }
 
@@ -641,6 +694,43 @@ function isCheckAllowed(result) {
     || result === DfuFileCheckResult.warnUnverifiedFile;
 }
 
+function getSelectionReadyStatus(action = 'start') {
+  const status = getCheckStatusType(dfuState.checkResult);
+  if (dfuState.checkResult === DfuFileCheckResult.warnOlderFirmware) {
+    const suffix = action === 'continue'
+      ? ' Continuing will activate this already-loaded firmware.'
+      : ' Start the update only if you intend to downgrade.';
+    return {
+      message: `${dfuCheckMessages[DfuFileCheckResult.warnOlderFirmware]}${suffix}`,
+      status,
+    };
+  }
+  if (dfuState.checkResult === DfuFileCheckResult.warnUnverifiedFile) {
+    const suffix = action === 'continue'
+      ? ' Continuing will activate this already-loaded file.'
+      : ' Start the update only if you accept this risk.';
+    return {
+      message: `${dfuCheckMessages[DfuFileCheckResult.warnUnverifiedFile]}${suffix}`,
+      status,
+    };
+  }
+  if (action === 'continue') {
+    return {
+      message: 'Update is already loaded on the device. Continue to activate it.',
+      status: 'success',
+    };
+  }
+  return {
+    message: 'Update ready. Start the firmware update when you are ready.',
+    status: status || 'success',
+  };
+}
+
+function setSelectionReadyStatus(action = 'start') {
+  const ready = getSelectionReadyStatus(action);
+  setUserStatus(ready.message, ready.status);
+}
+
 function updateCheckStatus(result) {
   if (!elements) return;
   dfuState.checkResult = result;
@@ -672,6 +762,99 @@ function resetConfirmationState() {
   showConfirmationPanel(false);
 }
 
+function resetFirmwarePresenceState() {
+  dfuState.presenceCheckId += 1;
+  dfuState.firmwarePresence = 'unknown';
+  if (elements && elements.uploadButton) {
+    elements.uploadButton.textContent = 'Start DFU upload';
+    elements.uploadButton.classList.remove('hidden');
+  }
+  if (elements && elements.cancelButton) {
+    elements.cancelButton.classList.remove('hidden');
+  }
+}
+
+function updateFirmwarePresenceUi(presence = null) {
+  if (!elements) return;
+  const status = presence && presence.status ? presence.status : dfuState.firmwarePresence;
+  dfuState.firmwarePresence = status || 'unknown';
+
+  if (elements.uploadButton) {
+    elements.uploadButton.classList.toggle('hidden', status === 'active');
+    elements.uploadButton.textContent = (status === 'present' || status === 'pending')
+      ? 'Continue update'
+      : 'Start DFU upload';
+  }
+  if (elements.cancelButton) {
+    elements.cancelButton.classList.toggle('hidden', status === 'active');
+  }
+
+  if (status === 'active') {
+    setUserStatus('This firmware is already installed.', 'success');
+    updateUploadStatus('start', 'completed', 'Already active');
+    updateUploadStatus('finish', 'completed', 'Done');
+    updateUploadStatus('state', 'completed', 'Checked');
+    updateUploadStatus('test', 'completed', 'Not required');
+    updateUploadStatus('reboot', 'completed', 'Not required');
+    updateUploadStatus('reconnect', 'completed', 'Not required');
+    updateUploadStatus('verify', 'completed', 'Active');
+    updateUploadStatus('confirm', 'completed', 'Confirmed');
+  } else if (status === 'present') {
+    setSelectionReadyStatus('continue');
+    updateUploadStatus('start', 'completed', 'Skipped');
+    updateUploadStatus('finish', 'completed', 'Already loaded');
+    updateUploadStatus('state', 'completed', 'Found image');
+  } else if (status === 'pending') {
+    const ready = getSelectionReadyStatus('continue');
+    setUserStatus(`${ready.message} It is already marked for activation.`, ready.status);
+    updateUploadStatus('start', 'completed', 'Skipped');
+    updateUploadStatus('finish', 'completed', 'Already loaded');
+    updateUploadStatus('state', 'completed', 'Found image');
+    updateUploadStatus('test', 'completed', 'Already pending');
+  } else if (status === 'missing') {
+    setSelectionReadyStatus('start');
+  } else if (dfuState.userConfirmed && isCheckAllowed(dfuState.checkResult)) {
+    setSelectionReadyStatus('start');
+  }
+
+  updateUploadButtons();
+}
+
+function updateMainDfuFlowUi() {
+  if (!elements) return;
+  const hasSelection = Boolean(dfuState.fileData && dfuState.userConfirmed);
+  const active = dfuState.firmwarePresence === 'active';
+  const continuing = dfuState.firmwarePresence === 'present' || dfuState.firmwarePresence === 'pending';
+  const busy = Boolean(dfuState.uploadInProgress || dfuState.awaitingReboot || dfuState.autoActivateInProgress);
+  const uploadPanelVisible = dfuState.selectionInProgress || dfuState.uploadReady || hasSelection || active || continuing || busy;
+
+  if (elements.bundledPicker) {
+    const noBundledOptions = dfuState.bundledLoaded && (!dfuState.bundledEntries || !dfuState.bundledEntries.length);
+    elements.bundledPicker.classList.toggle('hidden', dfuState.selectionInProgress || uploadPanelVisible || noBundledOptions);
+  }
+  if (elements.uploadSection) {
+    elements.uploadSection.classList.toggle('hidden', !uploadPanelVisible);
+  }
+  if (elements.uploadButton) {
+    elements.uploadButton.classList.toggle('hidden', active || dfuState.uploadInProgress || dfuState.awaitingReboot);
+  }
+  if (elements.cancelButton) {
+    const canCancelSelection = dfuState.selectionInProgress || (hasSelection && !dfuState.awaitingReboot && !active);
+    elements.cancelButton.classList.toggle('hidden', !(dfuState.uploadInProgress || canCancelSelection));
+    elements.cancelButton.textContent = dfuState.uploadInProgress ? 'Cancel upload' : 'Cancel';
+  }
+  if (elements.finishButton) {
+    elements.finishButton.classList.toggle('hidden', !active);
+  }
+  if (elements.progressBar && elements.progressText) {
+    const progressWidth = elements.progressBar.style.width || '0%';
+    const hasProgress = progressWidth !== '0%' || dfuState.uploadInProgress;
+    const showProgress = dfuState.uploadInProgress || dfuState.awaitingReboot || hasProgress;
+    elements.progressBar.parentElement.classList.toggle('hidden', !showProgress);
+    elements.progressText.classList.toggle('hidden', !showProgress);
+  }
+}
+
 function updateFileMatchStatus(message = '', status = '') {
   if (!elements || !elements.fileMatchStatus) return;
   if (!message) {
@@ -689,9 +872,14 @@ function updateFileMatchStatus(message = '', status = '') {
 
 function updateUploadButtons() {
   if (!elements) return;
-  const canUpload = dfuState.connected && dfuState.uploadReady && Boolean(dfuState.fileData) && dfuState.userConfirmed;
+  updateMainDfuFlowUi();
+  const canUpload = dfuState.connected
+    && dfuState.uploadReady
+    && Boolean(dfuState.fileData)
+    && dfuState.userConfirmed
+    && dfuState.firmwarePresence !== 'active';
   elements.uploadButton.disabled = !canUpload;
-  elements.cancelButton.disabled = !dfuState.connected;
+  elements.cancelButton.disabled = dfuState.uploadInProgress && !dfuState.connected;
   if (elements.reconnectButton) {
     const now = Date.now();
     const locked = dfuState.reconnectUnlockAt && now < dfuState.reconnectUnlockAt;
@@ -855,6 +1043,66 @@ function setMainBleRefs(selectedDevice, server, rxChar, txChar) {
   }
 }
 
+async function runMainBleDuringDfu(task) {
+  if (typeof window.runMainBleDuringDfu === 'function') {
+    return window.runMainBleDuringDfu(task);
+  }
+  return task();
+}
+
+function hasMainBleUartReady() {
+  return Boolean(
+    window.device
+    && window.device.gatt
+    && window.device.gatt.connected
+    && window.rxCharacteristic
+    && window.txCharacteristic
+  );
+}
+
+async function restoreMainBleSession(options = {}) {
+  const { disconnectDfu = false, forceDiscover = false, requestStatus = false } = options;
+  if (typeof window.connectToDevice !== 'function') {
+    throw new Error('Main connection handler unavailable.');
+  }
+
+  if (disconnectDfu && dfuState.mcumgr && dfuState.connected) {
+    try {
+      dfuState.mcumgr.disconnect();
+    } catch (error) {
+      logDfu(`DFU disconnect before main connect failed: ${error.message || error}`, true);
+    }
+    dfuState.connected = false;
+    dfuState.connecting = false;
+    await delay(400);
+  }
+
+  const target = await getMainBleDevice();
+  if (!target) {
+    throw new Error('No known device to reconnect.');
+  }
+
+  await runMainBleDuringDfu(async () => {
+    if (forceDiscover || requestStatus || !hasMainBleUartReady()) {
+      await window.connectToDevice(target, { reuseConnected: true });
+      setMainBleRefs(target, window.server, window.rxCharacteristic, window.txCharacteristic);
+    } else {
+      setMainBleRefs(window.device, window.server, window.rxCharacteristic, window.txCharacteristic);
+    }
+    if (requestStatus && typeof window.requestStatusMessage === 'function') {
+      await window.requestStatusMessage();
+    }
+  });
+
+  const mainConnected = await waitForMainConnection(8000);
+  if (!mainConnected) {
+    throw new Error('Main UART service not ready yet.');
+  }
+
+  logDfu(`Main BLE restored: device=${Boolean(window.device)} gatt=${Boolean(window.device && window.device.gatt)} connected=${Boolean(window.device && window.device.gatt && window.device.gatt.connected)} rx=${Boolean(window.rxCharacteristic)} tx=${Boolean(window.txCharacteristic)}`);
+  return true;
+}
+
 async function returnToMainDeviceScreen() {
   setWaitingOverlayState({
     message: 'Connecting to device...',
@@ -864,38 +1112,14 @@ async function returnToMainDeviceScreen() {
     showContinue: false,
   });
   try {
-    if (typeof window.connectToDevice !== 'function') {
-      throw new Error('Main connection handler unavailable.');
-    }
-    if (window.device && window.device.gatt && window.device.gatt.connected && window.rxCharacteristic) {
+    if (hasMainBleUartReady()) {
       setWaitingOverlay(false);
       if (typeof window.toggleDfuView === 'function') {
         window.toggleDfuView(false);
       }
       return;
     }
-    if (dfuState.mcumgr && dfuState.connected) {
-      try {
-        dfuState.mcumgr.disconnect();
-      } catch (error) {
-        logDfu(`DFU disconnect before main connect failed: ${error.message || error}`, true);
-      }
-      await delay(400);
-    }
-    const target = await getMainBleDevice();
-    if (!target) {
-      throw new Error('No known device to reconnect.');
-    }
-    await window.connectToDevice(target, { reuseConnected: true });
-    setMainBleRefs(target, window.server, window.rxCharacteristic, window.txCharacteristic);
-    if (typeof window.requestStatusMessage === 'function') {
-      await window.requestStatusMessage();
-    }
-    logDfu(`Main BLE state after connect: device=${Boolean(window.device)} gatt=${Boolean(window.device && window.device.gatt)} connected=${Boolean(window.device && window.device.gatt && window.device.gatt.connected)} rx=${Boolean(window.rxCharacteristic)}`);
-    const mainConnected = await waitForMainConnection(8000);
-    if (!mainConnected) {
-      throw new Error('Main connection not ready yet.');
-    }
+    await restoreMainBleSession({ disconnectDfu: true, requestStatus: true });
     setWaitingOverlay(false);
     if (typeof window.toggleDfuView === 'function') {
       window.toggleDfuView(false);
@@ -919,6 +1143,7 @@ function setUploadProgress(percentage) {
   const safePercentage = Number.isFinite(percentage) ? percentage : 0;
   elements.progressBar.style.width = `${safePercentage}%`;
   elements.progressText.textContent = `Upload progress: ${safePercentage}%`;
+  updateMainDfuFlowUi();
 }
 
 function applyUploadSettings() {
@@ -934,18 +1159,12 @@ function applyUploadSettings() {
 }
 
 async function attemptStatusRefresh() {
-  const globalDevice = window.device;
-  const globalRx = window.rxCharacteristic;
   if (typeof window.requestStatusMessage !== 'function') {
     logDfu('Status refresh skipped: requestStatusMessage not available.');
     return;
   }
-  if (!globalDevice || !globalDevice.gatt || !globalDevice.gatt.connected || !globalRx) {
-    logDfu('Status refresh skipped: BLE status connection not available.');
-    return;
-  }
   try {
-    await window.requestStatusMessage();
+    await restoreMainBleSession({ disconnectDfu: true, requestStatus: true });
     setTimeout(() => {
       hydrateDeviceInfo();
     }, 600);
@@ -958,6 +1177,7 @@ function resetUploadProgress() {
   if (!elements) return;
   elements.progressBar.style.width = '0%';
   elements.progressText.textContent = 'Upload progress: 0%';
+  updateMainDfuFlowUi();
 }
 
 function resetDfuSession() {
@@ -974,10 +1194,14 @@ function resetDfuSession() {
     elements.bundledSelect.value = '';
   }
   setBundledStatus('No built-in update selected.');
+  setUserStatus('');
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
   dfuState.checkResult = DfuFileCheckResult.emptyFileName;
+  dfuState.selectionInProgress = false;
+  dfuState.selectionRequestId += 1;
+  resetFirmwarePresenceState();
   resetConfirmationState();
   clearPendingDfu();
   resetUploadProgress();
@@ -989,10 +1213,48 @@ function resetDfuSession() {
   showToast('DFU session reset. Reconnect and reselect a file.');
 }
 
+function cancelDfuSelection() {
+  if (!elements) return;
+  dfuState.selectionInProgress = false;
+  dfuState.selectionRequestId += 1;
+  dfuState.file = null;
+  dfuState.fileData = null;
+  dfuState.fileImageInfo = null;
+  dfuState.checkResult = DfuFileCheckResult.emptyFileName;
+  dfuState.userConfirmed = false;
+  resetFirmwarePresenceState();
+  clearPendingDfu();
+  if (elements.fileInput) {
+    elements.fileInput.value = '';
+  }
+  if (elements.bundledSelect) {
+    elements.bundledSelect.value = '';
+  }
+  setBundledStatus('No built-in update selected.');
+  setUserStatus('');
+  updateCheckStatus(DfuFileCheckResult.emptyFileName);
+  updateFileMatchStatus();
+  resetConfirmationState();
+  resetUploadProgress();
+  resetUploadStatus();
+  hideUploadSection();
+  updateUploadButtons();
+  showToast('DFU selection cancelled.');
+}
+
+function cancelCurrentDfuAction() {
+  if (dfuState.uploadInProgress) {
+    cancelUpload();
+    return;
+  }
+  cancelDfuSelection();
+}
+
 function hideUploadSection() {
   if (!elements) return;
   elements.uploadSection.classList.add('hidden');
   dfuState.uploadReady = false;
+  resetFirmwarePresenceState();
   updateUploadButtons();
 }
 
@@ -1000,6 +1262,7 @@ function showUploadSection() {
   if (!elements) return;
   elements.uploadSection.classList.remove('hidden');
   dfuState.uploadReady = true;
+  updateFirmwarePresenceUi();
   updateUploadButtons();
 }
 
@@ -1098,8 +1361,10 @@ async function handleFileSelection(event) {
     dfuState.file = null;
     dfuState.fileData = null;
     dfuState.fileImageInfo = null;
+    dfuState.selectionInProgress = false;
     clearPendingDfu();
     elements.fileStatus.textContent = 'No file selected.';
+    setUserStatus('');
     updateCheckStatus(DfuFileCheckResult.emptyFileName);
     updateFileMatchStatus();
     resetConfirmationState();
@@ -1110,11 +1375,14 @@ async function handleFileSelection(event) {
   }
 
   dfuState.file = file;
+  resetFirmwarePresenceState();
+  resetConfirmationState();
   elements.fileStatus.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
 
   const isAppUpdate = isAppUpdateFile(file.name);
   if (!dfuState.deviceInfo && !isAppUpdate) {
     updateCheckStatus(DfuFileCheckResult.deviceHwVersionUnknown);
+    setUserStatus('Device details are missing. Wait for the device status to load and try again.', 'error');
     elements.deviceWarning.classList.remove('hidden');
     updateUploadStatus('file', 'error', 'Missing device info');
     return;
@@ -1148,12 +1416,16 @@ async function handleFileSelection(event) {
   updateCheckStatus(result);
   if (result === DfuFileCheckResult.ok) {
     updateUploadStatus('file', 'completed', file.name);
+    setUserStatus('Update checked successfully.', 'success');
   } else if (result === DfuFileCheckResult.warnOlderFirmware) {
     updateUploadStatus('file', 'warning', file.name);
+    setUserStatus(dfuCheckMessages[result], 'warning');
   } else if (result === DfuFileCheckResult.warnUnverifiedFile) {
     updateUploadStatus('file', 'danger', file.name);
+    setUserStatus(dfuCheckMessages[result], 'danger');
   } else {
     updateUploadStatus('file', 'error', dfuCheckMessages[result] || 'Invalid file');
+    setUserStatus('Selected update is not compatible with this device.', 'error');
   }
   updateFileMatchStatus();
 
@@ -1213,7 +1485,11 @@ function setupMcuManager() {
       setWaitingOverlay(false);
     }
     if (!dfuState.awaitingReboot && dfuState.fileData && isCheckAllowed(dfuState.checkResult)) {
-      refreshImageState();
+      if (dfuState.userConfirmed) {
+        evaluateSelectedFirmwarePresence();
+      } else {
+        refreshImageState();
+      }
     }
     if (dfuState.awaitingReboot) {
       updateUploadStatus('reboot', 'completed', 'Done');
@@ -1265,6 +1541,7 @@ function setupMcuManager() {
     dfuState.uploadInProgress = false;
     logDfu('Upload finished.');
     showToast('DFU upload finished.');
+    setUserStatus('Upload finished. Preparing the device restart...', 'success');
     setUploadProgress(100);
     updateUploadStatus('finish', 'completed', 'Done');
     updateUploadStatus('state', 'active', 'Checking');
@@ -1288,6 +1565,7 @@ function setupMcuManager() {
     const suffix = detail.length ? ` (${detail.join(', ')})` : '';
     logDfu(`${error || 'Upload failed.'}${suffix}`, true);
     showToast(error || 'DFU upload failed.');
+    setUserStatus(error || 'DFU upload failed.', 'error');
     updateUploadStatus('start', 'error', 'Failed');
     updateUploadStatus('finish', 'error', 'Failed');
     updateUploadButtons();
@@ -1297,6 +1575,7 @@ function setupMcuManager() {
     dfuState.uploadInProgress = false;
     logDfu('Upload cancelled.');
     showToast('DFU upload cancelled.');
+    setUserStatus('DFU upload cancelled.', 'warning');
     resetUploadProgress();
     updateUploadStatus('start', 'warning', 'Cancelled');
     updateUploadStatus('finish', 'warning', 'Cancelled');
@@ -1595,6 +1874,26 @@ async function refreshImageState() {
   }
 }
 
+async function evaluateSelectedFirmwarePresence() {
+  if (!dfuState.connected || !dfuState.fileData || !dfuState.userConfirmed || !isCheckAllowed(dfuState.checkResult)) {
+    resetFirmwarePresenceState();
+    updateUploadButtons();
+    return null;
+  }
+  const checkId = ++dfuState.presenceCheckId;
+  setUserStatus('Checking device firmware state...');
+  const presence = await getFirmwarePresence();
+  if (checkId !== dfuState.presenceCheckId) {
+    return null;
+  }
+  if (presence.state) {
+    renderImageState(presence.state);
+    updateFileMatchFromState(presence.state);
+  }
+  updateFirmwarePresenceUi(presence);
+  return presence;
+}
+
 async function testUploadedImage(stateOverride = null) {
   if (!dfuState.mcumgr || !dfuState.connected) {
     showToast('Connect to the device before testing an image.');
@@ -1623,6 +1922,8 @@ async function testUploadedImage(stateOverride = null) {
     updateUploadStatus('reboot', 'active', 'Rebooting');
     dfuState.awaitingReboot = true;
     dfuState.reconnectStart = Date.now();
+    updateUploadButtons();
+    setUserStatus('Device is rebooting to activate the update...', 'success');
     logDfu('Reboot requested; waiting for reconnect.');
     setWaitingOverlay(true);
     setReconnectLock();
@@ -1700,6 +2001,7 @@ async function handlePostUploadFlow(existingState = null) {
   if (uploadedImage.active) {
     updateUploadStatus('verify', 'completed', 'Already active');
     updateUploadStatus('confirm', 'completed', 'Confirmed');
+    updateFirmwarePresenceUi({ status: 'active', image: uploadedImage, state: response });
     return;
   }
 
@@ -1722,6 +2024,8 @@ async function handlePostUploadFlow(existingState = null) {
     updateUploadStatus('reboot', 'active', 'Rebooting');
     dfuState.awaitingReboot = true;
     dfuState.reconnectStart = Date.now();
+    updateUploadButtons();
+    setUserStatus('Device is rebooting to activate the update...', 'success');
     logDfu('Reboot requested; waiting for reconnect.');
     savePendingDfu({
       deviceName: dfuState.deviceInfo ? dfuState.deviceInfo.deviceName : null,
@@ -1783,7 +2087,10 @@ async function verifyRebootedFirmware() {
       }
       await dfuState.mcumgr.cmdImageConfirm(hashBytes);
       updateUploadStatus('confirm', 'completed', 'Confirmed');
-      attemptStatusRefresh();
+      updateFirmwarePresenceUi({ status: 'active', image, state: response });
+      clearPendingDfu();
+      updateUploadButtons();
+      await attemptStatusRefresh();
       setWaitingOverlayState({
         message: 'Firmware verified. You can return to the device.',
         showSpinner: false,
@@ -1804,7 +2111,7 @@ async function verifyRebootedFirmware() {
         showContinue: false,
       });
     }
-    clearPendingDfu();
+    updateUploadButtons();
     return;
   }
   updateUploadStatus('verify', 'warning', 'Not active yet');
@@ -2002,20 +2309,15 @@ async function startUpload() {
   const presence = await getFirmwarePresence();
   if (presence.status === 'active') {
     showToast('Selected firmware is already active on this device.');
-    updateUploadStatus('start', 'completed', 'Already active');
-    updateUploadStatus('finish', 'completed', 'Done');
-    updateUploadStatus('state', 'completed', 'Checked');
-    updateUploadStatus('test', 'completed', 'Not required');
-    updateUploadStatus('reboot', 'completed', 'Not required');
-    updateUploadStatus('reconnect', 'completed', 'Not required');
-    updateUploadStatus('verify', 'completed', 'Active');
-    updateUploadStatus('confirm', 'completed', 'Confirmed');
+    updateFirmwarePresenceUi(presence);
     clearPendingDfu();
     logDfu('Upload skipped: firmware already active.');
     return;
   }
   if (presence.status === 'present' || presence.status === 'pending') {
     showToast('Firmware already uploaded. Continuing DFU to reboot and verify.');
+    setUserStatus('Continuing update...', 'success');
+    updateFirmwarePresenceUi(presence);
     updateUploadStatus('start', 'completed', 'Skipped');
     updateUploadStatus('finish', 'completed', 'Skipped');
     updateUploadStatus('state', 'active', 'Checking');
@@ -2030,6 +2332,7 @@ async function startUpload() {
   updateUploadStatus('finish', 'pending', '');
   setDfuStepGroup('pending', '');
   logDfu('Starting DFU upload...');
+  setUserStatus('Uploading firmware...', 'success');
   const mtu = dfuState.mcumgr.getMtu ? dfuState.mcumgr.getMtu() : 'unknown';
   const timeout = dfuState.mcumgr.getChunkTimeout ? dfuState.mcumgr.getChunkTimeout() : 'unknown';
   const fallbacks = dfuState.mcumgr.getMtuFallbacks ? dfuState.mcumgr.getMtuFallbacks() : [];
@@ -2039,6 +2342,7 @@ async function startUpload() {
   logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, fallbacks=${fallbacks.join(', ') || 'none'}`);
   logDfu(`Image info: version=${imageVersion}, hash=${imageHash || 'unknown'}`);
   dfuState.uploadInProgress = true;
+  updateUploadButtons();
   try {
     await dfuState.mcumgr.cmdUpload(dfuState.fileData);
   } catch (error) {
@@ -2068,6 +2372,7 @@ function attachHandlers() {
       const entry = getSelectedBundledEntry();
       if (!entry) {
         setBundledStatus('Select a built-in update first.');
+        setUserStatus('Choose an update first.', 'warning');
         return;
       }
       await loadBundledFile(entry);
@@ -2075,19 +2380,7 @@ function attachHandlers() {
   }
   if (elements.confirmCancelButton) {
     elements.confirmCancelButton.addEventListener('click', () => {
-      if (elements.fileInput) {
-        elements.fileInput.value = '';
-      }
-      dfuState.file = null;
-      dfuState.fileData = null;
-      dfuState.fileImageInfo = null;
-      updateFileMatchStatus();
-      resetConfirmationState();
-      updateCheckStatus(DfuFileCheckResult.emptyFileName);
-      resetUploadProgress();
-      resetUploadStatus();
-      updateUploadButtons();
-      showToast('DFU cancelled.');
+      cancelDfuSelection();
     });
   }
   if (elements.confirmProceedButton) {
@@ -2095,9 +2388,10 @@ function attachHandlers() {
       dfuState.userConfirmed = true;
       showConfirmationPanel(false);
       showUploadSection();
+      setSelectionReadyStatus('start');
       updateUploadButtons();
       if (dfuState.connected) {
-        refreshImageState();
+        evaluateSelectedFirmwarePresence();
       }
     });
   }
@@ -2108,7 +2402,7 @@ function attachHandlers() {
     elements.uploadButton.addEventListener('click', startUpload);
   }
   if (elements.cancelButton) {
-    elements.cancelButton.addEventListener('click', cancelUpload);
+    elements.cancelButton.addEventListener('click', cancelCurrentDfuAction);
   }
   if (elements.reconnectButton) {
     elements.reconnectButton.addEventListener('click', () => {
@@ -2147,16 +2441,8 @@ function attachHandlers() {
           }
           await delay(400);
         }
-        await window.connectToDevice(selected);
         setMainBleRefs(selected, window.server, window.rxCharacteristic, window.txCharacteristic);
-        if (typeof window.requestStatusMessage === 'function') {
-          await window.requestStatusMessage();
-        }
-        logDfu(`Main BLE state after connect: device=${Boolean(window.device)} gatt=${Boolean(window.device && window.device.gatt)} connected=${Boolean(window.device && window.device.gatt && window.device.gatt.connected)} rx=${Boolean(window.rxCharacteristic)}`);
-        const mainConnected = await waitForMainConnection(8000);
-        if (!mainConnected) {
-          throw new Error('Main connection not ready yet.');
-        }
+        await restoreMainBleSession({ requestStatus: true });
         clearPendingDfu();
         setWaitingOverlayState({
           message: 'Reconnected. Ready to return to the device.',
@@ -2188,20 +2474,14 @@ function attachHandlers() {
   }
   if (elements.finishButton) {
     elements.finishButton.addEventListener('click', async () => {
-      if (typeof window.toggleDfuView === 'function') {
-        window.toggleDfuView(false);
-      }
       try {
-        if (window.device && window.connectToDevice) {
-          if (!window.device.gatt || !window.device.gatt.connected) {
-            await window.connectToDevice(window.device);
-          }
-        }
-        if (typeof window.requestStatusMessage === 'function') {
-          await window.requestStatusMessage();
+        await restoreMainBleSession({ disconnectDfu: true, requestStatus: true });
+        if (typeof window.toggleDfuView === 'function') {
+          window.toggleDfuView(false);
         }
       } catch (error) {
         logDfu(`Finish DFU failed: ${error.message || error}`, true);
+        showToast(`Finish DFU failed: ${error.message || error}`);
       }
     });
   }
@@ -2218,6 +2498,22 @@ function attachHandlers() {
 
 function resetUi() {
   if (!elements) return;
+  dfuState.file = null;
+  dfuState.fileData = null;
+  dfuState.fileImageInfo = null;
+  dfuState.checkResult = DfuFileCheckResult.emptyFileName;
+  dfuState.userConfirmed = false;
+  dfuState.selectionInProgress = false;
+  dfuState.selectionRequestId += 1;
+  resetFirmwarePresenceState();
+  if (elements.fileInput) {
+    elements.fileInput.value = '';
+  }
+  if (elements.bundledSelect) {
+    elements.bundledSelect.value = '';
+  }
+  setBundledStatus('No built-in update selected.');
+  setUserStatus('');
   resetUploadProgress();
   resetUploadStatus();
   updateUploadButtons();
