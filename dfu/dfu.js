@@ -1917,7 +1917,7 @@ async function testUploadedImage(stateOverride = null) {
   }
   updateUploadStatus('test', 'active', 'Marking for test');
   try {
-    await dfuState.mcumgr.cmdImageTest(targetBytes);
+    await markImagePendingAndVerify(targetBytes, targetHash);
     updateUploadStatus('test', 'completed', 'Done');
     updateUploadStatus('reboot', 'active', 'Rebooting');
     dfuState.awaitingReboot = true;
@@ -1938,6 +1938,36 @@ async function testUploadedImage(stateOverride = null) {
     updateUploadStatus('test', 'error', 'Failed');
     logDfu(`Test image failed: ${error.message || error}`, true);
   }
+}
+
+async function markImagePendingAndVerify(hashBytes, hash, attempts = 5, delayMs = 600) {
+  if (!hashBytes) {
+    throw new Error('No image hash bytes available for test');
+  }
+  const expectedHash = normalizeHash(hash || hashBytes);
+  await dfuState.mcumgr.cmdImageTest(hashBytes);
+
+  let lastState = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) {
+      await delay(delayMs);
+    } else {
+      await delay(250);
+    }
+    const state = await fetchImageStateWithRetry(2, delayMs);
+    lastState = state;
+    if (state && state.images) {
+      renderImageState(state);
+      updateFileMatchFromState(state);
+      const image = findImageByHash(state.images, expectedHash);
+      if (image && image.pending) {
+        return state;
+      }
+    }
+  }
+
+  const summary = lastState && lastState.images ? summarizeImageState(lastState) : 'no image state';
+  throw new Error(`Image was not marked pending before reboot (${summary})`);
 }
 
 async function confirmActiveImage() {
@@ -2013,10 +2043,7 @@ async function handlePostUploadFlow(existingState = null) {
   try {
     if (!uploadedImage.pending) {
       updateUploadStatus('test', 'active', 'Marking for test');
-      if (!expectedHashBytes) {
-        throw new Error('No image hash bytes available for test');
-      }
-      await dfuState.mcumgr.cmdImageTest(expectedHashBytes);
+      await markImagePendingAndVerify(expectedHashBytes, expectedHash);
       updateUploadStatus('test', 'completed', 'Done');
     } else {
       updateUploadStatus('test', 'completed', 'Already pending');
