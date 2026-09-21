@@ -1,6 +1,21 @@
 {
   "notes": [
     {
+      "id": "open-collar-8-0-0-settings",
+      "title": "Open Collar 8.0.0 settings migration",
+      "appliesTo": {
+        "fwVersionMin": "8.0.0",
+        "fwVersionMax": null,
+        "fwVersions": [],
+        "hwVersions": [],
+        "hwTypes": []
+      },
+      "body": [
+        "The firmware automatically migrates saved settings to the new family-based storage format.",
+        "Export a settings profile before changing firmware. Downgrading to firmware v7.3 or earlier can restore defaults because those versions use the old storage addresses."
+      ]
+    },
+    {
       "id": "flash-get-from-head-offset",
       "title": "Flash logs: CMD_FLASH_GET_FROM_HEAD start offset bug",
       "appliesTo": {

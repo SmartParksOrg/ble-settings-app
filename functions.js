@@ -1,5 +1,5 @@
 let settingsData = null;
-let settingsMap = new Map(); // maps int ID -> [key, meta]
+let settingsMap = new Map(); // maps ID (family << 8 | wire ID on v8) -> [key, meta]
 let settingsMeta = null;
 const intervalPatterns = [
     /^(?!.*advertisement).*_interval(?:_\d+|\d+)?$/, // matches _interval, _interval1, _interval2, _interval_2, etc., but not _advertisement_interval
@@ -69,6 +69,7 @@ const customInputRenderers = {
     ublox_interval1_start: renderUtcHourInput,
     ublox_interval2_start: renderUtcHourInput,
     ublox_cold_fix_hour_interval: renderHoursInput,
+    ublox_min_satellites_timer: renderSecondsInput,
     satellite_interval1_start: renderUtcHourInput,
     satellite_send_interval2_start: renderUtcHourInput,
     vhf_interval1_start: renderUtcHourInput,
@@ -79,6 +80,7 @@ const customInputRenderers = {
 
 // Static list of settings files
 const SETTINGS_FILES = [
+    "settings-v8.0.0.json",
     "settings-v7.2.0.json",
     "settings-v7.1.0.json",
     "settings_v7.0.0.json",
@@ -179,20 +181,29 @@ async function loadSettingsMeta() {
     }
 }
 
-async function loadSettings(selectedFile) {
+async function loadSettings(selectedFile, deviceStatus = null) {
     settingsData = null;
     settingsMap = new Map();
 
     try {
         await loadSettingsMeta();
         const response = await fetch(selectedFile);
-        settingsData = await response.json();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const data = await response.json();
+        if (deviceStatus && schemaUsesFamilies(data) !== firmwareUsesFamilies(deviceStatus)) {
+            throw new Error('This settings file uses a different protocol from the connected firmware. Select a matching settings version.');
+        }
+        settingsData = data;
 
         settingsMap = new Map();
         registerValues(settingsData.settings, "setting");
         registerValues(settingsData.commands, "command");
         registerValues(settingsData.values, "value");
     } catch (error) {
+        settingsData = null;
+        settingsMap = new Map();
         throw new Error(`Error loading settings: ${error.message}`);
     }
 }
@@ -315,11 +326,114 @@ function toggleGroup(group) {
 
 function registerValues(data, type) {
     for (const [key, value] of Object.entries(data)) {
-        // key is the string name of the setting
-        // value includes: id, default, min, max, conversion, etc.
+        // Keep a unique address in existing DOM IDs and lookup maps. The original
+        // byte ID is retained separately; commands never acquire a family byte.
+        value.wireId = parseProtocolByte(value.id);
+        if (type !== 'command' && schemaUsesFamilies(settingsData)) {
+            const family = parseProtocolByte(value.family);
+            value.id = `0x${toHex(family)}${toHex(value.wireId)}`;
+        }
         value["type"] = type;
+        if (settingsMap.has(parseInt(value.id, 16))) {
+            throw new Error(`Duplicate settings address: ${value.id}`);
+        }
         settingsMap.set(parseInt(value.id, 16), [key, value]);
     }
+}
+
+function parseProtocolByte(value) {
+    const byte = typeof value === 'string' && /^0x[0-9a-f]{1,2}$/i.test(value)
+        ? Number(value) : value;
+    if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+        throw new Error(`Invalid protocol byte: ${value}`);
+    }
+    return byte;
+}
+
+function schemaUsesFamilies(data = settingsData) {
+    return Boolean(data && (data.settings_family ||
+        Object.values(data.settings || {}).some(setting => setting.family !== undefined)));
+}
+
+function firmwareUsesFamilies(status) {
+    // The v8 release includes the protocol introduced in development v7.4.
+    return status.ver_fw_major > 7 || (status.ver_fw_major === 7 && status.ver_fw_minor >= 4);
+}
+
+function findSettingsFileForFirmware(status, files = SETTINGS_FILES) {
+    return files.map(file => ({ file, version: file.match(/v(\d+)\.(\d+)\.(\d+)/) }))
+        .filter(({ version }) => version && Number(version[1]) === status.ver_fw_major &&
+            Number(version[2]) === status.ver_fw_minor)
+        .sort((a, b) => Number(b.version[3]) - Number(a.version[3]))[0]?.file || null;
+}
+
+function getProtocolAddress(setting) {
+    const id = parseProtocolByte(setting.wireId ?? setting.id);
+    return setting.type !== 'command' && setting.family !== undefined
+        ? [parseProtocolByte(setting.family), id] : [id];
+}
+
+function encodeProtocolRecord(setting, valueBytes) {
+    return [...getProtocolAddress(setting), parseProtocolByte(valueBytes.length), ...valueBytes];
+}
+
+function isSingleReadCommand(key) {
+    return key === 'cmd_send_single_setting' || key === 'cmd_send_single_val';
+}
+
+function encodeReadRequest(id, commandId) {
+    const [key, command] = getById(commandId);
+    const [, target] = getById(id);
+    const expectedType = key === 'cmd_send_single_setting' ? 'setting' : 'value';
+    if (!isSingleReadCommand(key) || target.type !== expectedType) {
+        throw new Error('Select a matching setting or runtime value to read.');
+    }
+    return encodeProtocolRecord(command, getProtocolAddress(target));
+}
+
+function decodeSettingRecords(bytes, expectedType, onWarning = () => {}) {
+    if (!settingsData) {
+        throw new Error('Load a matching settings file before decoding settings.');
+    }
+    const hasFamily = schemaUsesFamilies();
+    const headerLength = hasFamily ? 3 : 2;
+    const records = [];
+    for (let offset = 0; offset < bytes.length;) {
+        if (bytes.length - offset < headerLength) {
+            throw new Error('Truncated settings response header.');
+        }
+        const family = hasFamily ? bytes[offset++] : 0;
+        const id = bytes[offset++];
+        const length = bytes[offset++];
+        if (bytes.length - offset < length) {
+            throw new Error('Truncated settings response value.');
+        }
+        const valueBytes = bytes.slice(offset, offset + length);
+        offset += length;
+        const address = (family << 8) | id;
+        const entry = settingsMap.get(address);
+        if (!entry || entry[1].type !== expectedType) {
+            onWarning(`Skipping unknown ${expectedType} address 0x${toHex(address)}.`);
+            continue;
+        }
+        const [key, setting] = entry;
+        if (length !== setting.length && !(setting.conversion === 'string' && length <= setting.length)) {
+            onWarning(`Skipping ${key}: received ${length} bytes, expected ${setting.length}.`);
+            continue;
+        }
+        records.push({ key, setting, value: bytesToSetting(setting, valueBytes) });
+    }
+    return records;
+}
+
+const credentialSettingKeys = new Set([
+    'app_key', 'device_eui', 'app_eui', 'device_name', 'device_pin',
+    'lp0_app_key', 'lp0_network_key', 'lp0_dev_addr',
+    's_band_app_key', 's_band_network_key', 's_band_dev_adr'
+]);
+
+function isCredentialSetting(setting) {
+    return Boolean(setting && credentialSettingKeys.has(getById(setting.id)[0]));
 }
 
 function getByKey(key) {
@@ -580,6 +694,9 @@ function renderSettingInfoTrigger(description, details = []) {
 
 function getSettingOptions(key) {
     const meta = getSettingMeta(key);
+    if (schemaUsesFamilies() && meta && Array.isArray(meta.familyOptions)) {
+        return meta.familyOptions;
+    }
     return meta && Array.isArray(meta.options) ? meta.options : null;
 }
 

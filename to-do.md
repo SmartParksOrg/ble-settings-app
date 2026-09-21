@@ -14,4 +14,11 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v17`.
+- Service worker cache is currently `app-cache-v19`.
+
+Firmware v8 support completed:
+- Bundled the official v8.0.0 settings schema.
+- Added family-aware settings/value lookup, BLE reads/writes, and HEX composition.
+- Preserved legacy firmware support and setting-name-based JSON profiles.
+- Updated v8 BLE scan filter choices and added protocol regression tests.
+- Physical-device verification remains to be performed on v8 hardware.

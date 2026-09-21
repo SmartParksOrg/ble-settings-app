@@ -770,7 +770,6 @@
     const CMD_READ_ALL_LR_MESSAGES = 0xC5;
     const TRACK_POINTS_LIMIT = 25;
     const VAL_UBLOX_TIME = 0xD8;
-    const VAL_N_MES = 0xEB;
     const MSG_TIMESTAMP = 0x97;
     const MSG_CMD_CONFIRM = 0xF3;
     const MSG_LAST_POSITION = 0xFE;
@@ -780,7 +779,6 @@
     const MESSENGER_POLL_MS = 30000;
 
     const excludeFromImportExport = ['tracker_type', 'ble_adv'];
-    const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     const messengerState = {
       messages: [],
       unread: null,
@@ -1070,13 +1068,6 @@
 
     function isFirmwareV5(statusMessage) {
       return statusMessage && statusMessage.ver_fw_major === 5;
-    }
-
-    function isCredentialSetting(setting) {
-      if (!setting || !setting.id) {
-        return false;
-      }
-      return credentialSettingIds.has(parseInt(setting.id, 16));
     }
 
     function setLrUpdateMode(enabled) {
@@ -2787,11 +2778,13 @@
       }
 
       log(`Loading settings from ${selectedFile}...`);
+      document.body.classList.remove('has-settings');
+      stopMessengerPolling();
       setConnectionBootstrapState(true, 'Loading settings...', `Reading ${selectedFile}.`);
 
       try {
         document.getElementById('settings-search').value = '';
-        await loadSettings(selectedFile);
+        await loadSettings(selectedFile, lastStatusInfo);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
         resetCmdqState();
@@ -2819,6 +2812,10 @@
       } catch (error) {
         console.error(error);
         log(`Error loading settings: ${error.message}`, true);
+        showToast(error.message);
+        if (settingsSelection) {
+          settingsSelection.classList.remove('hidden');
+        }
         setConnectionBootstrapState(false);
       }
     };
@@ -3542,6 +3539,8 @@
       const statusItems = [];
       let lrUpdateBanner = '';
       lastStatusInfo = {
+        ver_fw_major: statusMessage.ver_fw_major,
+        ver_fw_minor: statusMessage.ver_fw_minor,
         fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
         hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`,
         fwType: statusMessage.ver_fw_type,
@@ -5892,7 +5891,7 @@
       }
 
       for (const [key, command] of Object.entries(settingsData.commands)) {
-        const allowComplex = key === 'cmd_flash_get_from_head';
+        const allowComplex = key === 'cmd_flash_get_from_head' || isSingleReadCommand(key);
         if (((command.length !== 0 && command.length !== 1) && !allowComplex) || dangerousCommands.some(rx => rx.test(key)) || key in mainCommands) {
           continue;
         }
@@ -6693,11 +6692,11 @@
       }
       const settingsDropdown = document.getElementById('settings-dropdown');
       const settingsSelection = document.getElementById('settings-selection');
-      const fwVersion = `v${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`;
+      const matchingFile = findSettingsFileForFirmware(statusMessage);
       let matched = false;
 
       for (let i = 0; i < settingsDropdown.options.length; i++) {
-        if (settingsDropdown.options[i].text.includes(fwVersion)) {
+        if (settingsDropdown.options[i].value.split('/').pop() === matchingFile) {
           settingsDropdown.selectedIndex = i;
           matched = true;
           loadSelectedSettings();
@@ -6747,6 +6746,8 @@
         settingsSelection.classList.remove('hidden');
       }
       lastStatusInfo = null;
+      settingsData = null;
+      settingsMap = new Map();
       updateFirmwareNotes(null);
       document.body.classList.remove('has-status');
       document.body.classList.remove('has-settings');
@@ -7014,9 +7015,9 @@
           } else if (flashLogState.active) {
             showFlashLogFailure(`Device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
           }
-        } else if (port === 3) {
-          decodeBleValueResponse(data.slice(1));
-        } else if (port === 30 && data[1] == VAL_UBLOX_TIME) {
+        } else if (port === 3 || (port === 30 && settingsData)) {
+          decodeBleValueResponse(data.slice(1), port === 3 ? 'setting' : 'value');
+        } else if (port === 30 && data[1] == VAL_UBLOX_TIME && lastStatusInfo && !firmwareUsesFamilies(lastStatusInfo)) {
           if (data.length < 7) {
             throw new Error(`UBLOX time payload too short (${data.length} bytes)`);
           }
@@ -7679,7 +7680,7 @@
       const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port);
       if (portName) {
         if (portName === 'port_values') {
-          decodeBleValueResponse(data.slice(1));
+          decodeBleValueResponse(data.slice(1), 'value');
           return;
         }
         const id = data[1];
@@ -7748,14 +7749,11 @@
       }
     }
 
-    function decodeBleValueResponse(bytes) {
-      for (let i = 0; i < bytes.length;) {
-        const id = bytes[i++];
-        const len = bytes[i++];
-        const valueBytes = bytes.slice(i, i + len);
-
-        const [key, setting] = getById(id);
-        let value = bytesToSetting(setting, valueBytes);
+    function decodeBleValueResponse(bytes, expectedType = 'setting') {
+      const records = decodeSettingRecords(bytes, expectedType, message => log(message, true));
+      for (const record of records) {
+        const { key, setting } = record;
+        let value = record.value;
         if (
           value === undefined ||
           value === null ||
@@ -7772,6 +7770,12 @@
         if (key === 'flash_nr_msg') {
           updateFlashLogCount(value);
         }
+        if (key === 'ublox_time') {
+          const timestampEl = document.getElementById('ublox-timestamp');
+          if (timestampEl) {
+            timestampEl.textContent = new Date(value * 1000).toLocaleString('nl-NL');
+          }
+        }
         if (key === 'n_mes') {
           messengerState.unread = Number(value);
           updateMessengerMeta();
@@ -7780,7 +7784,6 @@
           }
           messengerState.pendingUnreadCheck = false;
         }
-        i += len;
       }
     }
 
@@ -7846,11 +7849,7 @@
     }
 
     async function requestBleValue(id, cmd) {
-      if (typeof id === 'string' || id instanceof String) {
-        id = parseInt(id, 16);
-      }
-
-      return executeBleCommand([0x20, cmd, 0x01, id]);
+      return executeBleCommand([0x20, ...encodeReadRequest(id, cmd)]);
     }
 
     async function executeCommand(cmd) {
@@ -7859,6 +7858,10 @@
       }
 
       const [key, commandMeta] = getById(cmd);
+      if (isSingleReadCommand(key)) {
+        const selected = document.getElementById(`command-select-${commandMeta.id}`)?.value;
+        return requestBleValue(selected, cmd);
+      }
       if (key === 'cmd_get_ublox_fix' && ubloxBusyStatus) {
         showToast('UBLOX is busy. Please wait before starting another fix.');
         return;
@@ -8183,8 +8186,7 @@
 
       let valueBytes = settingToBytes(settingKey, setting, newValue);
 
-      const length = valueBytes.length;
-      const command = [0x03, parseInt(settingId, 16), length, ...valueBytes];
+      const command = [0x03, ...encodeProtocolRecord(setting, valueBytes)];
       const commandBuffer = new Uint8Array(command).buffer;
 
       log(`Sending update for ${settingKey} (ID: ${settingId}) with value: ${newValue}`);

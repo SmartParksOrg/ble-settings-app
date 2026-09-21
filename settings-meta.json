@@ -78,6 +78,13 @@
       "label": "scan filter",
       "description": "Filtering applied to scanned data before storing or sending.",
       "display_name": "scan filter",
+      "familyOptions": [
+        { "value": 0, "label": "No filter" },
+        { "value": 1, "label": "Only configured manufacturer ID (ble_scan_manufacturer_id)" },
+        { "value": 2, "label": "MAC address (not implemented in firmware)" },
+        { "value": 3, "label": "Smartphones" },
+        { "value": 4, "label": "Exclude configured manufacturer ID (ble_scan_manufacturer_id)" }
+      ],
       "options": [
         {
           "value": 0,
@@ -852,6 +859,12 @@
       "label": "min satellites",
       "description": "GNSS (u-blox) related setting.",
       "display_name": "min satellites"
+    },
+    "ublox_min_satellites_timer": {
+      "category": "gps",
+      "label": "minimum satellites check timeout",
+      "description": "Seconds before checking whether enough satellites are visible to continue acquiring a GPS fix.",
+      "display_name": "minimum satellites check timeout"
     },
     "ublox_multiple_intervals": {
       "category": "gps",

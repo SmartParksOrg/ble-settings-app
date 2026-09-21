@@ -304,7 +304,6 @@
       }
     }
 
-    const credentialSettingIds = new Set([0x10, 0x11, 0x12, 0x21, 0x2a, 0x44, 0x45, 0x46]);
     let lastPayloadType = 'none';
     const COMPOSER_MESSAGING_MAX_LEN = 46;
 
@@ -447,13 +446,6 @@
         notesArea.classList.remove('hidden');
         document.body.classList.add('composer-notes-visible');
       });
-    }
-
-    function isCredentialSetting(setting) {
-      if (!setting || !setting.id) {
-        return false;
-      }
-      return credentialSettingIds.has(parseInt(setting.id, 16));
     }
 
     function sanitizeFilename(name) {
@@ -1141,6 +1133,11 @@
         // Convert to bytes
         let valueBytes;
         try {
+          if (settingObj.type === 'command' && isSingleReadCommand(settingKey)) {
+            const selected = document.getElementById(`command-select-${settingObj.id}`)?.value;
+            encodedBytes.push(...encodeReadRequest(selected, settingObj.id));
+            continue;
+          }
           if (settingObj.type === 'command' && settingObj.length === 1) {
             const selectEl = document.getElementById(`command-select-${settingObj.id}`);
             const inputEl = document.getElementById(`command-input-${settingObj.id}`);
@@ -1202,11 +1199,7 @@
           return;
         }
 
-        // Example format: [settingId, length, valueBytes...]
-        const length = valueBytes.length;
-        const idInt = parseInt(settingObj.id, 16);
-
-        encodedBytes.push(idInt, length, ...valueBytes);
+        encodedBytes.push(...encodeProtocolRecord(settingObj, valueBytes));
       }
 
       // If nothing is selected
