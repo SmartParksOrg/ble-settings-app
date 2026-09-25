@@ -126,6 +126,7 @@ const dfuState = {
   uploadAckedBytes: 0,
   autoActivateArmed: false,
   autoActivateInProgress: false,
+  postUploadInProgress: false,
   userConfirmed: false,
   validHwVersionsByType: new Map(),
   uploadInProgress: false,
@@ -1187,15 +1188,46 @@ async function returnToDeviceAfterDfu(version = null, message = null) {
     return;
   }
   try {
+    if (!(target.gatt && target.gatt.connected)) {
+      let lastError = null;
+      for (let attempt = 1; attempt <= 3 && !(target.gatt && target.gatt.connected); attempt += 1) {
+        try {
+          await target.gatt.connect();
+        } catch (error) {
+          lastError = error;
+          logDfu(`GATT reconnect before returning failed (attempt ${attempt}): ${error.message || error}`, true);
+          await delay(2000);
+        }
+      }
+      if (!(target.gatt && target.gatt.connected)) {
+        throw lastError || new Error('Device is not connected.');
+      }
+    }
+    // Leave DFU mode first so the main page's BLE lock is released before the
+    // PIN, status and settings requests that connectToDevice triggers.
     if (typeof window.toggleDfuView === 'function') {
       window.toggleDfuView(false);
     }
     resetUi();
     setWaitingOverlay(false);
     await window.connectToDevice(target, { reuseConnected: true });
+    if (!document.body.classList.contains('connected')) {
+      throw new Error('UART service not ready.');
+    }
   } catch (error) {
-    logDfu(`Return to device failed: ${error.message || error}`, true);
-    showToast(`Update installed, but reconnecting the device screen failed: ${error.message || error}`);
+    const message = error && error.message ? error.message : String(error);
+    logDfu(`Return to device failed: ${message}`, true);
+    showToast(`Reconnect failed: ${message}. Use Scan to reconnect.`);
+    if (document.body.classList.contains('dfu-active')) {
+      setWaitingOverlayState({
+        message: `Unable to connect to the device. ${message}`,
+        showSpinner: false,
+        showCountdown: false,
+        showReconnect: true,
+        showRetry: false,
+        showContinue: true,
+      });
+    }
   }
 }
 
@@ -1302,38 +1334,7 @@ async function restoreMainBleSession(options = {}) {
 }
 
 async function returnToMainDeviceScreen() {
-  setWaitingOverlayState({
-    message: 'Connecting to device...',
-    showSpinner: true,
-    showCountdown: false,
-    showReconnect: false,
-    showContinue: false,
-  });
-  try {
-    if (hasMainBleUartReady()) {
-      setWaitingOverlay(false);
-      if (typeof window.toggleDfuView === 'function') {
-        window.toggleDfuView(false);
-      }
-      return;
-    }
-    await restoreMainBleSession({ disconnectDfu: true, requestStatus: true });
-    setWaitingOverlay(false);
-    if (typeof window.toggleDfuView === 'function') {
-      window.toggleDfuView(false);
-    }
-  } catch (error) {
-    const message = error && error.message ? error.message : String(error);
-    logDfu(`Return to device failed: ${message}`, true);
-    showToast(`Reconnect failed: ${message}`);
-    setWaitingOverlayState({
-      message: `Unable to connect to the device. ${message}`,
-      showSpinner: false,
-      showCountdown: false,
-      showReconnect: false,
-      showContinue: true,
-    });
-  }
+  await returnToDeviceAfterDfu(null, 'Returning to the device...');
 }
 
 function formatDurationShort(seconds) {
@@ -2089,7 +2090,7 @@ function updateFileMatchFromState(state) {
       return;
     }
     updateFileMatchStatus('Selected file matches Slot #1 (standby). Will activate without re-upload.', 'warning');
-    if (dfuState.userConfirmed && dfuState.connected && isCheckAllowed(dfuState.checkResult) && !dfuState.awaitingReboot && !dfuState.autoActivateInProgress) {
+    if (dfuState.userConfirmed && dfuState.connected && isCheckAllowed(dfuState.checkResult) && !dfuState.awaitingReboot && !dfuState.autoActivateInProgress && !dfuState.postUploadInProgress) {
       dfuState.autoActivateArmed = true;
       dfuState.autoActivateInProgress = true;
       testUploadedImage(state).finally(() => {
@@ -2164,6 +2165,9 @@ async function testUploadedImage(stateOverride = null) {
     await markImagePendingAndVerify(targetBytes, targetHash);
     updateUploadStatus('test', 'completed', 'Done');
     updateUploadStatus('reboot', 'active', 'Rebooting');
+    dfuState.expectedImageHash = targetHash;
+    dfuState.expectedImageHashBytes = targetBytes;
+    dfuState.expectedImageVersion = (slot1 && slot1.version) || (dfuState.fileImageInfo && dfuState.fileImageInfo.version) || null;
     dfuState.awaitingReboot = true;
     dfuState.reconnectStart = Date.now();
     updateUploadButtons();
@@ -2248,6 +2252,15 @@ function findImageByHash(images, hash) {
 }
 
 async function handlePostUploadFlow(existingState = null) {
+  dfuState.postUploadInProgress = true;
+  try {
+    await handlePostUploadFlowInner(existingState);
+  } finally {
+    dfuState.postUploadInProgress = false;
+  }
+}
+
+async function handlePostUploadFlowInner(existingState = null) {
   await delay(400);
   const response = existingState || await fetchImageStateWithRetry(3, 750);
   if (!response || !response.images) {
@@ -2317,20 +2330,6 @@ async function handlePostUploadFlow(existingState = null) {
 
 async function verifyRebootedFirmware() {
   clearRebootWatchdog();
-  if (!dfuState.expectedImageHash) {
-    clearPendingDfu();
-    updateUploadStatus('reconnect', 'completed', 'Done');
-    updateUploadStatus('verify', 'completed', 'Reconnected');
-    setWaitingOverlayState({
-      message: 'Reconnected. Ready to continue.',
-      showSpinner: false,
-      showCountdown: false,
-      showReconnect: false,
-      showRetry: false,
-      showContinue: true,
-    });
-    return;
-  }
   stopReconnectCountdown();
   updateUploadStatus('reconnect', 'completed', 'Done');
   updateUploadStatus('verify', 'active', 'Verifying');
@@ -2361,7 +2360,12 @@ async function verifyRebootedFirmware() {
     return;
   }
   renderImageState(response);
-  const image = findImageByHash(response.images, dfuState.expectedImageHash);
+  const image = dfuState.expectedImageHash
+    ? findImageByHash(response.images, dfuState.expectedImageHash)
+    : pickActiveImage(response.images);
+  if (!dfuState.expectedImageHash) {
+    logDfu('No expected image hash recorded; accepting the active image after reboot.', true);
+  }
   if (image && image.active) {
     const version = image.version || dfuState.expectedImageVersion || null;
     updateUploadStatus('verify', 'completed', version ? `Active (v${version})` : 'Active');
