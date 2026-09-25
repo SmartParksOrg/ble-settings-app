@@ -104,6 +104,13 @@ settings blocks are hidden because the panels edit those settings now.
   the device confirmed. The per-setting Update buttons still work and clear their draft entry.
 - Import uses the same ordered, verified apply path. Export and import refuse to run while
   edits are pending, so a profile always matches what the device reported.
+- The HEX composer mounts the same panels above its settings list. Editing a value in a
+  panel ticks that setting for inclusion in the payload; unticking it in the list leaves it
+  out again. Panel values that are not included show the firmware default.
+- Help text in `settings-meta.json` and the panel definitions only states what the firmware
+  READMEs document (VHF beeps per burst, S-Band send modes, port bitmasks, satellite retry
+  timing, air quality duty cycle, report-empty options). Settings the firmware does not
+  document keep a plain label without claims about behaviour.
 
 ## DFU flow
 

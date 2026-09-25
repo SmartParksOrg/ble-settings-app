@@ -262,7 +262,7 @@
         fields: [
           { key: 'data_log', label: 'Flash data log', control: 'toggle', help: 'Enable the flash data log.' },
           { key: 'flash_status_interval', label: 'Flash status report', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
-            help: 'How often flash status updates are generated.' },
+            help: 'How often the flash status message (percentage used, number of stored messages) is sent. Off means it is not sent or stored.' },
         ],
       },
     ],
@@ -301,7 +301,7 @@
         help: 'Retries for messages sent from the Messenger card.',
         fields: [
           { key: 'lr_messaging_retry_interval', label: 'Retry interval', control: 'duration', unit: 's', help: 'How long the device waits between messaging retry attempts.' },
-          { key: 'lr_messaging_retry_count', label: 'Retries', help: 'Number of retry attempts.' },
+          { key: 'lr_messaging_retry_count', label: 'Retries', help: 'Number of retry attempts for messages sent from the Messenger card.' },
         ],
       },
       {
@@ -387,11 +387,11 @@
         group: 'Advanced',
         advanced: true,
         fields: [
-          { key: 'satellite_retry', label: 'Send retries', enabledWhen: satelliteOn, reason: satelliteReason, help: 'Satellite retry setting.' },
-          { key: 's_band_send_mode', label: 'S-Band send mode', help: 'S-band related setting.' },
+          { key: 'satellite_retry', label: 'Send retries', enabledWhen: satelliteOn, reason: satelliteReason, help: 'Send attempts per satellite session. The delay between retries is random: 1 to 5 s for the first 3, 5 to 20 s up to the 6th, 20 to 40 s after that.' },
+          { key: 's_band_send_mode', label: 'S-Band send mode', help: '0 = send without FHSS, 1 = send with FHSS, 2 = both.' },
           { key: 's_band_send_interval', label: 'S-Band send interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600,
-            help: 'How often an S-Band satellite message is sent.' },
-          { key: 's_band_rf_frequency_hz', label: 'S-Band frequency', unit: 'Hz', help: 'S-band related setting.' },
+            help: 'How often the status and short position message is sent over S-Band.' },
+          { key: 's_band_rf_frequency_hz', label: 'S-Band frequency', unit: 'Hz', help: 'Frequency on which S-Band LoRa operates.' },
         ],
       },
     ],
@@ -427,11 +427,11 @@
         advanced: true,
         help: 'Radio parameters of the beacon. Match them to the receiver in use.',
         fields: [
-          { key: 'vhf_tx_frequency_khz', label: 'Frequency', unit: 'kHz', help: 'Transmit frequency in kHz.' },
-          { key: 'vhf_num_of_packets_per_burst', label: 'Pulses per burst', help: 'Number of pulses transmitted per burst.' },
-          { key: 'vhf_time_between_packets_ms', label: 'Time between pulses', unit: 'ms', help: 'Milliseconds between pulses within a burst.' },
-          { key: 'vhf_single_pulse_duration_ms', label: 'Pulse duration', unit: 'ms', help: 'Duration of a single pulse in milliseconds.' },
-          { key: 'vhf_external_path', label: 'External antenna path', control: 'toggle', help: 'Vhf external path setting.' },
+          { key: 'vhf_tx_frequency_khz', label: 'Frequency', unit: 'kHz', help: 'VHF transmit frequency.' },
+          { key: 'vhf_num_of_packets_per_burst', label: 'Pulses per burst', help: 'Number of beeps (pulses) per burst.' },
+          { key: 'vhf_time_between_packets_ms', label: 'Time between pulses', unit: 'ms', help: 'Time between beeps within a burst. Only applies when more than one pulse is sent per burst.' },
+          { key: 'vhf_single_pulse_duration_ms', label: 'Pulse duration', unit: 'ms', help: 'Duration of each pulse inside a burst.' },
+          { key: 'vhf_external_path', label: 'External antenna path', control: 'toggle', help: 'Transmit over the external VHF antenna connector instead of the on-board LoRaWAN antenna. Rhino Edge Cube, Puck50 and Puck35 have no VHF connector, so this changes nothing there.' },
         ],
       },
     ],
@@ -502,7 +502,7 @@
         group: 'Advanced',
         advanced: true,
         fields: [
-          { key: 'cmdq_report_zero_messages_to_be_sent', label: 'Report when nothing was detected', control: 'toggle', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Cmdq report zero messages to be sent setting.' },
+          { key: 'cmdq_report_zero_messages_to_be_sent', label: 'Report when nothing was detected', control: 'toggle', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Send an empty report when no detection was made between two reporting intervals.' },
         ],
       },
     ],
@@ -521,7 +521,7 @@
       { key: 'fence_interval', label: 'Measure', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, enabledWhen: fenceOn, reason: fenceReason,
         help: 'Seconds between fence measurements.' },
       { key: 'fence_sampling_length', label: 'Measurement length', control: 'duration', unit: 's', enabledWhen: fenceOn, reason: fenceReason, help: 'Measurement length in seconds (1 to 60).' },
-      { key: 'fence_led_blink', label: 'Blink LED on measurement', control: 'toggle', enabledWhen: fenceOn, reason: fenceReason, help: 'Fence led blink setting.' },
+      { key: 'fence_led_blink', label: 'Blink LED on measurement', control: 'toggle', enabledWhen: fenceOn, reason: fenceReason, help: 'Blink the LED during fence measurements.' },
       {
         group: 'Advanced',
         advanced: true,
@@ -557,7 +557,7 @@
           { key: 'external_switch_detection_trigger_type', label: 'Active level', control: 'select', enabledWhen: switchOn, reason: switchReason, help: 'Which logic level counts as activity.' },
           { key: 'external_switch_input_pull', label: 'Input pull', control: 'select', enabledWhen: switchOn, reason: switchReason,
             help: 'Pull of the input line. If the switch provides its own pull, a wrong setting can raise power use or cause undefined behaviour.' },
-          { key: 'external_switch_detection_gpio_pin_power_enabled', label: 'Power the switch from the GPIO pin', control: 'toggle', enabledWhen: switchOn, reason: switchReason, help: 'External switch detection gpio pin power enabled setting.' },
+          { key: 'external_switch_detection_gpio_pin_power_enabled', label: 'Power the switch from the GPIO pin', control: 'toggle', enabledWhen: switchOn, reason: switchReason, help: 'Use the GPIO output of the fence port to enable (power) the external switch.' },
           { key: 'external_switch_detection_trigger_debounce_ms', label: 'Debounce', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
             help: 'Time after a state change during which further changes are ignored; the input is then re-read to confirm. 0 disables debouncing (not recommended).' },
           { key: 'external_switch_minimal_report_duration_ms', label: 'Minimum activity to report', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
@@ -578,16 +578,16 @@
         group: 'Accelerometer',
         fields: [
           { key: 'accel_odr_hz', label: 'Sample rate', unit: 'Hz', help: 'Output data rate in Hertz.' },
-          { key: 'accel_g_scale', label: 'Range', unit: 'g', help: 'Accel g scale setting.' },
-          { key: 'accel_movement_data_fifo_enabled', label: 'Movement data FIFO', control: 'toggle', help: 'Accel movement data fifo enabled setting.' },
+          { key: 'accel_g_scale', label: 'Range', unit: 'g', help: 'Accelerometer measurement range.' },
+          { key: 'accel_movement_data_fifo_enabled', label: 'Movement data FIFO', control: 'toggle', help: 'Enable the accelerometer movement data FIFO.' },
         ],
       },
       {
         group: 'Air quality',
         fields: [
-          { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Air quality enabled setting.' },
+          { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Enable the BME690 and BMV080 air quality sensors. Only available on rangeredge boards running the air quality firmware.' },
           { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', enabledWhen: { key: 'air_quality_enabled', truthy: true }, reason: 'Turn on the air quality sensor first.',
-            help: 'How often the air quality function runs.' },
+            help: 'How often the tracker checks for new air quality data and packs it into a message. The sensors sample on a fixed 5-minute duty cycle.' },
         ],
       },
       {

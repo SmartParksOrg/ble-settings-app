@@ -277,13 +277,13 @@
     "accel_g_scale": {
       "category": "accel",
       "label": "g scale",
-      "description": "Accel g scale setting.",
+      "description": "Accelerometer measurement range in g.",
       "display_name": "g scale"
     },
     "accel_movement_data_fifo_enabled": {
       "category": "accel",
       "label": "movement data fifo enabled",
-      "description": "Accel movement data fifo enabled setting.",
+      "description": "Enable the accelerometer movement data FIFO.",
       "display_name": "movement data fifo enabled"
     },
     "accel_odr_hz": {
@@ -295,13 +295,13 @@
     "air_quality_enabled": {
       "category": "air",
       "label": "quality enabled",
-      "description": "Air quality enabled setting.",
+      "description": "Enable the air quality sensors (BME690 and BMV080). Only available on rangeredge boards running the air quality firmware.",
       "display_name": "quality enabled"
     },
     "air_quality_interval": {
       "category": "air",
       "label": "quality interval",
-      "description": "Controls how often the air quality function runs.",
+      "description": "Seconds between checks for new air quality data. The sensors themselves sample on a fixed 5-minute duty cycle; each check packs available data into a message for the enabled recipients.",
       "display_name": "quality interval"
     },
     "app_eui": {
@@ -319,13 +319,13 @@
     "ble_adv": {
       "category": "ble",
       "label": "adv",
-      "description": "Bluetooth related setting.",
+      "description": "Bluetooth advertising setting.",
       "display_name": "adv"
     },
     "ble_advertisement_interval": {
       "category": "ble",
       "label": "advertisement interval",
-      "description": "BLE advertisement interval in milliseconds.",
+      "description": "Bluetooth advertising interval in milliseconds.",
       "display_name": "advertisement interval"
     },
     "ble_auto_disconnect": {
@@ -395,7 +395,7 @@
     "ble_scan_interval": {
       "category": "ble_scan",
       "label": "scan interval",
-      "description": "Controls how often a BLE scan runs.",
+      "description": "Seconds between Bluetooth scans.",
       "display_name": "scan interval"
     },
     "ble_scan_manufacturer_id": {
@@ -407,19 +407,19 @@
     "ble_scan_report_zero_connections_found": {
       "category": "ble_scan",
       "label": "scan report zero connections found",
-      "description": "Bluetooth related setting.",
+      "description": "Send a report (empty message) even when the Bluetooth scan found nothing.",
       "display_name": "scan report zero connections found"
     },
     "check_error_interval": {
       "category": "device",
       "label": "error interval",
-      "description": "Controls how often the device checks for error conditions.",
+      "description": "Seconds between checks for error conditions.",
       "display_name": "error interval"
     },
     "cmdq_enabled": {
       "category": "cmdq",
       "label": "enabled",
-      "description": "Cmdq enabled setting.",
+      "description": "Enable the CMDQ module. Disabling it while a scan is running stops the scan.",
       "display_name": "enabled"
     },
     "cmdq_on_no_detection_wait_duration": {
@@ -431,7 +431,7 @@
     "cmdq_report_zero_messages_to_be_sent": {
       "category": "cmdq",
       "label": "report zero messages to be sent",
-      "description": "Cmdq report zero messages to be sent setting.",
+      "description": "Send an empty report when no CMDQ detection was made between two reporting intervals.",
       "display_name": "report zero messages to be sent"
     },
     "cmdq_reporting_interval": {
@@ -467,13 +467,13 @@
     "cold_fix_timeout": {
       "category": "gps",
       "label": "cold fix timeout",
-      "description": "Cold fix timeout in seconds.",
+      "description": "Maximum time in seconds for one cold fix attempt.",
       "display_name": "cold fix timeout"
     },
     "data_log": {
       "category": "logs",
       "label": "log",
-      "description": "Data log setting.",
+      "description": "Enable the flash data log.",
       "display_name": "log"
     },
     "device_eui": {
@@ -515,7 +515,7 @@
     "external_switch_detection_gpio_pin_power_enabled": {
       "category": "switch",
       "label": "switch detection gpio pin power enabled",
-      "description": "External switch detection gpio pin power enabled setting.",
+      "description": "Use the GPIO output of the fence port to enable (power) the external switch.",
       "display_name": "switch detection gpio pin power enabled"
     },
     "external_switch_detection_reporting_interval": {
@@ -593,7 +593,7 @@
     "fence_led_blink": {
       "category": "fence",
       "label": "led blink",
-      "description": "Fence led blink setting.",
+      "description": "Blink the LED during fence measurements.",
       "display_name": "led blink"
     },
     "fence_mv_scaling_factor": {
@@ -611,25 +611,25 @@
     "flash_status_interval": {
       "category": "logs",
       "label": "status interval",
-      "description": "Controls how often flash status updates are generated.",
+      "description": "Seconds between flash status messages (port 14: percentage used and number of stored messages). 0 means the message is not sent or stored.",
       "display_name": "status interval"
     },
     "flash_store_flag": {
       "category": "logs",
       "label": "store flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types are stored in the flash log. Each bit is a port number: bit 1 = port 1, bit 2 = port 2, and so on.",
       "display_name": "store flag"
     },
     "gnss_assisted_scan": {
       "category": "lr_gps",
       "label": "assisted scan",
-      "description": "Gnss assisted scan setting.",
+      "description": "GNSS assisted scan setting (LR GNSS).",
       "display_name": "assisted scan"
     },
     "gnss_constellation_to_use": {
       "category": "lr_gps",
       "label": "constellation to use",
-      "description": "Gnss constellation to use setting.",
+      "description": "GNSS constellation used by the LR GNSS scan.",
       "display_name": "constellation to use"
     },
     "gps_backoff_factor": {
@@ -707,13 +707,13 @@
     "hot_fix_timeout": {
       "category": "gps",
       "label": "hot fix timeout",
-      "description": "Hot fix timeout in seconds.",
+      "description": "Maximum time in seconds for one hot fix attempt.",
       "display_name": "hot fix timeout"
     },
     "init_time": {
       "category": "device",
       "label": "time",
-      "description": "Init time setting.",
+      "description": "Initial time setting.",
       "display_name": "time"
     },
     "led_enabled": {
@@ -725,49 +725,49 @@
     "lp0_app_key": {
       "category": "lp0",
       "label": "app key",
-      "description": "Low-power mode setting.",
+      "description": "AppSKey (16 bytes) used to encode LP0 messages.",
       "display_name": "app key"
     },
     "lp0_communication_params": {
       "category": "lp0",
       "label": "communication params",
-      "description": "Low-power mode setting.",
+      "description": "LP0 modulation parameters (byte array). See the firmware LP0 documentation for the byte layout.",
       "display_name": "communication params"
     },
     "lp0_dev_addr": {
       "category": "lp0",
       "label": "dev addr",
-      "description": "Low-power mode setting.",
+      "description": "Device address (4 bytes) used to encode LP0 messages.",
       "display_name": "dev addr"
     },
     "lp0_network_key": {
       "category": "lp0",
       "label": "network key",
-      "description": "Low-power mode setting.",
+      "description": "NwkSKey (16 bytes) used to encode LP0 messages.",
       "display_name": "network key"
     },
     "lp0_node_params": {
       "category": "lp0",
       "label": "node params",
-      "description": "Low-power mode setting.",
+      "description": "LP0 node configuration (byte array). See the firmware LP0 documentation for the byte layout.",
       "display_name": "node params"
     },
     "lp0_rx_frequency_hz": {
       "category": "lp0",
       "label": "rx frequency hz",
-      "description": "Low-power mode setting.",
+      "description": "LP0 receive frequency in Hz.",
       "display_name": "rx frequency hz"
     },
     "lp0_send_flag": {
       "category": "lp0",
       "label": "send flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types are sent over LP0. Each bit is a port number: bit 1 = port 1, bit 2 = port 2, and so on.",
       "display_name": "send flag"
     },
     "lp0_tx_frequency_hz": {
       "category": "lp0",
       "label": "tx frequency hz",
-      "description": "Low-power mode setting.",
+      "description": "LP0 transmit frequency in Hz.",
       "display_name": "tx frequency hz"
     },
     "lr_adr": {
@@ -803,31 +803,31 @@
     "lr_confirm_flag": {
       "category": "lorawan",
       "label": "confirm flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types are sent as confirmed LoRaWAN uplinks. Each bit is a port number: bit 1 = port 1.",
       "display_name": "confirm flag"
     },
     "lr_gps_interval": {
       "category": "lr_gps",
       "label": "gps interval",
-      "description": "Controls how often the LR GPS function runs.",
+      "description": "Seconds between LR GNSS scans.",
       "display_name": "gps interval"
     },
     "lr_join_flag": {
       "category": "lorawan",
       "label": "join flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types make the device attempt a join first when it is not joined. Each bit is a port number: bit 1 = port 1.",
       "display_name": "join flag"
     },
     "lr_max_confirm_fail": {
       "category": "lorawan",
       "label": "max confirm fail",
-      "description": "LoRaWAN-related setting.",
+      "description": "Maximum number of failed confirmed LoRaWAN messages.",
       "display_name": "max confirm fail"
     },
     "lr_messaging_retry_count": {
       "category": "lr_messaging",
       "label": "messaging retry count",
-      "description": "LoRaWAN-related setting.",
+      "description": "Number of retry attempts for messages sent from the Messenger card.",
       "display_name": "messaging retry count"
     },
     "lr_messaging_retry_interval": {
@@ -899,19 +899,19 @@
     "lr_sat_data": {
       "category": "lr_gps",
       "label": "sat data",
-      "description": "LoRaWAN-related setting.",
+      "description": "LoRaWAN satellite data setting.",
       "display_name": "sat data"
     },
     "lr_send_flag": {
       "category": "lorawan",
       "label": "send flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types are sent over LoRaWAN. Each bit is a port number: bit 1 = port 1, bit 2 = port 2, and so on.",
       "display_name": "send flag"
     },
     "memfault_send_interval": {
       "category": "memfault",
       "label": "send interval",
-      "description": "Controls how often Memfault data is sent.",
+      "description": "Seconds between Memfault diagnostic uploads.",
       "display_name": "send interval"
     },
     "motion_ths": {
@@ -1007,7 +1007,7 @@
     "rf_scan_interval": {
       "category": "rf_scan",
       "label": "interval",
-      "description": "Controls how often an RF scan runs.",
+      "description": "Seconds between RF scans.",
       "display_name": "interval"
     },
     "rf_scan_interval1": {
@@ -1043,49 +1043,49 @@
     "s_band_app_key": {
       "category": "s_band",
       "label": "app key",
-      "description": "S-band related setting.",
+      "description": "AppSKey (16 bytes) used to encode S-Band messages.",
       "display_name": "app key"
     },
     "s_band_dev_adr": {
       "category": "s_band",
       "label": "dev adr",
-      "description": "S-band related setting.",
+      "description": "Device address (4 bytes) used to encode S-Band messages.",
       "display_name": "dev adr"
     },
     "s_band_network_key": {
       "category": "s_band",
       "label": "network key",
-      "description": "S-band related setting.",
+      "description": "NwkSKey (16 bytes) used to encode S-Band messages.",
       "display_name": "network key"
     },
     "s_band_rf_frequency_hz": {
       "category": "s_band",
       "label": "rf frequency hz",
-      "description": "S-band related setting.",
+      "description": "Frequency in Hz on which S-Band LoRa operates.",
       "display_name": "rf frequency hz"
     },
     "s_band_send_interval": {
       "category": "s_band",
       "label": "send interval",
-      "description": "Controls how often an S-Band satellite message is sent.",
+      "description": "Seconds between S-Band sends of the status and short position message. 0 disables S-Band sending.",
       "display_name": "send interval"
     },
     "s_band_send_mode": {
       "category": "s_band",
       "label": "send mode",
-      "description": "S-band related setting.",
+      "description": "S-Band send mode: 0 = send without FHSS, 1 = send with FHSS, 2 = both.",
       "display_name": "send mode"
     },
     "sat_send_flag": {
       "category": "satellite",
       "label": "sat send flag",
-      "description": "Advanced flags for this feature.",
+      "description": "Which message types are sent over the satellite modem. Each bit is a port number: bit 1 = port 1, bit 2 = port 2, and so on.",
       "display_name": "sat send flag"
     },
     "satellite_enabled": {
       "category": "satellite",
       "label": "enabled",
-      "description": "Satellite enabled setting.",
+      "description": "Enable satellite support (Iridium modem) when the hardware has one.",
       "display_name": "enabled"
     },
     "satellite_interval1_start": {
@@ -1103,7 +1103,7 @@
     "satellite_min_signal_strength": {
       "category": "satellite",
       "label": "min signal strength",
-      "description": "Satellite min signal strength setting.",
+      "description": "Minimum satellite signal strength.",
       "display_name": "min signal strength"
     },
     "satellite_multiple_intervals": {
@@ -1115,7 +1115,7 @@
     "satellite_retry": {
       "category": "satellite",
       "label": "retry",
-      "description": "Satellite retry setting.",
+      "description": "Number of send attempts per satellite session. The delay between retries is random: 1 to 5 s for the first 3, 5 to 20 s up to the 6th, 20 to 40 s after that.",
       "display_name": "retry"
     },
     "satellite_send_interval": {
@@ -1139,7 +1139,7 @@
     "status_send_interval": {
       "category": "status",
       "label": "send interval",
-      "description": "Controls how often the device sends a status update.",
+      "description": "Seconds between device status messages.",
       "display_name": "send interval"
     },
     "tracker_type": {
@@ -1217,13 +1217,13 @@
     "ublox_min_satellites": {
       "category": "gps",
       "label": "min satellites",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "Minimum number of satellites that must be visible at the check to continue a fix attempt. 0 turns the check off.",
       "display_name": "min satellites"
     },
     "ublox_min_satellites_timer": {
       "category": "gps",
       "label": "minimum satellites check timeout",
-      "description": "Seconds before checking whether enough satellites are visible to continue acquiring a GPS fix.",
+      "description": "Seconds into a fix attempt at which the satellite count is checked (firmware default 30). Only used while the minimum satellites check is on.",
       "display_name": "minimum satellites check timeout"
     },
     "ublox_multiple_intervals": {
@@ -1253,13 +1253,13 @@
     "vhf_enabled": {
       "category": "vhf",
       "label": "enabled",
-      "description": "Vhf enabled setting.",
+      "description": "Enable the VHF beacon transmitter.",
       "display_name": "enabled"
     },
     "vhf_external_path": {
       "category": "vhf",
       "label": "external path",
-      "description": "Vhf external path setting.",
+      "description": "Send VHF transmissions over the external VHF antenna connector instead of the on-board LoRaWAN antenna. Only applies to boards with the VHF connector; Rhino Edge Cube, Puck50 and Puck35 have none, so enabling it there changes nothing.",
       "display_name": "external path"
     },
     "vhf_interval1": {
@@ -1295,25 +1295,25 @@
     "vhf_num_of_packets_per_burst": {
       "category": "vhf",
       "label": "num of packets per burst",
-      "description": "Vhf num of packets per burst setting.",
+      "description": "Number of VHF beeps (pulses) per burst.",
       "display_name": "num of packets per burst"
     },
     "vhf_single_pulse_duration_ms": {
       "category": "vhf",
       "label": "single pulse duration ms",
-      "description": "Vhf single pulse duration ms setting.",
+      "description": "Duration in milliseconds of each pulse inside a burst.",
       "display_name": "single pulse duration ms"
     },
     "vhf_time_between_packets_ms": {
       "category": "vhf",
       "label": "time between packets ms",
-      "description": "Vhf time between packets ms setting.",
+      "description": "Time in milliseconds between beeps within a single burst. Only applies when more than one packet is sent per burst.",
       "display_name": "time between packets ms"
     },
     "vhf_tx_frequency_khz": {
       "category": "vhf",
       "label": "tx frequency khz",
-      "description": "Vhf tx frequency khz setting.",
+      "description": "VHF transmit frequency in kHz.",
       "display_name": "tx frequency khz"
     },
     "wifi_scan_aggregated_interval": {
@@ -1325,13 +1325,13 @@
     "wifi_scan_interval": {
       "category": "wifi_scan",
       "label": "scan interval",
-      "description": "Controls how often a WiFi scan runs.",
+      "description": "Seconds between WiFi scans.",
       "display_name": "scan interval"
     },
     "wifi_scan_report_zero_connections_found": {
       "category": "wifi_scan",
       "label": "scan report zero connections found",
-      "description": "Wifi scan report zero connections found setting.",
+      "description": "Send a report (empty message) even when the WiFi scan found nothing.",
       "display_name": "scan report zero connections found"
     }
   },
