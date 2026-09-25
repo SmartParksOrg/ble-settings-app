@@ -1169,6 +1169,21 @@ async function returnToDeviceAfterDfu(version = null, message = null) {
     showContinue: false,
   });
   await releaseWakeLock();
+  const sessionIntact = document.body.classList.contains('connected')
+    && document.body.classList.contains('has-settings')
+    && hasMainBleUartReady();
+  if (sessionIntact) {
+    // No reboot happened, so the UART session and loaded settings are still valid.
+    if (typeof window.toggleDfuView === 'function') {
+      window.toggleDfuView(false);
+    }
+    resetUi();
+    setWaitingOverlay(false);
+    if (typeof window.requestStatusMessage === 'function') {
+      window.requestStatusMessage();
+    }
+    return;
+  }
   const target = dfuState.existingDevice || window.device || null;
   if (!target || typeof window.connectToDevice !== 'function') {
     setWaitingOverlayState({
@@ -2132,6 +2147,44 @@ async function refreshImageState() {
   }
 }
 
+function showAlreadyInstalled(presence) {
+  const version = (presence && presence.image && presence.image.version)
+    || (dfuState.fileImageInfo && dfuState.fileImageInfo.version)
+    || null;
+  const fileName = dfuState.file ? dfuState.file.name : '';
+  if (presence && presence.state) {
+    renderImageState(presence.state);
+  }
+  dfuState.file = null;
+  dfuState.fileData = null;
+  dfuState.fileImageInfo = null;
+  dfuState.checkResult = DfuFileCheckResult.emptyFileName;
+  dfuState.userConfirmed = false;
+  dfuState.selectionInProgress = false;
+  dfuState.selectionRequestId += 1;
+  resetFirmwarePresenceState();
+  clearPendingDfu();
+  if (elements.fileInput) {
+    elements.fileInput.value = '';
+  }
+  if (elements.bundledSelect) {
+    elements.bundledSelect.value = '';
+  }
+  resetUploadProgress();
+  resetUploadStatus();
+  hideUploadSection();
+  resetConfirmationState();
+  updateCheckStatus(DfuFileCheckResult.emptyFileName);
+  updateFileMatchStatus(`${fileName || 'Selected file'} matches the active image. No upload needed.`, 'success');
+  setBundledStatus(fileName ? `${fileName} is already installed.` : 'Selected update is already installed.');
+  setUserStatus(
+    `Firmware ${version ? `v${version} ` : ''}is already installed on this device. Select another version, or use Back to return to the device.`,
+    'success'
+  );
+  updateUploadButtons();
+  logDfu(`Selected firmware is already active${version ? ` (v${version})` : ''}; nothing to do.`);
+}
+
 async function evaluateSelectedFirmwarePresence() {
   if (!dfuState.connected || !dfuState.fileData || !dfuState.userConfirmed || !isCheckAllowed(dfuState.checkResult)) {
     resetFirmwarePresenceState();
@@ -2143,6 +2196,10 @@ async function evaluateSelectedFirmwarePresence() {
   const presence = await getFirmwarePresence();
   if (checkId !== dfuState.presenceCheckId) {
     return null;
+  }
+  if (presence.status === 'active') {
+    showAlreadyInstalled(presence);
+    return presence;
   }
   if (presence.state) {
     renderImageState(presence.state);
@@ -2613,10 +2670,8 @@ async function startUpload() {
 
   const presence = await getFirmwarePresence();
   if (presence.status === 'active') {
-    showToast('Selected firmware is already active on this device.');
-    updateFirmwarePresenceUi(presence);
-    clearPendingDfu();
-    logDfu('Upload skipped: firmware already active.');
+    showToast('Selected firmware is already installed on this device.');
+    showAlreadyInstalled(presence);
     return;
   }
   if (presence.status === 'present' || presence.status === 'pending') {
