@@ -166,3 +166,70 @@ test('settings-meta categories cover every category and every setting in the v8.
     const orders = Object.values(meta.categories).map(entry => entry.order);
     assert.equal(new Set(orders).size, orders.length, 'category orders are unique');
 });
+
+test('mode options resolve from effective values and write set plus missing ensure values', () => {
+    const mode = definitions.panels[0].fields.find(field => field.control === 'mode');
+    const values = { ublox_send_interval: '0', ublox_multiple_intervals: 'false', ublox_send_interval_2: '0' };
+    const get = key => values[key];
+    assert.equal(engine.resolveOption(mode, get).id, 'off');
+    values.ublox_send_interval = '900';
+    assert.equal(engine.resolveOption(mode, get).id, 'fixed');
+    values.ublox_multiple_intervals = 'true';
+    assert.equal(engine.resolveOption(mode, get).id, 'day-night');
+
+    const dayNight = mode.options.find(option => option.id === 'day-night');
+    const writes = engine.optionWrites(dayNight, get);
+    assert.deepEqual(writes, [
+        { key: 'ublox_multiple_intervals', value: true },
+        { key: 'ublox_send_interval_2', value: 3600 },
+    ], 'interval 1 is already set, so only the night interval is ensured');
+    const fixed = mode.options.find(option => option.id === 'fixed');
+    values.ublox_send_interval = '0';
+    assert.deepEqual(engine.optionWrites(fixed, get), [
+        { key: 'ublox_multiple_intervals', value: false },
+        { key: 'ublox_send_interval', value: 300 },
+    ]);
+});
+
+test('durations, UTC hours and day segments format for people', () => {
+    assert.equal(engine.formatDurationWords(0), 'off');
+    assert.equal(engine.formatDurationWords(45), '45 seconds');
+    assert.equal(engine.formatDurationWords(900), '15 minutes');
+    assert.equal(engine.formatDurationWords(5400), '1 hour 30 minutes');
+    assert.equal(engine.formatDurationWords(86400), '1 day');
+    assert.equal(engine.formatDurationWords(90061), '1 day 1 hour');
+    assert.equal(engine.formatUtcHour('7'), '07:00');
+    const close = (actual, expected) => {
+        assert.equal(actual.length, expected.length);
+        actual.forEach((segment, i) => {
+            assert.ok(Math.abs(segment.left - expected[i].left) < 1e-9, `left ${segment.left}`);
+            assert.ok(Math.abs(segment.width - expected[i].width) < 1e-9, `width ${segment.width}`);
+        });
+    };
+    close(engine.daySegments(7, 18), [{ left: 700 / 24, width: 1100 / 24 }]);
+    close(engine.daySegments(18, 7), [{ left: 1800 / 24, width: 600 / 24 }, { left: 0, width: 700 / 24 }]);
+    close(engine.daySegments(9, 9), [{ left: 0, width: 100 }]);
+});
+
+test('the positioning summary reads as sentences for each mode', () => {
+    const base = {
+        ublox_send_interval: '900', ublox_multiple_intervals: 'false', ublox_send_interval_2: '3600',
+        ublox_interval1_start: '7', ublox_interval2_start: '18', ublox_active_tracking: 'false',
+        outdoor_detection_enabled: 'false', enable_motion_trig_gps: 'false', gps_triggered_interval: '0',
+        gps_motion_triggered_min_num_of_triggers_per_interval: '0', gps_skipped_triggered_interval: '5',
+        gps_resend_interval: '0',
+    };
+    const describe = (overrides = {}) => engine.describePositioning(key => ({ ...base, ...overrides })[key], { localTime: hour => `${Number(hour) + 2}:00` });
+    assert.equal(describe(), 'Fix every 15 minutes, all day.');
+    assert.equal(describe({ ublox_send_interval: '0' }), 'No scheduled fixes.');
+    assert.equal(describe({ ublox_multiple_intervals: 'true' }),
+        'Fix every 15 minutes from 07:00 UTC (9:00 local) to 18:00 UTC (20:00 local), and every 1 hour the rest of the day.');
+    assert.equal(describe({ enable_motion_trig_gps: 'true' }),
+        'Fix every 15 minutes, all day. While the tracker is still, up to 5 scheduled fixes are skipped.');
+    assert.equal(describe({ enable_motion_trig_gps: 'true', gps_triggered_interval: '60', gps_motion_triggered_min_num_of_triggers_per_interval: '3' }),
+        'Fix every 15 minutes, all day. An extra fix is taken after 3 movements within 1 minute.');
+    assert.equal(describe({ outdoor_detection_enabled: 'true', ublox_active_tracking: 'true', gps_resend_interval: '600' }),
+        'Fix every 15 minutes, all day. Fixes are only attempted when the tracker is probably outdoors. The receiver stays on between fixes and reports heading and speed. The last position is resent every 10 minutes.');
+    const partial = engine.describePositioning(key => ({ ublox_send_interval: '300' })[key] ?? null);
+    assert.equal(partial, 'Fix every 5 minutes, all day.', 'missing keys are simply left out');
+});

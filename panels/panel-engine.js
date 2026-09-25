@@ -217,6 +217,114 @@
     return summary;
   }
 
+  // Which option of a mode/choice field matches the effective values; null when none does.
+  function resolveOption(field, getValue) {
+    const options = Array.isArray(field.options) ? field.options : [];
+    return options.find(option => evaluateCondition(option.when, getValue)) || null;
+  }
+
+  // Values to write when an option is chosen: its `set` values, plus `ensure` values for
+  // keys whose current value is empty or zero (so "Fixed interval" never leaves 0 = off).
+  function optionWrites(option, getValue) {
+    const writes = [];
+    Object.entries(option.set || {}).forEach(([key, value]) => writes.push({ key, value }));
+    Object.entries(option.ensure || {}).forEach(([key, value]) => {
+      const current = getValue(key);
+      const number = toNumber(current);
+      if (current === null || current === undefined || String(current).trim() === '' || number === 0) {
+        writes.push({ key, value });
+      }
+    });
+    return writes;
+  }
+
+  function formatDurationWords(totalSeconds) {
+    const seconds = Math.round(toNumber(totalSeconds));
+    if (!Number.isFinite(seconds) || seconds <= 0) return 'off';
+    const units = [
+      { size: 86400, singular: 'day', plural: 'days' },
+      { size: 3600, singular: 'hour', plural: 'hours' },
+      { size: 60, singular: 'minute', plural: 'minutes' },
+      { size: 1, singular: 'second', plural: 'seconds' },
+    ];
+    const parts = [];
+    let remaining = seconds;
+    units.forEach(unit => {
+      const count = Math.floor(remaining / unit.size);
+      if (count > 0 && parts.length < 2) {
+        parts.push(`${count} ${count === 1 ? unit.singular : unit.plural}`);
+        remaining -= count * unit.size;
+      }
+    });
+    return parts.join(' ');
+  }
+
+  function formatUtcHour(hour) {
+    const value = Math.max(0, Math.min(23, Math.trunc(toNumber(hour)) || 0));
+    return `${String(value).padStart(2, '0')}:00`;
+  }
+
+  // Segments (in percent of a 24 h bar) covered by the day window [start1, start2).
+  function daySegments(start1, start2) {
+    const a = Math.max(0, Math.min(23, Math.trunc(toNumber(start1)) || 0));
+    const b = Math.max(0, Math.min(23, Math.trunc(toNumber(start2)) || 0));
+    if (a === b) return [{ left: 0, width: 100 }];
+    if (a < b) return [{ left: (a / 24) * 100, width: ((b - a) / 24) * 100 }];
+    return [
+      { left: (a / 24) * 100, width: ((24 - a) / 24) * 100 },
+      { left: 0, width: (b / 24) * 100 },
+    ];
+  }
+
+  // One or two plain sentences describing the positioning behaviour.
+  // fmt.localTime(hour) may return a local clock time for a UTC hour, or null.
+  function describePositioning(getValue, fmt = {}) {
+    const has = key => getValue(key) !== null && getValue(key) !== undefined;
+    const num = key => toNumber(getValue(key));
+    const bool = key => toBool(getValue(key));
+    const duration = fmt.duration || formatDurationWords;
+    const hourLabel = hour => {
+      const utc = `${formatUtcHour(hour)} UTC`;
+      const local = fmt.localTime ? fmt.localTime(hour) : null;
+      return local ? `${utc} (${local} local)` : utc;
+    };
+    const sentences = [];
+    const multiple = has('ublox_multiple_intervals') && bool('ublox_multiple_intervals');
+    const interval1 = has('ublox_send_interval') ? num('ublox_send_interval') : 0;
+    const interval2 = has('ublox_send_interval_2') ? num('ublox_send_interval_2') : 0;
+    if (multiple) {
+      const first = interval1 > 0 ? `every ${duration(interval1)}` : 'no fixes';
+      const second = interval2 > 0 ? `every ${duration(interval2)}` : 'no fixes';
+      sentences.push(`Fix ${first} from ${hourLabel(getValue('ublox_interval1_start'))} to ${hourLabel(getValue('ublox_interval2_start'))}, and ${second} the rest of the day.`);
+    } else if (interval1 > 0) {
+      sentences.push(`Fix every ${duration(interval1)}, all day.`);
+    } else {
+      sentences.push('No scheduled fixes.');
+    }
+    if (has('outdoor_detection_enabled') && bool('outdoor_detection_enabled')) {
+      sentences.push('Fixes are only attempted when the tracker is probably outdoors.');
+    }
+    if (has('enable_motion_trig_gps') && bool('enable_motion_trig_gps')) {
+      const windowSeconds = has('gps_triggered_interval') ? num('gps_triggered_interval') : 0;
+      const needed = has('gps_motion_triggered_min_num_of_triggers_per_interval') ? num('gps_motion_triggered_min_num_of_triggers_per_interval') : 0;
+      if (windowSeconds > 0 && needed > 0) {
+        sentences.push(`An extra fix is taken after ${needed} movement${needed === 1 ? '' : 's'} within ${duration(windowSeconds)}.`);
+      } else {
+        const skips = has('gps_skipped_triggered_interval') ? num('gps_skipped_triggered_interval') : 0;
+        sentences.push(skips > 0
+          ? `While the tracker is still, up to ${skips} scheduled fix${skips === 1 ? ' is' : 'es are'} skipped.`
+          : 'While the tracker is still, scheduled fixes are still taken.');
+      }
+    }
+    if (has('ublox_active_tracking') && bool('ublox_active_tracking')) {
+      sentences.push('The receiver stays on between fixes and reports heading and speed.');
+    }
+    if (has('gps_resend_interval') && num('gps_resend_interval') > 0) {
+      sentences.push(`The last position is resent every ${duration(num('gps_resend_interval'))}.`);
+    }
+    return sentences.join(' ');
+  }
+
   return {
     toBool,
     toNumber,
@@ -228,5 +336,11 @@
     planWriteOrder,
     createDraft,
     runApply,
+    resolveOption,
+    optionWrites,
+    formatDurationWords,
+    formatUtcHour,
+    daySegments,
+    describePositioning,
   };
 }));
