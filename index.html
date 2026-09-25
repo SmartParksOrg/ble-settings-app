@@ -619,9 +619,10 @@
     <div id="dfu-waiting-overlay" class="dfu-waiting-overlay hidden">
       <div class="dfu-waiting-card">
         <div id="dfu-waiting-spinner" class="dfu-spinner"></div>
-        <div id="dfu-waiting-text" class="dfu-waiting-text">Device is rebooting. Reconnect will be enabled shortly.</div>
+        <div id="dfu-waiting-text" class="dfu-waiting-text">The device is restarting with the new firmware. Reconnecting automatically...</div>
         <div id="dfu-waiting-countdown" class="dfu-waiting-countdown"></div>
-        <button id="dfu-waiting-scan" type="button" class="primary" disabled>Scan and Reconnect</button>
+        <button id="dfu-waiting-retry" type="button" class="primary hidden">Retry reconnect</button>
+        <button id="dfu-waiting-scan" type="button" class="secondary hidden">Scan for device</button>
         <button id="dfu-waiting-continue" type="button" class="primary hidden">Go to device</button>
       </div>
     </div>

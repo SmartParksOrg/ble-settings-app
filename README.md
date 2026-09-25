@@ -65,11 +65,23 @@ The firmware migrates stored settings itself. Downgrading to older firmware uses
 old storage addresses and can restore defaults; export a settings profile before a
 firmware change. Bundled DFU releases are managed separately from settings schemas.
 
-Run the dependency-free protocol regression tests with Node.js:
+Run the dependency-free regression tests with Node.js:
 
 ```bash
-node --test tests/settings-protocol.test.cjs
+node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs
 ```
+
+## DFU flow
+
+DFU runs over MCUmgr SMP on the same GATT connection as the settings UART. After the
+image is uploaded and marked for test, the app resets the device and reconnects to the
+retained `BluetoothDevice` object automatically; no browser chooser is needed because
+`gatt.connect()` does not require a user gesture, only `requestDevice()` does. The app
+keeps retrying for up to three minutes while MCUboot swaps the image, then reads the
+image state over SMP, checks that slot 0 carries the uploaded hash, and returns to the
+device screen. The firmware confirms its own image on boot, so the SMP confirm step is a
+safety net rather than a requirement. A screen wake lock is held during upload and
+reboot. If automatic reconnect fails, the overlay offers a retry and a manual scan.
 
 Adding a new bundled DFU firmware release:
 - upload `.bin` files to `assets/dfu/releases/<release-id>/...`
