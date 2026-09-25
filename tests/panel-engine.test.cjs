@@ -322,7 +322,18 @@ test('every panel definition only references settings, options and ports that ex
     Object.keys(definitions.portLabels).forEach(port => {
         if (schema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
     });
-    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'vhf']);
+    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'vhf', 'scanning', 'cmdq', 'fence', 'switch', 'sensors']);
+    definitions.supersededSections.forEach(item => assert.ok(schema.settings[item.key], `superseded key ${item.key}`));
+    // No setting is edited by two panels (one editing path per key).
+    const seen = new Map();
+    definitions.panels.forEach(panel => engine.walkFields(panel.fields, field => {
+        engine.fieldKeys(field).concat((field.columns || []).map(column => column.key)).forEach(key => {
+            if (field.control === 'switch' || field.control === 'choice' || field.control === 'mode') return; // composite controls share keys with their fields
+            assert.ok(!seen.has(key) || seen.get(key) === panel.id, `${key} appears in ${seen.get(key)} and ${panel.id}`);
+            seen.set(key, panel.id);
+        });
+    }));
+    assert.ok(seen.size >= 100, `${seen.size} settings covered by panels`);
     definitions.panels.forEach(panel => engine.walkFields(panel.fields, field => {
         (field.warnings || []).forEach(item => engine.conditionKeys(item.when).forEach(key => assert.ok(schema.settings[key], `warning key ${key}`)));
         (field.onAlso || []).forEach(item => assert.ok(schema.settings[item.key], `onAlso key ${item.key}`));

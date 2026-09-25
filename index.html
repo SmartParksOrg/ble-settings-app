@@ -421,6 +421,10 @@
   </div>
 
   <div id="panels-area" class="commands-section panels-section page-section hidden-when-no-settings">
+    <div class="panels-search">
+      <input type="search" id="panels-search" placeholder="Find a setting in the panels..." aria-label="Find a setting in the panels" autocomplete="off">
+      <span id="panels-search-count" class="panels-search-count"></span>
+    </div>
     <div id="panels-list"></div>
   </div>
 
@@ -6111,8 +6115,43 @@
         },
         pinDigits: value => devicePinDigitsFromStorage(value),
         pinFromDigits: digits => digits.split('').map(digit => `0${digit}`).join('').toUpperCase(),
+        macDisplay: value => formatMacAddressForDisplay(value || '', 6),
+        macFromInput: text => normalizeMacAddressInput(text),
+        getDefault: key => {
+          const setting = settingsData.settings[key];
+          if (!setting) {
+            return null;
+          }
+          const rendered = normalizeRenderableValue(setting.default);
+          return setting.conversion === 'byte_array' ? stripBytes(rendered) : rendered;
+        },
+        notify: message => showToast(message),
       });
+      // The older feature cards keep their actions and results; their settings blocks
+      // are now edited in the panels.
+      const superseded = (window.PanelDefinitions && PanelDefinitions.supersededSections) || [];
+      superseded.forEach(({ elementId, key }) => {
+        const element = document.getElementById(elementId);
+        if (element) {
+          element.classList.toggle('hidden', Boolean(PanelRenderer.locate(key)));
+        }
+      });
+      const search = document.getElementById('panels-search');
+      if (search) {
+        search.value = '';
+        applyPanelSearch('');
+      }
     }
+
+    function applyPanelSearch(query) {
+      const count = document.getElementById('panels-search-count');
+      const matches = window.PanelRenderer ? PanelRenderer.filter(query) : 0;
+      if (count) {
+        const text = String(query || '').trim();
+        count.textContent = text ? `${matches} match${matches === 1 ? '' : 'es'}` : '';
+      }
+    }
+    document.getElementById('panels-search')?.addEventListener('input', event => applyPanelSearch(event.target.value));
 
     function refreshSettingsPanels() {
       if (window.PanelRenderer) {
