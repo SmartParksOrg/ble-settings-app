@@ -1139,7 +1139,7 @@
     "ublox_min_fix_time": {
       "category": "gps",
       "label": "min fix time",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "Minimum time, in seconds, the u-blox receiver keeps searching for GNSS satellites in order to perform a fix.",
       "display_name": "min fix time"
     },
     "ublox_min_satellites": {
