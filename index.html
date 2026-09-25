@@ -125,6 +125,7 @@
   <script src="functions.js"></script>
   <script src="panels/panel-engine.js"></script>
   <script src="panels/panel-definitions.js"></script>
+  <script src="panels/panel-renderer.js"></script>
 </head>
 
 <body>
@@ -417,6 +418,10 @@
         </div>
       </div>
     </details>
+  </div>
+
+  <div id="panels-area" class="panels-section page-section hidden-when-no-settings">
+    <div id="panels-list"></div>
   </div>
 
   <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
@@ -2794,6 +2799,7 @@
         await loadSettings(selectedFile, lastStatusInfo);
         log(`Settings from ${selectedFile} loaded successfully.`);
         displaySettings();
+        mountSettingsPanels();
         resetCmdqState();
         resetFenceState();
         resetScanState('wifi');
@@ -5914,6 +5920,7 @@
       }
     }
     settingsDraft.subscribe(renderPendingChangesBar);
+    settingsDraft.subscribe(() => refreshSettingsPanels());
 
     function awaitSettingRead(settingId, timeoutMs = 3000) {
       const idKey = String(settingId);
@@ -6046,6 +6053,63 @@
       renderPendingChangesBar();
     }
 
+    // ---- Guided panels ------------------------------------------------------------
+    // Panels read and write through the settings list inputs, so they share the draft.
+    function getEffectiveSettingValue(key) {
+      const setting = settingsData && settingsData.settings ? settingsData.settings[key] : null;
+      if (!setting) {
+        return null;
+      }
+      const inputValue = getInputValue(setting.id);
+      if (inputValue !== undefined && inputValue !== null && String(inputValue) !== '') {
+        return inputValue;
+      }
+      if (currentSettingValues.has(String(setting.id))) {
+        return currentSettingValues.get(String(setting.id));
+      }
+      return normalizeRenderableValue(setting.default);
+    }
+
+    function mountSettingsPanels() {
+      const container = document.getElementById('panels-list');
+      if (!container || !window.PanelRenderer || !window.PanelDefinitions || !settingsData) {
+        return;
+      }
+      PanelRenderer.mount(container, PanelDefinitions.panels, {
+        getSetting: key => (settingsData && settingsData.settings ? settingsData.settings[key] || null : null),
+        getValue: getEffectiveSettingValue,
+        setValue: (key, value) => {
+          const setting = settingsData.settings[key];
+          if (!setting) {
+            return;
+          }
+          setInputValue(setting.id, value);
+          __onInputChanged(setting.id);
+        },
+        isPending: key => settingsDraft.has(key),
+        getLabel: key => getSettingLabel(key, getGroupName(key)),
+        getDescription: key => getSettingDescription(key),
+        validate: (key, value) => {
+          try {
+            validateInput(key, settingsData.settings[key], value);
+            return '';
+          } catch (error) {
+            return error.message;
+          }
+        },
+        formatLocalTime: hour => {
+          const number = Number(hour);
+          return Number.isFinite(number) ? formatLocalTimeValueFromUtcHour(number) : null;
+        },
+      });
+    }
+
+    function refreshSettingsPanels() {
+      if (window.PanelRenderer) {
+        PanelRenderer.refresh();
+      }
+    }
+
     document.getElementById('pending-changes-apply')?.addEventListener('click', reviewAndApplyPendingChanges);
     document.getElementById('pending-changes-discard')?.addEventListener('click', discardPendingChanges);
     window.addEventListener('beforeunload', event => {
@@ -6076,6 +6140,7 @@
       if (isFeatureDisplaySettingKey(normalizedKey)) {
         renderFeatures();
       }
+      refreshSettingsPanels();
     };
 
     function displayCommands() {
@@ -6276,6 +6341,7 @@
         document.getElementById('wifi-scan-area'),
         document.getElementById('ble-scan-area'),
         document.getElementById('settings-area'),
+        document.getElementById('panels-area'),
         document.getElementById('logs-area'),
         document.getElementById('status-log-area'),
         document.getElementById('messenger-area'),
@@ -6759,6 +6825,16 @@
     function openFeatureSetting(settingKey) {
       const setting = settingsData && settingsData.settings ? settingsData.settings[settingKey] : null;
       if (!setting) {
+        return;
+      }
+      const panelField = window.PanelRenderer ? PanelRenderer.locate(settingKey) : null;
+      if (panelField) {
+        const card = panelField.closest('details.panel-card');
+        if (card) card.open = true;
+        const group = panelField.closest('details.panel-group');
+        if (group) group.open = true;
+        panelField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        panelField.querySelector('input, select')?.focus({ preventScroll: true });
         return;
       }
       const row = document.getElementById(`setting-${setting.id}`);
@@ -8057,6 +8133,7 @@
           rowElement.classList.remove('value-not-default');
         }
       }
+      refreshSettingsPanels();
     }
 
     async function requestBleValue(id, cmd) {

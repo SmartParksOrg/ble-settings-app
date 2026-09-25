@@ -3850,3 +3850,308 @@ body.has-pending-changes {
         flex: 1;
     }
 }
+
+/* Guided settings panels */
+.panel-card .section-card-body {
+    display: grid;
+    gap: 14px;
+}
+
+/* Grid items default to min-width:auto, which lets long unbroken text widen the card
+   past a phone screen; allow everything in a panel to shrink and wrap instead. */
+.panel-card .section-card-body > *,
+.panel-fields > *,
+.panel-field > *,
+.panel-group > * {
+    min-width: 0;
+}
+
+.panel-card {
+    overflow-wrap: anywhere;
+}
+
+.panel-description {
+    margin: 0;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+.panel-summary {
+    margin: 0;
+    padding: 12px 14px;
+    border-radius: var(--radius-lg);
+    background: rgba(82, 115, 94, 0.12);
+    border-left: 4px solid var(--sp-forest);
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.panel-fields {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+}
+
+.panel-field {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    align-content: start;
+}
+
+.panel-field-mode,
+.panel-field-choice,
+.panel-group {
+    grid-column: 1 / -1;
+}
+
+.panel-field-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.panel-field-label {
+    font-weight: 700;
+}
+
+.panel-field-badge {
+    display: none;
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--sp-forest);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.panel-field-badge.visible {
+    display: inline-block;
+}
+
+.panel-field-help {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+    line-height: 1.4;
+}
+
+.panel-field-reason {
+    font-size: 12px;
+    color: #92400e;
+}
+
+.panel-field-reason:empty,
+.panel-field-error:empty {
+    display: none;
+}
+
+.panel-field-error {
+    font-size: 12px;
+    color: #b91c1c;
+    font-weight: 600;
+}
+
+.panel-field-disabled {
+    opacity: 0.6;
+    background: #f5f7f3;
+}
+
+.panel-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.panel-input {
+    flex: 1 1 110px;
+    min-width: 90px;
+    padding: 8px 10px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-md);
+}
+
+.panel-input-hour {
+    flex: 0 0 90px;
+}
+
+.panel-input-mono {
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+}
+
+.panel-select {
+    flex: 0 1 130px;
+    padding: 8px 10px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-md);
+}
+
+.panel-unit,
+.panel-hint {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.panel-hint-active {
+    color: var(--sp-forest);
+    font-weight: 600;
+}
+
+.panel-options {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.panel-option {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-lg);
+    background: #fff;
+    cursor: pointer;
+}
+
+.panel-option.selected {
+    border-color: var(--sp-forest);
+    background: rgba(82, 115, 94, 0.1);
+    box-shadow: inset 0 0 0 1px var(--sp-forest);
+}
+
+.panel-option input {
+    margin-top: 3px;
+}
+
+.panel-option-body {
+    display: grid;
+    gap: 2px;
+}
+
+.panel-option-title {
+    font-weight: 700;
+}
+
+.panel-option-help {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.7);
+    line-height: 1.35;
+}
+
+.panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.panel-toggle input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.panel-toggle-knob {
+    position: relative;
+    width: 42px;
+    height: 24px;
+    border-radius: 12px;
+    background: rgba(31, 42, 35, 0.25);
+    transition: background 0.15s ease;
+}
+
+.panel-toggle-knob::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    transition: transform 0.15s ease;
+}
+
+.panel-toggle input:checked + .panel-toggle-knob {
+    background: var(--sp-forest);
+}
+
+.panel-toggle input:checked + .panel-toggle-knob::after {
+    transform: translateX(18px);
+}
+
+.panel-toggle input:focus-visible + .panel-toggle-knob {
+    outline: 2px solid var(--sp-forest);
+    outline-offset: 2px;
+}
+
+.panel-toggle-text {
+    font-weight: 600;
+}
+
+.panel-group {
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-lg);
+    padding: 10px 14px 14px;
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.panel-group-title {
+    cursor: pointer;
+    font-weight: 700;
+    padding: 4px 0;
+}
+
+.panel-group-help {
+    margin: 4px 0 10px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+}
+
+.panel-group > .panel-fields {
+    margin-top: 6px;
+}
+
+.panel-daybar {
+    display: grid;
+    gap: 4px;
+}
+
+.panel-daybar-track {
+    position: relative;
+    height: 18px;
+    border-radius: var(--radius-pill);
+    background: rgba(31, 42, 35, 0.12);
+    overflow: hidden;
+}
+
+.panel-daybar-seg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: var(--sp-forest);
+    opacity: 0.85;
+}
+
+.panel-daybar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: rgba(31, 42, 35, 0.6);
+}
+
+.panel-daybar-legend {
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+@media (max-width: 600px) {
+    .panel-fields {
+        grid-template-columns: 1fr;
+    }
+}

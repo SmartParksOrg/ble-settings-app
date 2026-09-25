@@ -73,7 +73,14 @@ node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-e
 
 ## Guided settings (in progress)
 
-The settings list is being reworked into guided, task-oriented panels. The foundation is in place:
+The settings list is being reworked into guided, task-oriented panels. The Positioning (GPS)
+panel is live above the settings list; the other panels follow the same pattern.
+
+- `panels/panel-renderer.js` renders panels from the definitions. A panel is a view over the
+  same state as the settings list: it reads effective values (pending edit, else the device
+  value, else the default) and writes through the list inputs, so validation, the pending
+  draft and "Review and apply" are shared. Fields whose keys the loaded schema lacks are
+  skipped; fields gated by another setting are greyed out with the reason.
 
 - `panels/panel-engine.js` holds the draft of pending edits, evaluates panel conditions,
   orders writes so dependents are written before a switch that enables them (and after one

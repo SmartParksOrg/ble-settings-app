@@ -4,8 +4,11 @@
 // serves every bundled firmware version.
 //
 // Field shapes:
-//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, visibleWhen, writeAfter }
-//   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set }] }
+//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, writeAfter }
+//   (`reason` is shown when enabledWhen is false; a group's reason applies to its fields)
+//   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
+//   (`set` values are written when the option is chosen; `ensure` values only where the
+//   current value is empty or zero, so a mode never leaves an interval at 0 = off)
 //   { group, help, advanced, enabledWhen, fields: [...] }
 // Conditions use the PanelEngine forms: { key, equals | truthy | gt ... }, { all }, { any }, { not }.
 (function (root, factory) {
@@ -21,6 +24,11 @@
   const dayNightOn = { key: 'ublox_multiple_intervals', truthy: true };
   const motionOn = { key: 'enable_motion_trig_gps', truthy: true };
   const outdoorOn = { key: 'outdoor_detection_enabled', truthy: true };
+  const windowMode = { all: [motionOn, { key: 'gps_triggered_interval', gt: 0 }, { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', gt: 0 }] };
+  const dayNightReason = 'Only used with the day and night schedule.';
+  const motionReason = 'Turn on motion-triggered GPS first.';
+  const outdoorReason = 'Turn on outdoor detection first.';
+  const windowReason = 'Only used with the "Fix after repeated movement" behaviour.';
 
   const positioning = {
     id: 'positioning',
@@ -47,6 +55,7 @@
             help: 'One interval, all day.',
             when: { all: [{ key: 'ublox_send_interval', gt: 0 }, { key: 'ublox_multiple_intervals', truthy: false }] },
             set: { ublox_multiple_intervals: false },
+            ensure: { ublox_send_interval: 300 },
           },
           {
             id: 'day-night',
@@ -54,16 +63,17 @@
             help: 'Two intervals: one from the day start hour, another from the night start hour (UTC).',
             when: dayNightOn,
             set: { ublox_multiple_intervals: true },
+            ensure: { ublox_send_interval: 300, ublox_send_interval_2: 3600 },
           },
         ],
       },
       { key: 'ublox_send_interval', label: 'Fix interval', control: 'duration', unit: 's', zeroMeansOff: true,
         help: 'Time between position fixes. With the day and night schedule this is the daytime interval.' },
-      { key: 'ublox_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: dayNightOn,
+      { key: 'ublox_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'UTC hour when the daytime interval starts. Shown with your local time.' },
-      { key: 'ublox_send_interval_2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, enabledWhen: dayNightOn,
+      { key: 'ublox_send_interval_2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'Time between fixes from the night start hour until the day start hour.' },
-      { key: 'ublox_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: dayNightOn,
+      { key: 'ublox_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'UTC hour when the night interval starts.' },
       { key: 'ublox_active_tracking', label: 'Active tracking', control: 'toggle',
         help: 'Keep the GNSS receiver on between fixes. Adds heading and speed to position reports. Uses considerably more battery.' },
@@ -75,9 +85,9 @@
         fields: [
           { key: 'outdoor_detection_enabled', label: 'Only fix when likely outdoors', control: 'toggle',
             help: 'Replaces the fixed interval with fixes triggered by the outdoor estimate. Can be combined with motion-triggered fixes.' },
-          { key: 'outdoor_detection_tau', label: 'Outdoor probability threshold', enabledWhen: outdoorOn,
+          { key: 'outdoor_detection_tau', label: 'Outdoor probability threshold', enabledWhen: outdoorOn, reason: outdoorReason,
             help: 'Probability required before a fix is attempted.' },
-          { key: 'outdoor_detection_parameters', label: 'Model weights', control: 'bytes', enabledWhen: outdoorOn, advanced: true },
+          { key: 'outdoor_detection_parameters', label: 'Model weights', control: 'bytes', enabledWhen: outdoorOn, reason: outdoorReason, advanced: true },
         ],
       },
       {
@@ -86,13 +96,14 @@
         fields: [
           { key: 'enable_motion_trig_gps', label: 'Motion-triggered GPS', control: 'toggle',
             help: 'When the tracker is not moving, scheduled fixes are skipped.' },
-          { key: 'motion_ths', label: 'Motion sensitivity', enabledWhen: motionOn,
+          { key: 'motion_ths', label: 'Motion sensitivity', enabledWhen: motionOn, reason: motionReason,
             help: 'Accelerometer threshold that counts as movement. Lower is more sensitive.' },
           {
             control: 'choice',
             label: 'Behaviour',
             keys: ['gps_triggered_interval', 'gps_motion_triggered_min_num_of_triggers_per_interval'],
             enabledWhen: motionOn,
+            reason: motionReason,
             options: [
               {
                 id: 'skip',
@@ -110,13 +121,13 @@
               },
             ],
           },
-          { key: 'gps_skipped_triggered_interval', label: 'Maximum skipped fixes', enabledWhen: motionOn,
+          { key: 'gps_skipped_triggered_interval', label: 'Maximum skipped fixes', enabledWhen: motionOn, reason: motionReason,
             help: 'After this many skipped intervals a fix is taken even without movement. 0 fixes on every interval.' },
           { key: 'gps_triggered_interval', label: 'Movement window', control: 'duration', unit: 's',
-            enabledWhen: { all: [motionOn, { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', gt: 0 }] },
+            enabledWhen: windowMode, reason: windowReason,
             help: 'Length of the window in which movements are counted.' },
           { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', label: 'Movements needed in window',
-            enabledWhen: { all: [motionOn, { key: 'gps_triggered_interval', gt: 0 }] },
+            enabledWhen: windowMode, reason: windowReason,
             help: 'Number of movements within the window that trigger a fix.' },
         ],
       },
