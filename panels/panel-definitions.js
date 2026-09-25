@@ -12,7 +12,7 @@
 //   turned on with no remembered value, `offLabel` the text shown while off.
 //   (`set` values are written when the option is chosen; `ensure` values only where the
 //   current value is empty or zero, so a mode never leaves an interval at 0 = off)
-//   { group, help, advanced, enabledWhen, fields: [...] }
+//   { group, help, advanced, summary, enabledWhen, fields: [...] }   (groups may nest one level)
 // Conditions use the PanelEngine forms: { key, equals | truthy | gt ... }, { all }, { any }, { not }.
 (function (root, factory) {
   const api = factory();
@@ -143,21 +143,57 @@
       {
         group: 'Advanced fix settings',
         advanced: true,
-        help: 'Fix quality and timing. The defaults suit most deployments.',
+        summary: 'fix-quality',
+        help: 'How a fix attempt runs. The first fix after a long gap is a cold fix; once one succeeds, later fixes are hot fixes. The defaults suit most deployments.',
         fields: [
-          { key: 'horizontal_accuracy', label: 'Horizontal accuracy', unit: 'm', help: 'Horizontal accuracy in metres.' },
-          { key: 'cold_fix_timeout', label: 'Cold fix timeout', control: 'duration', unit: 's', help: 'Duration of a cold fix attempt (the first fix, without recent satellite data).' },
-          { key: 'cold_fix_retry', label: 'Cold fix retries', help: 'Number of cold fix attempts before the GPS module is turned off.' },
-          { key: 'hot_fix_timeout', label: 'Hot fix timeout', control: 'duration', unit: 's', help: 'Duration of a hot fix attempt (fixes after a successful cold fix).' },
-          { key: 'hot_fix_retry', label: 'Hot fix retries', help: 'Number of hot fix attempts.' },
-          { key: 'ublox_min_satellites', label: 'Minimum satellites', help: 'Satellites that must be visible to keep trying. 0 disables the check.' },
-          { key: 'ublox_min_satellites_timer', label: 'Satellite check after', control: 'duration', unit: 's', help: 'Seconds into an attempt before checking whether enough satellites are visible to continue.' },
-          { key: 'ublox_min_fix_time', label: 'Minimum fix time', control: 'duration', unit: 's', help: 'Minimum fix time in seconds.' },
-          { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
-          { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
-          { key: 'ublox_cold_fix_hour_interval', label: 'Limit cold fix attempts', control: 'duration', unit: 'h', zeroMeansOff: true, onDefault: 24, offLabel: 'No limit', help: 'How often a cold fix attempt is allowed, in hours.' },
-          { key: 'gps_init_lat', label: 'Initial latitude', control: 'coordinate', help: 'Initial latitude in decimal degrees.' },
-          { key: 'gps_init_lon', label: 'Initial longitude', control: 'coordinate' },
+          {
+            group: 'Cold fix (first fix, no recent satellite data)',
+            fields: [
+              { key: 'cold_fix_timeout', label: 'Attempt duration', control: 'duration', unit: 's',
+                help: 'Duration of a cold fix attempt.' },
+              { key: 'cold_fix_retry', label: 'Attempts',
+                help: 'Number of cold fix attempts. After the last unsuccessful one the GPS module is turned off.' },
+              { key: 'ublox_cold_fix_hour_interval', label: 'Limit cold fix attempts', control: 'duration', unit: 'h', zeroMeansOff: true, onDefault: 24, offLabel: 'No limit',
+                help: 'How often a cold fix attempt is allowed, in hours.' },
+            ],
+          },
+          {
+            group: 'Hot fix (after a successful fix)',
+            fields: [
+              { key: 'hot_fix_timeout', label: 'Attempt duration', control: 'duration', unit: 's',
+                help: 'Duration of a hot fix attempt.' },
+              { key: 'hot_fix_retry', label: 'Attempts',
+                help: 'Number of hot fix attempts.' },
+            ],
+          },
+          {
+            group: 'Abandon attempts with too few satellites',
+            help: 'Part-way into an attempt the receiver checks how many satellites it sees; with too few, the attempt is abandoned instead of running to its full duration.',
+            fields: [
+              { key: 'ublox_min_satellites', label: 'Satellite check', zeroMeansOff: true, onDefault: 3, offLabel: 'Off',
+                help: 'Satellites needed to continue the attempt.' },
+              { key: 'ublox_min_satellites_timer', label: 'Check after', control: 'duration', unit: 's',
+                enabledWhen: { key: 'ublox_min_satellites', gt: 0 }, reason: 'Turn on the satellite check first.',
+                help: 'Seconds into an attempt at which the satellite count is checked.' },
+            ],
+          },
+          {
+            group: 'Fix result and follow-up',
+            fields: [
+              { key: 'horizontal_accuracy', label: 'Horizontal accuracy', unit: 'm', help: 'Horizontal accuracy in metres.' },
+              { key: 'ublox_min_fix_time', label: 'Minimum fix time', control: 'duration', unit: 's', help: 'Minimum fix time in seconds.' },
+              { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
+              { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
+            ],
+          },
+          {
+            group: 'Initial position',
+            help: 'Position stored on the device before any fix has been made.',
+            fields: [
+              { key: 'gps_init_lat', label: 'Initial latitude', control: 'coordinate', help: 'Initial latitude in decimal degrees.' },
+              { key: 'gps_init_lon', label: 'Initial longitude', control: 'coordinate', help: 'Initial longitude in decimal degrees.' },
+            ],
+          },
         ],
       },
     ],

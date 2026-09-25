@@ -255,3 +255,14 @@ test('the positioning summary reads as sentences for each mode', () => {
     const partial = engine.describePositioning(key => ({ ublox_send_interval: '300' })[key] ?? null);
     assert.equal(partial, 'Fix every 5 minutes, all day.', 'missing keys are simply left out');
 });
+
+test('the fix-quality summary describes cold, hot, satellite check and accuracy settings', () => {
+    const values = { cold_fix_timeout: '200', cold_fix_retry: '200', hot_fix_timeout: '65', hot_fix_retry: '4',
+        ublox_min_satellites: '3', ublox_min_satellites_timer: '30', horizontal_accuracy: '50' };
+    const get = key => values[key] ?? null;
+    assert.equal(engine.describeFixQuality(get),
+        'Cold fix: up to 3 minutes 20 seconds per attempt, 200 attempts. Hot fix: up to 1 minute 5 seconds per attempt, 4 attempts. An attempt is abandoned after 30 seconds if fewer than 3 satellites are visible. Accuracy target 50 m.');
+    values.ublox_min_satellites = '0';
+    assert.match(engine.describeFixQuality(get), /not abandoned early/);
+    assert.equal(engine.describeFixQuality(key => ({ hot_fix_retry: '1' })[key] ?? null), 'Hot fix: 1 attempt.');
+});
