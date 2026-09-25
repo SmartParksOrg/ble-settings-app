@@ -50,21 +50,63 @@
 
   // ---- controls -------------------------------------------------------------------
 
+  // Optional on/off switch in front of a numeric control where 0 means off. Off writes 0
+  // and remembers the value; on restores it, or uses the field's onDefault.
+  function attachOffToggle(field, host, wrap, inputsNode, fallback) {
+    if (!field.zeroMeansOff) return null;
+    let remembered = null;
+    const toggle = makeToggleSwitch(on => {
+      if (on) {
+        const value = engine.toNumber(remembered) > 0 ? remembered : fallback();
+        host.setValue(field.key, String(value));
+      } else {
+        const current = host.getValue(field.key);
+        if (engine.toNumber(current) > 0) remembered = current;
+        host.setValue(field.key, '0');
+      }
+    });
+    wrap.insertBefore(toggle.label, wrap.firstChild);
+    return {
+      input: toggle.input,
+      update(raw, value) {
+        const on = raw > 0;
+        toggle.input.checked = on;
+        toggle.text.textContent = on ? 'On' : (field.offLabel || 'Off');
+        if (on) remembered = value;
+        inputsNode.classList.toggle('hidden', !on);
+        return on;
+      },
+    };
+  }
+
   function makeNumberControl(field, setting, host) {
     const input = el('input', 'panel-input');
     input.type = 'number';
     input.step = setting.conversion === 'float' ? '0.01' : '1';
-    if (setting.min !== undefined) input.min = setting.min;
+    if (setting.min !== undefined) input.min = field.zeroMeansOff ? Math.max(1, Number(setting.min) || 1) : setting.min;
     if (setting.max !== undefined) input.max = setting.max;
     input.addEventListener('input', () => host.setValue(field.key, input.value.trim()));
     const wrap = el('div', 'panel-control panel-control-number');
-    wrap.appendChild(input);
-    if (field.unit) wrap.appendChild(el('span', 'panel-unit', field.unit));
+    const inputs = el('span', 'panel-duration-inputs');
+    inputs.appendChild(input);
+    if (field.unit) inputs.appendChild(el('span', 'panel-unit', field.unit));
+    wrap.appendChild(inputs);
+    const toggle = attachOffToggle(field, host, wrap, inputs, () => (field.onDefault !== undefined ? field.onDefault : 1));
+    let externallyDisabled = false;
+    let off = false;
+    const applyDisabled = () => {
+      input.disabled = externallyDisabled || off;
+      if (toggle) toggle.input.disabled = externallyDisabled;
+    };
     return {
       node: wrap,
-      focusable: input,
-      update(value) { if (!isFocused(input)) input.value = value ?? ''; },
-      setDisabled(disabled) { input.disabled = disabled; },
+      focusable: toggle ? toggle.input : input,
+      update(value) {
+        if (toggle) off = !toggle.update(engine.toNumber(value), value);
+        if (!isFocused(input)) input.value = value ?? '';
+        applyDisabled();
+      },
+      setDisabled(disabled) { externallyDisabled = disabled; applyDisabled(); },
     };
   }
 
@@ -392,17 +434,27 @@
     return present.length === 1 ? present[0] : { all: present };
   }
 
-  function renderFields(fields, panel, host, inherited, state, inheritedReason = null) {
+  function renderFields(fields, panel, host, inherited, state, inheritedReason = null, insideGroup = false) {
     const fragment = document.createDocumentFragment();
     (fields || []).forEach(field => {
       if (Array.isArray(field.fields)) {
-        const group = el('details', `panel-group${field.advanced ? ' panel-group-advanced' : ''}`);
+        const nested = insideGroup;
+        const group = el('details', `panel-group${field.advanced ? ' panel-group-advanced' : ''}${nested ? ' panel-group-nested' : ''}`);
         group.open = !field.advanced;
         const summary = el('summary', 'panel-group-title', field.group);
         group.appendChild(summary);
         if (field.help) group.appendChild(el('p', 'panel-group-help', field.help));
+        if (field.summary) {
+          const line = el('p', 'panel-group-summary', '');
+          group.appendChild(line);
+          state.updaters.push(() => {
+            line.textContent = field.summary === 'fix-quality'
+              ? engine.describeFixQuality(host.getValue)
+              : '';
+          });
+        }
         const inner = el('div', 'panel-fields');
-        inner.appendChild(renderFields(field.fields, panel, host, mergeConditions(inherited, field.enabledWhen), state, field.reason || inheritedReason));
+        inner.appendChild(renderFields(field.fields, panel, host, mergeConditions(inherited, field.enabledWhen), state, field.reason || inheritedReason, true));
         group.appendChild(inner);
         if (inner.children.length) fragment.appendChild(group);
         return;

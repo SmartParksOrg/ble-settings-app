@@ -4140,6 +4140,39 @@ body.has-pending-changes {
     margin-top: 6px;
 }
 
+.panel-group-summary {
+    margin: 0 0 8px;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    background: rgba(82, 115, 94, 0.1);
+    border-left: 3px solid var(--sp-forest);
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.panel-group-nested {
+    border: none;
+    border-top: 1px solid rgba(82, 115, 94, 0.16);
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+    margin-top: 4px;
+}
+
+.panel-group-nested > .panel-group-title {
+    font-size: 14px;
+    padding: 12px 0 2px;
+}
+
+.panel-group-nested > .panel-group-help {
+    margin: 2px 0 6px;
+}
+
+.panel-group-nested > .panel-fields {
+    margin-top: 0;
+}
+
 .panel-daybar {
     display: grid;
     gap: 4px;

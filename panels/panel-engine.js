@@ -369,6 +369,39 @@
     return sentences.join(' ');
   }
 
+  // One or two sentences about how a fix attempt runs, from the fix-quality settings.
+  function describeFixQuality(getValue, fmt = {}) {
+    const has = key => getValue(key) !== null && getValue(key) !== undefined;
+    const num = key => toNumber(getValue(key));
+    const duration = fmt.duration || formatDurationWords;
+    const sentences = [];
+    if (has('cold_fix_timeout') || has('cold_fix_retry')) {
+      const parts = [];
+      if (has('cold_fix_timeout')) parts.push(`up to ${duration(num('cold_fix_timeout'))} per attempt`);
+      if (has('cold_fix_retry')) parts.push(`${num('cold_fix_retry')} attempt${num('cold_fix_retry') === 1 ? '' : 's'}`);
+      sentences.push(`Cold fix: ${parts.join(', ')}.`);
+    }
+    if (has('hot_fix_timeout') || has('hot_fix_retry')) {
+      const parts = [];
+      if (has('hot_fix_timeout')) parts.push(`up to ${duration(num('hot_fix_timeout'))} per attempt`);
+      if (has('hot_fix_retry')) parts.push(`${num('hot_fix_retry')} attempt${num('hot_fix_retry') === 1 ? '' : 's'}`);
+      sentences.push(`Hot fix: ${parts.join(', ')}.`);
+    }
+    if (has('ublox_min_satellites')) {
+      const minimum = num('ublox_min_satellites');
+      if (minimum > 0) {
+        const after = has('ublox_min_satellites_timer') ? ` after ${duration(num('ublox_min_satellites_timer'))}` : '';
+        sentences.push(`An attempt is abandoned${after} if fewer than ${minimum} satellites are visible.`);
+      } else {
+        sentences.push('Attempts are not abandoned early for too few satellites.');
+      }
+    }
+    if (has('horizontal_accuracy')) {
+      sentences.push(`Accuracy target ${num('horizontal_accuracy')} m.`);
+    }
+    return sentences.join(' ');
+  }
+
   return {
     toBool,
     toNumber,
@@ -388,5 +421,6 @@
     formatUtcHour,
     daySegments,
     describePositioning,
+    describeFixQuality,
   };
 }));
