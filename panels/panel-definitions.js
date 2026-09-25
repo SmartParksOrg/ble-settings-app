@@ -181,7 +181,7 @@
             group: 'Fix result and follow-up',
             fields: [
               { key: 'horizontal_accuracy', label: 'Horizontal accuracy', unit: 'm', help: 'Horizontal accuracy in metres.' },
-              { key: 'ublox_min_fix_time', label: 'Minimum fix time', control: 'duration', unit: 's', help: 'Minimum fix time in seconds.' },
+              { key: 'ublox_min_fix_time', label: 'Minimum search time', control: 'duration', unit: 's', help: 'Minimum time the receiver keeps searching for GNSS satellites in order to make a fix.' },
               { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
               { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
             ],
