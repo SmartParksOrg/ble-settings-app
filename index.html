@@ -3014,6 +3014,10 @@
     function exportToJson() {
       const settings = {};
       const includeCredentials = document.getElementById('export-credentials-toggle')?.checked ?? true;
+      if (settingsDraft.size > 0) {
+        showToast('Apply or discard your pending changes before exporting, so the file matches the device.');
+        return;
+      }
 
       for (const [key, setting] of Object.entries(settingsData.settings)) {
         if (excludeFromImportExport.includes(key)) {
@@ -3023,7 +3027,10 @@
           continue;
         }
 
-        const value = getInputValue(setting.id);
+        // Export what the device reported, not what an input happens to hold.
+        const value = currentSettingValues.has(String(setting.id))
+          ? currentSettingValues.get(String(setting.id))
+          : getInputValue(setting.id);
 
         if (key === 'device_pin') {
           settings[key] = formatDevicePinForDisplay(value);
@@ -3223,6 +3230,11 @@
       }
 
       console.log('Importing settings from file:', file.name);
+      if (settingsDraft.size > 0) {
+        showToast('Apply or discard your pending changes before importing.');
+        fileInput.value = '';
+        return;
+      }
       const reader = new FileReader();
       reader.onload = async function (event) {
         const settingsSection = document.getElementById('settings-section');
@@ -3237,7 +3249,6 @@
           const previewRows = [];
           const includeCredentials = document.getElementById('import-credentials-toggle')?.checked ?? false;
 
-          let index = 0;
           const entries = Object.entries(importedSettings).filter(([key]) => !excludeFromImportExport.includes(key));
           filteredEntries = [];
 
@@ -3249,7 +3260,9 @@
             if (!includeCredentials && isCredentialSetting(settingObj)) {
               continue;
             }
-            const currentValue = getInputValue(settingObj.id) ?? settingObj.default;
+            const currentValue = currentSettingValues.has(String(settingObj.id))
+              ? currentSettingValues.get(String(settingObj.id))
+              : (getInputValue(settingObj.id) ?? settingObj.default);
             const unchanged = isSettingValueEqual(key, settingObj, currentValue, value);
             if (!unchanged) {
               filteredEntries.push([key, value]);
@@ -3274,56 +3287,40 @@
             return;
           }
 
+          // Same dependency ordering as Review and apply, so switches are written after
+          // the settings they enable.
+          const ordered = PanelEngine.planWriteOrder(
+            filteredEntries.map(([key, value]) => ({ key, value })),
+            window.PanelDefinitions ? window.PanelDefinitions.panels : []
+          );
+          const orderedRows = ordered.map(item => previewRows.find(row => row.key === item.key))
+            .concat(previewRows.filter(row => row.unchanged));
+
           const ok = await showImportPreviewModal({
             title: `Import ${previewRows.length} settings`,
             subtitle: `File: ${file.name}`,
-            rows: previewRows,
-            note: includeCredentials ? '' : 'Device credentials will be skipped.'
+            rows: orderedRows,
+            note: includeCredentials ? '' : 'Device credentials will be skipped.',
+            confirmLabel: 'Import'
           });
           if (!ok) {
             showToast('Import cancelled');
             return;
           }
 
-          showImportProgress({
-            total: filteredEntries.length,
-            title: `Importing ${filteredEntries.length} settings`,
-            subtitle: `File: ${file.name}`,
-            items: previewRows
-          });
-
           search.classList.add('hidden');
           settingsSection.classList.add('hidden');
           commandsSection.classList.add('hidden');
 
-          for (const [key, value] of filteredEntries) {
-            index++;
-
-            const settingObj = getByKey(key);
-            if (settingObj) {
-              const label = `${settingObj.display_name || key} (${settingObj.id})`;
-              try {
-                const start = Date.now();
-                await updateBleSetting(settingObj.id, value);
-                const elapsed = Date.now() - start;
-                const remainingSleep = Math.max(0, 200 - elapsed);
-                if (remainingSleep > 0) {
-                  await sleep(remainingSleep);
-                }
-                updateImportProgress({ index, total: filteredEntries.length, status: 'success', settingId: settingObj.id });
-              } catch (error) {
-                updateImportProgress({ index, total: filteredEntries.length, status: 'error', settingId: settingObj.id });
-                throw error;
-              }
-            }
-          }
-
-          await fetchAllSettings();
-          finishImportProgress({ total: filteredEntries.length, success: true });
+          await applyOrderedSettingChanges(ordered, orderedRows.filter(row => !row.unchanged), {
+            title: `Importing ${ordered.length} setting${ordered.length === 1 ? '' : 's'}`,
+            subtitle: `File: ${file.name}`,
+            noun: 'setting'
+          });
         } catch (error) {
           console.error('Error importing settings:', error);
           showToast('Failed to import settings. Please check the file format.');
-          finishImportProgress({ total: filteredEntries.length || 0, success: false });
+          finishImportProgress({ total: filteredEntries.length || 0, success: false, message: `Import stopped: ${error.message || error}` });
         } finally {
           search.classList.remove('hidden');
           settingsSection.classList.remove('hidden');
@@ -6006,13 +6003,15 @@
       if (!ok) {
         return;
       }
-      showImportProgress({
-        total: rows.length,
-        title: `Applying ${rows.length} change${plural}`,
-        subtitle: 'Writing and confirming...',
-        items: rows
-      });
-      log(`Applying ${rows.length} pending setting change${plural}: ${ordered.map(item => item.key).join(', ')}`);
+      await applyOrderedSettingChanges(ordered, rows, { title: `Applying ${rows.length} change${plural}`, noun: 'change' });
+      renderPendingChangesBar();
+    }
+
+    // Write each item in order, read it back, and report; shared by Review-and-apply and Import.
+    async function applyOrderedSettingChanges(ordered, rows, { title, noun = 'change', subtitle = 'Writing and confirming...' }) {
+      const plural = rows.length === 1 ? '' : 's';
+      showImportProgress({ total: rows.length, title, subtitle, items: rows });
+      log(`Applying ${rows.length} setting ${noun}${plural}: ${ordered.map(item => item.key).join(', ')}`);
       const summary = await PanelEngine.runApply({
         items: ordered,
         write: async item => {
@@ -6042,7 +6041,7 @@
       });
       const problems = summary.mismatch + summary.failed;
       const message = problems === 0 && summary.unverified === 0
-        ? `All ${rows.length} change${plural} confirmed by the device.`
+        ? `All ${rows.length} ${noun}${plural} confirmed by the device.`
         : `${summary.verified} confirmed, ${problems} not applied, ${summary.unverified} not confirmed.`;
       finishImportProgress({ total: rows.length, success: problems === 0, message });
       log(message, problems > 0);
@@ -6050,7 +6049,7 @@
         // Unconfirmed writes may still have landed; refresh so the list shows device truth.
         fetchAllSettings();
       }
-      renderPendingChangesBar();
+      return summary;
     }
 
     // ---- Guided panels ------------------------------------------------------------
@@ -6101,6 +6100,17 @@
           const number = Number(hour);
           return Number.isFinite(number) ? formatLocalTimeValueFromUtcHour(number) : null;
         },
+        getOptions: key => getSettingOptions(key),
+        getPorts: () => {
+          const ports = settingsData && settingsData.ports ? settingsData.ports : {};
+          const labels = (window.PanelDefinitions && PanelDefinitions.portLabels) || {};
+          return Object.entries(ports)
+            .filter(([name, number]) => Number.isFinite(number) && !skipPorts.includes(name))
+            .sort((a, b) => a[1] - b[1])
+            .map(([name, number]) => ({ name, number, label: labels[name] || name.replace(/^port_/, '').replace(/_/g, ' ') }));
+        },
+        pinDigits: value => devicePinDigitsFromStorage(value),
+        pinFromDigits: digits => digits.split('').map(digit => `0${digit}`).join('').toUpperCase(),
       });
     }
 

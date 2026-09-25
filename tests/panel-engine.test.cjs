@@ -266,3 +266,61 @@ test('the fix-quality summary describes cold, hot, satellite check and accuracy 
     assert.match(engine.describeFixQuality(get), /not abandoned early/);
     assert.equal(engine.describeFixQuality(key => ({ hot_fix_retry: '1' })[key] ?? null), 'Hot fix: 1 attempt.');
 });
+
+test('port bitmask helpers match the firmware bit layout (bit = port - 1)', () => {
+    assert.equal(engine.portBit(1), 1);
+    assert.equal(engine.portBit(4), 8);
+    assert.equal(engine.isPortSet('846383', 1), true);
+    assert.equal(engine.isPortSet('846383', 5), false);
+    assert.equal(engine.setPort('0', 4, true), 8);
+    assert.equal(engine.setPort('8', 4, false), 0);
+    assert.equal(engine.setPort('4294967295', 32, false), 2147483647);
+    assert.equal(engine.setPort('2147483647', 32, true), 4294967295, 'bit 31 stays unsigned');
+});
+
+test('network, device and data summaries read as sentences', () => {
+    const options = key => ({
+        lr_region: [{ value: 1, label: 'EU 868' }],
+        lr_adr_profile: [{ value: 1, label: 'Mobile, long range' }, { value: 3, label: 'Custom data rate' }],
+    })[key];
+    const network = { lr_region: '1', lr_adr_profile: '1', lr_adr: '3', rejoin_interval: '3600' };
+    assert.equal(engine.describeNetwork(key => network[key] ?? null, { options }),
+        'Region EU 868. Adaptive data rate: Mobile, long range. Rejoin attempts every 1 hour.');
+    network.lr_adr_profile = '3';
+    assert.match(engine.describeNetwork(key => network[key] ?? null, { options }), /custom, DR3/);
+
+    const device = { device_name: 'SP051307', device_pin: '00000000', led_enabled: 'true', status_send_interval: '3600' };
+    const pinDigits = raw => (raw.match(/.{2}/g) || []).map(pair => pair[1]).join('');
+    assert.equal(engine.describeDevice(key => device[key] ?? null, { pinDigits }),
+        'SP051307. No Bluetooth PIN. Status LED on. Status report every 1 hour.');
+    device.device_pin = '01020304';
+    assert.match(engine.describeDevice(key => device[key] ?? null, { pinDigits }), /Bluetooth PIN set/);
+
+    const ports = [{ name: 'port_a', number: 1, label: 'A' }, { name: 'port_b', number: 2, label: 'B' }, { name: 'port_c', number: 4, label: 'C' }];
+    const columns = [{ key: 'lr_send_flag', label: 'LoRaWAN', summaryLabel: 'over LoRaWAN' }, { key: 'flash_store_flag', label: 'Store', summaryLabel: 'stored to flash' }];
+    const flags = { lr_send_flag: String(1 | 2), flash_store_flag: String(8) };
+    assert.equal(engine.describeDataFlags(key => flags[key] ?? null, ports, columns), 'Of 3 message types: 2 over LoRaWAN, 1 stored to flash.');
+});
+
+test('every panel definition only references settings, options and ports that exist for v8.0.1', () => {
+    const keys = new Set();
+    definitions.panels.forEach(panel => engine.walkFields(panel.fields, field => {
+        engine.fieldKeys(field).forEach(key => keys.add(key));
+        (field.columns || []).forEach(column => keys.add(column.key));
+        engine.conditionKeys(field.enabledWhen, keys);
+        (field.options || []).forEach(option => {
+            engine.conditionKeys(option.when, keys);
+            Object.keys(option.set || {}).forEach(key => keys.add(key));
+        });
+        if (field.control === 'select') {
+            assert.ok(Array.isArray(meta.settings[field.key].options) && meta.settings[field.key].options.length, `${field.key} has options in the meta`);
+        }
+    }));
+    for (const key of keys) {
+        assert.ok(schema.settings[key], `schema has ${key}`);
+    }
+    Object.keys(definitions.portLabels).forEach(port => {
+        if (schema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
+    });
+    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device']);
+});

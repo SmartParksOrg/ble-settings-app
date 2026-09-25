@@ -73,8 +73,10 @@ node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-e
 
 ## Guided settings (in progress)
 
-The settings list is being reworked into guided, task-oriented panels. The Positioning (GPS)
-panel is live above the settings list; the other panels follow the same pattern.
+The settings list is being reworked into guided, task-oriented panels. Four panels are live
+above the settings list: Positioning (GPS), Data sending and storing (a message-type matrix
+over the LoRaWAN, satellite, LP0 and flash-store flags), Network (LoRaWAN) and Device and
+security. They follow the Smart Parks Connect app's section names.
 
 - `panels/panel-renderer.js` renders panels from the definitions. A panel is a view over the
   same state as the settings list: it reads effective values (pending edit, else the device
@@ -94,6 +96,8 @@ panel is live above the settings list; the other panels follow the same pattern.
 - Edits in the settings list collect in a draft. A bar offers "Review and apply", which shows
   a before/after list, writes in dependency order, reads each value back, and reports what
   the device confirmed. The per-setting Update buttons still work and clear their draft entry.
+- Import uses the same ordered, verified apply path. Export and import refuse to run while
+  edits are pending, so a profile always matches what the device reported.
 
 ## DFU flow
 

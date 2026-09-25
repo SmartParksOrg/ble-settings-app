@@ -183,3 +183,48 @@ test('the settings list follows the meta order instead of alphabetical order', a
     assert.equal(ctx.formatGroupTitle('lorawan'), 'Network (LoRaWAN)');
     assert.equal(ctx.formatGroupTitle('unknown_group'), 'unknown group');
 });
+
+test('every setting survives an encode/decode round trip in both schema generations', async () => {
+    for (const file of [v8, v7]) {
+        const ctx = app();
+        await ctx.loadSettingsMeta();
+        await ctx.loadSettings(file);
+        const settings = ctx.evaluate('settingsData.settings');
+        let checked = 0;
+        for (const key of Object.keys(settings)) {
+            const setting = settings[key];
+            if (setting.length === 0) continue;
+            // Inputs hold byte arrays as bare hex (the renderer strips the {0x..} notation).
+            const rendered = ctx.normalizeRenderableValue(setting.default);
+            const value = setting.conversion === 'byte_array' ? ctx.stripBytes(rendered) : rendered;
+            const bytes = ctx.settingToBytes(key, setting, value);
+            if (setting.conversion === 'string') {
+                assert.ok(bytes.length <= setting.length, `${file}: ${key} encodes to at most ${setting.length} bytes`);
+            } else {
+                assert.equal(bytes.length, setting.length, `${file}: ${key} encodes to ${setting.length} bytes`);
+            }
+            const decoded = ctx.bytesToSetting(setting, bytes);
+            assert.ok(ctx.isSettingValueEqual(key, setting, decoded, value), `${file}: ${key} round-trips (${value} -> ${decoded})`);
+            checked += 1;
+        }
+        assert.ok(checked > 100, `${file}: ${checked} settings checked`);
+    }
+});
+
+test('export-style values re-import as equal for PIN, MAC, coordinates and byte arrays', async () => {
+    const ctx = app();
+    await ctx.loadSettingsMeta();
+    await ctx.loadSettings(v8);
+    const settings = ctx.evaluate('settingsData.settings');
+    const pin = settings.device_pin;
+    const pinRaw = '01020304';
+    assert.equal(ctx.formatDevicePinForDisplay(pinRaw), '1234');
+    assert.ok(ctx.isSettingValueEqual('device_pin', pin, pinRaw, '1234'), 'PIN digits from an export match the raw storage form');
+    const mac = settings.cmdq_searched_mac_address;
+    assert.ok(ctx.isSettingValueEqual('cmdq_searched_mac_address', mac, 'D81068ACDAE4', 'd8:10:68:ac:da:e4'), 'MAC with separators matches raw hex');
+    const lat = settings.gps_init_lat;
+    assert.ok(ctx.isSettingValueEqual('gps_init_lat', lat, '465556280', 465556280), 'numeric export value matches the raw string');
+    const weights = settings.outdoor_detection_parameters;
+    const raw = 'CBEC6B122A13790F201C0000';
+    assert.ok(ctx.isSettingValueEqual('outdoor_detection_parameters', weights, raw, raw.toLowerCase()), 'byte arrays compare case-insensitively');
+});

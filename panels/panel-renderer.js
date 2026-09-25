@@ -313,6 +313,173 @@
     };
   }
 
+  function makeTextControl2(field, setting, host) {
+    const input = el('input', 'panel-input');
+    input.type = 'text';
+    if (setting && setting.conversion === 'string' && Number.isFinite(setting.length)) input.maxLength = setting.length;
+    input.addEventListener('input', () => host.setValue(field.key, input.value));
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(input);
+    return {
+      node: wrap,
+      focusable: input,
+      update(value) { if (!isFocused(input)) input.value = value ?? ''; },
+      setDisabled(disabled) { input.disabled = disabled; },
+    };
+  }
+
+  function makePinControl(field, setting, host) {
+    const input = el('input', 'panel-input panel-input-pin');
+    input.type = 'text';
+    input.inputMode = 'numeric';
+    input.maxLength = 4;
+    input.placeholder = '0000';
+    input.addEventListener('input', () => {
+      const digits = input.value.replace(/\D/g, '').slice(0, 4);
+      if (input.value !== digits) input.value = digits;
+      if (digits.length === 4 && host.pinFromDigits) host.setValue(field.key, host.pinFromDigits(digits));
+    });
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(input);
+    const hint = el('span', 'panel-hint', '');
+    wrap.appendChild(hint);
+    return {
+      node: wrap,
+      focusable: input,
+      update(value) {
+        const digits = host.pinDigits ? host.pinDigits(value) : '';
+        if (!isFocused(input)) input.value = digits;
+        hint.textContent = digits && digits !== '0000' ? 'PIN required' : 'No PIN';
+      },
+      setDisabled(disabled) { input.disabled = disabled; },
+    };
+  }
+
+  function makeSelectControl(field, setting, host) {
+    const select = el('select', 'panel-select panel-select-wide');
+    const options = host.getOptions ? host.getOptions(field.key) || [] : [];
+    options.forEach(option => {
+      const node = el('option', null, option.label);
+      node.value = String(option.value);
+      select.appendChild(node);
+    });
+    select.addEventListener('change', () => host.setValue(field.key, select.value));
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(select);
+    const unknown = el('span', 'panel-hint', '');
+    wrap.appendChild(unknown);
+    return {
+      node: wrap,
+      focusable: select,
+      update(value) {
+        const text = String(value ?? '');
+        const known = options.some(option => String(option.value) === text);
+        if (!isFocused(select)) select.value = known ? text : '';
+        unknown.textContent = known || text === '' ? '' : `Device value ${text} is not in the list.`;
+      },
+      setDisabled(disabled) { select.disabled = disabled; },
+    };
+  }
+
+  function makeHexControl(field, setting, host) {
+    const input = el('input', 'panel-input panel-input-mono');
+    input.type = field.secret ? 'password' : 'text';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    const bytes = setting && Number.isFinite(setting.length) ? setting.length : null;
+    if (bytes) input.placeholder = `${bytes} bytes, ${bytes * 2} hex characters`;
+    input.addEventListener('input', () => host.setValue(field.key, input.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase()));
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(input);
+    if (field.secret) {
+      const reveal = el('button', 'panel-inline-button', 'Show');
+      reveal.type = 'button';
+      reveal.addEventListener('click', () => {
+        const showing = input.type === 'text';
+        input.type = showing ? 'password' : 'text';
+        reveal.textContent = showing ? 'Show' : 'Hide';
+      });
+      wrap.appendChild(reveal);
+    }
+    return {
+      node: wrap,
+      focusable: input,
+      update(value) { if (!isFocused(input)) input.value = value ?? ''; },
+      setDisabled(disabled) { input.disabled = disabled; },
+    };
+  }
+
+  function portRows(host) {
+    return host.getPorts ? host.getPorts() : [];
+  }
+
+  function makePortsControl(field, setting, host) {
+    const wrap = el('div', 'panel-ports');
+    const boxes = [];
+    portRows(host).forEach(port => {
+      const label = el('label', 'panel-port');
+      const input = el('input');
+      input.type = 'checkbox';
+      input.addEventListener('change', () => {
+        const mask = engine.setPort(host.getValue(field.key), port.number, input.checked);
+        host.setValue(field.key, String(mask));
+      });
+      label.appendChild(input);
+      label.appendChild(el('span', null, port.label));
+      wrap.appendChild(label);
+      boxes.push({ input, port });
+    });
+    return {
+      node: wrap,
+      focusable: boxes[0] ? boxes[0].input : null,
+      update(value) {
+        boxes.forEach(({ input, port }) => { input.checked = engine.isPortSet(value, port.number); });
+      },
+      setDisabled(disabled) { boxes.forEach(({ input }) => { input.disabled = disabled; }); },
+    };
+  }
+
+  function makeMatrixControl(field, host, columns) {
+    const table = el('table', 'panel-matrix');
+    const head = el('thead');
+    const headRow = el('tr');
+    headRow.appendChild(el('th', 'panel-matrix-name', 'Message type'));
+    columns.forEach(column => headRow.appendChild(el('th', null, column.label)));
+    head.appendChild(headRow);
+    table.appendChild(head);
+    const body = el('tbody');
+    const cells = [];
+    portRows(host).forEach(port => {
+      const row = el('tr');
+      row.appendChild(el('td', 'panel-matrix-name', port.label));
+      columns.forEach(column => {
+        const cell = el('td');
+        const input = el('input');
+        input.type = 'checkbox';
+        input.setAttribute('aria-label', `${port.label} ${column.label}`);
+        input.addEventListener('change', () => {
+          const mask = engine.setPort(host.getValue(column.key), port.number, input.checked);
+          host.setValue(column.key, String(mask));
+        });
+        cell.appendChild(input);
+        row.appendChild(cell);
+        cells.push({ input, port, column });
+      });
+      body.appendChild(row);
+    });
+    table.appendChild(body);
+    const wrap = el('div', 'panel-matrix-wrap');
+    wrap.appendChild(table);
+    return {
+      node: wrap,
+      focusable: cells[0] ? cells[0].input : null,
+      update() {
+        cells.forEach(({ input, port, column }) => { input.checked = engine.isPortSet(host.getValue(column.key), port.number); });
+      },
+      setDisabled(disabled) { cells.forEach(({ input }) => { input.disabled = disabled; }); },
+    };
+  }
+
   function makeOptionsControl(field, host, name) {
     const wrap = el('div', 'panel-options');
     const inputs = [];
@@ -355,6 +522,18 @@
         return makeOptionsControl(field, host, name);
       case 'switch':
         return makeSwitchControl(field, host);
+      case 'text':
+        return makeTextControl2(field, setting, host);
+      case 'pin':
+        return makePinControl(field, setting, host);
+      case 'select':
+        return makeSelectControl(field, setting, host);
+      case 'hex':
+        return makeHexControl(field, setting, host);
+      case 'ports':
+        return makePortsControl(field, setting, host);
+      case 'matrix':
+        return makeMatrixControl(field, host, field.__columns || []);
       case 'duration':
         return makeDurationControl(field, setting, host);
       case 'utc-hour':
@@ -377,7 +556,12 @@
   // ---- fields -----------------------------------------------------------------------
 
   function renderField(field, panel, host, inherited, state, inheritedReason) {
-    const keys = engine.fieldKeys(field);
+    let keys = engine.fieldKeys(field);
+    if (field.control === 'matrix') {
+      field.__columns = (field.columns || []).filter(column => host.getSetting(column.key));
+      keys = field.__columns.map(column => column.key);
+      if (!keys.length) return null;
+    }
     const primarySetting = keys.length ? host.getSetting(keys[0]) : null;
     if (keys.length && keys.some(key => !host.getSetting(key))) {
       return null; // not in this firmware's schema
@@ -504,16 +688,34 @@
   function renderPanel(panel, host, state) {
     const card = el('details', 'section section-card panel-card');
     card.id = `panel-${panel.id}`;
-    card.open = true;
+    card.open = !panel.collapsed;
     const title = el('summary', 'section-card-title');
-    const icon = el('span', 'icon location-dot');
+    const icon = el('span', `icon ${panel.icon || 'location-dot'}`);
     icon.setAttribute('aria-hidden', 'true');
     title.appendChild(icon);
     title.appendChild(document.createTextNode(panel.title));
     card.appendChild(title);
     const body = el('div', 'section-card-body panel-body');
     if (panel.description) body.appendChild(el('p', 'panel-description', panel.description));
-    if (panel.summary === 'positioning') renderPositioningExtras(panel, host, state, body);
+    if (panel.summary === 'positioning') {
+      renderPositioningExtras(panel, host, state, body);
+    } else if (panel.summary) {
+      const summary = el('p', 'panel-summary', '');
+      body.appendChild(summary);
+      state.updaters.push(() => {
+        let text = '';
+        if (panel.summary === 'network') {
+          text = engine.describeNetwork(host.getValue, { options: key => (host.getOptions ? host.getOptions(key) : null) });
+        } else if (panel.summary === 'device') {
+          text = engine.describeDevice(host.getValue, { pinDigits: value => (host.pinDigits ? host.pinDigits(value) : '') });
+        } else if (panel.summary === 'data') {
+          const matrix = (panel.fields || []).find(field => field.control === 'matrix');
+          text = matrix ? engine.describeDataFlags(host.getValue, portRows(host), matrix.__columns || []) : '';
+        }
+        summary.textContent = text;
+        summary.classList.toggle('hidden', !text);
+      });
+    }
     const fields = el('div', 'panel-fields');
     fields.appendChild(renderFields(panel.fields, panel, host, null, state));
     body.appendChild(fields);

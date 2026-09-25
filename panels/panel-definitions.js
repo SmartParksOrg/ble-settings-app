@@ -8,6 +8,9 @@
 //   (`reason` is shown when enabledWhen is false; a group's reason applies to its fields)
 //   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
 //   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
+//   { control: 'text' | 'pin' | 'select' | 'hex' | 'ports', key, ... }   (hex: secret: true masks the value)
+//   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
+//   Panel: { id, title, icon, collapsed, description, summary, fields }
 //   A duration with zeroMeansOff renders an on/off toggle; `onDefault` is the value used when
 //   turned on with no remembered value, `offLabel` the text shown while off.
 //   (`set` values are written when the option is chosen; `ensure` values only where the
@@ -199,8 +202,139 @@
     ],
   };
 
+  // Message types (LoRaWAN ports) as people know them. Unknown ports fall back to the
+  // port name without its prefix.
+  const portLabels = {
+    port_lr_gps: 'LR GPS position',
+    port_ublox_gps: 'GPS position',
+    port_ublox_short_message: 'GPS position (short)',
+    port_ublox_resend_location: 'Last position resend',
+    port_ublox_sat_data: 'GPS satellite data',
+    port_lr_sat_data: 'LR satellite data',
+    port_settings: 'Settings',
+    port_status: 'Status report',
+    port_timestamp: 'Timestamp',
+    port_flash_status: 'Flash status',
+    port_wifi_scan: 'WiFi scan',
+    port_wifi_scan_aggregated: 'WiFi scan (aggregated)',
+    port_ble_scan: 'BLE scan',
+    port_ble_scan_aggregated: 'BLE scan (aggregated)',
+    port_ble_cmdq: 'CMDQ detections',
+    port_fence: 'Fence measurement',
+    port_external_switch_detection: 'Switch detection',
+    port_external_switch_detection_status: 'Switch status',
+    port_air_quality: 'Air quality',
+    port_lp0_ping: 'LP0 ping',
+    port_lp0_commands: 'LP0 commands',
+    port_memfault: 'Memfault diagnostics',
+    port_rf_scan: 'RF scan',
+  };
+
+  const dataSending = {
+    id: 'data',
+    title: 'Data sending and storing',
+    icon: 'envelope',
+    connectAppSection: 'Data sending and storing',
+    description: 'Which message types the tracker sends over LoRaWAN, sends over satellite, and stores in the flash log.',
+    summary: 'data',
+    fields: [
+      {
+        control: 'matrix',
+        label: 'Message types',
+        keys: [],
+        columns: [
+          { key: 'lr_send_flag', label: 'LoRaWAN', summaryLabel: 'over LoRaWAN' },
+          { key: 'sat_send_flag', label: 'Satellite', summaryLabel: 'over satellite' },
+          { key: 'lp0_send_flag', label: 'LP0', summaryLabel: 'over LP0' },
+          { key: 'flash_store_flag', label: 'Store', summaryLabel: 'stored to flash' },
+        ],
+        help: 'Each row is a message type. Tick where it should go.',
+      },
+      {
+        group: 'Flash log',
+        advanced: true,
+        fields: [
+          { key: 'data_log', label: 'Flash data log', control: 'toggle', help: 'Enable the flash data log.' },
+          { key: 'flash_status_interval', label: 'Flash status report', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
+            help: 'How often flash status updates are generated.' },
+        ],
+      },
+    ],
+  };
+
+  const customAdr = { key: 'lr_adr_profile', equals: 3 };
+
+  const network = {
+    id: 'network',
+    title: 'Network (LoRaWAN)',
+    icon: 'messages',
+    connectAppSection: 'LoRa',
+    collapsed: true,
+    description: 'How the tracker joins and talks to the LoRaWAN network.',
+    summary: 'network',
+    fields: [
+      { key: 'lr_region', label: 'Region', control: 'select', help: 'LoRaWAN frequency region. Changing it makes the device rejoin the network.' },
+      { key: 'lr_adr_profile', label: 'Adaptive data rate', control: 'select',
+        help: 'Network controlled suits static devices; the mobile profiles suit moving trackers; Custom uses the data rate below.' },
+      { key: 'lr_adr', label: 'Data rate', enabledWhen: customAdr, reason: 'Only used with the Custom adaptive data rate profile.',
+        help: 'DR0 to DR15. EU 868 allows DR0 to DR7; US 915 allows DR0 to DR4 and DR8 to DR13.' },
+      { key: 'rejoin_interval', label: 'Rejoin interval', control: 'duration', unit: 's', help: 'How often the device tries to rejoin the network while not joined.' },
+      {
+        group: 'Credentials',
+        help: 'Changing the app EUI or app key makes the device rejoin the network. Credentials are only exported when the export option is ticked.',
+        fields: [
+          { key: 'device_eui', label: 'Device EUI', control: 'hex', help: 'The unique ID for this device.' },
+          { key: 'app_eui', label: 'App EUI (Join EUI)', control: 'hex', help: 'The app ID used when joining the network.' },
+          { key: 'app_key', label: 'App key', control: 'hex', secret: true, help: 'The key used to join the network.' },
+        ],
+      },
+      {
+        group: 'Messaging',
+        help: 'Retries for messages sent from the Messenger card.',
+        fields: [
+          { key: 'lr_messaging_retry_interval', label: 'Retry interval', control: 'duration', unit: 's', help: 'How long the device waits between messaging retry attempts.' },
+          { key: 'lr_messaging_retry_count', label: 'Retries', help: 'Number of retry attempts.' },
+        ],
+      },
+      {
+        group: 'Advanced',
+        advanced: true,
+        fields: [
+          { key: 'lr_max_confirm_fail', label: 'Maximum confirmed-message failures', help: 'Maximum number of failed confirmed messages.' },
+          { key: 'lr_confirm_flag', label: 'Send as confirmed messages', control: 'ports', help: 'Message types sent as confirmed uplinks.' },
+          { key: 'lr_join_flag', label: 'Join before sending', control: 'ports', help: 'Message types for which the device attempts to join first when it is not joined.' },
+        ],
+      },
+    ],
+  };
+
+  const device = {
+    id: 'device',
+    title: 'Device and security',
+    icon: 'locked',
+    connectAppSection: 'Security',
+    collapsed: true,
+    description: 'Name, Bluetooth access, and how often the tracker reports its status.',
+    summary: 'device',
+    fields: [
+      { key: 'device_name', label: 'Device name', control: 'text', help: 'Name shown in Bluetooth scans (up to 8 characters).' },
+      { key: 'device_pin', label: 'Bluetooth PIN', control: 'pin', help: 'Four digits required to connect over Bluetooth. 0000 means no PIN is checked.' },
+      { key: 'led_enabled', label: 'Status LED', control: 'toggle', help: 'Enable the status LED.' },
+      { key: 'status_send_interval', label: 'Status report interval', control: 'duration', unit: 's', help: 'How often the device sends a status update.' },
+      {
+        group: 'Advanced',
+        advanced: true,
+        fields: [
+          { key: 'check_error_interval', label: 'Error check interval', control: 'duration', unit: 's', help: 'How often the device checks for error conditions.' },
+          { key: 'tracker_type', label: 'Tracker type', control: 'select', help: 'Tracker model type.' },
+        ],
+      },
+    ],
+  };
+
   return {
-    version: 1,
-    panels: [positioning],
+    version: 2,
+    panels: [positioning, dataSending, network, device],
+    portLabels,
   };
 }));

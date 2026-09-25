@@ -402,6 +402,71 @@
     return sentences.join(' ');
   }
 
+  function optionLabel(fmt, key, value) {
+    const options = fmt.options ? fmt.options(key) : null;
+    if (Array.isArray(options)) {
+      const match = options.find(option => String(option.value) === String(value));
+      if (match) return match.label;
+    }
+    return value === null || value === undefined ? null : String(value);
+  }
+
+  function describeNetwork(getValue, fmt = {}) {
+    const has = key => getValue(key) !== null && getValue(key) !== undefined;
+    const duration = fmt.duration || formatDurationWords;
+    const sentences = [];
+    if (has('lr_region')) sentences.push(`Region ${optionLabel(fmt, 'lr_region', getValue('lr_region'))}.`);
+    if (has('lr_adr_profile')) {
+      const profile = toNumber(getValue('lr_adr_profile'));
+      const label = optionLabel(fmt, 'lr_adr_profile', getValue('lr_adr_profile'));
+      sentences.push(profile === 3 && has('lr_adr')
+        ? `Adaptive data rate: custom, DR${toNumber(getValue('lr_adr'))}.`
+        : `Adaptive data rate: ${label}.`);
+    }
+    if (has('rejoin_interval')) sentences.push(`Rejoin attempts every ${duration(toNumber(getValue('rejoin_interval')))}.`);
+    return sentences.join(' ');
+  }
+
+  function describeDevice(getValue, fmt = {}) {
+    const has = key => getValue(key) !== null && getValue(key) !== undefined;
+    const duration = fmt.duration || formatDurationWords;
+    const sentences = [];
+    if (has('device_name') && String(getValue('device_name')).trim()) sentences.push(`${String(getValue('device_name')).trim()}.`);
+    if (has('device_pin')) {
+      const digits = fmt.pinDigits ? fmt.pinDigits(getValue('device_pin')) : '';
+      sentences.push(digits && digits !== '0000' ? 'Bluetooth PIN set.' : 'No Bluetooth PIN.');
+    }
+    if (has('led_enabled')) sentences.push(toBool(getValue('led_enabled')) ? 'Status LED on.' : 'Status LED off.');
+    if (has('status_send_interval')) sentences.push(`Status report every ${duration(toNumber(getValue('status_send_interval')))}.`);
+    return sentences.join(' ');
+  }
+
+  function portBit(portNumber) {
+    return (1 << (portNumber - 1)) >>> 0;
+  }
+
+  function isPortSet(mask, portNumber) {
+    return ((toNumber(mask) >>> 0) & portBit(portNumber)) !== 0;
+  }
+
+  function setPort(mask, portNumber, on) {
+    const current = toNumber(mask) >>> 0;
+    return (on ? (current | portBit(portNumber)) : (current & ~portBit(portNumber))) >>> 0;
+  }
+
+  // ports: [{ name, number, label }]; columns: [{ key, label }]
+  function describeDataFlags(getValue, ports, columns) {
+    const parts = [];
+    (columns || []).forEach(column => {
+      const mask = getValue(column.key);
+      if (mask === null || mask === undefined) return;
+      const count = (ports || []).filter(port => isPortSet(mask, port.number)).length;
+      parts.push(`${count} ${column.summaryLabel || column.label.toLowerCase()}`);
+    });
+    if (!parts.length) return '';
+    return `Of ${(ports || []).length} message types: ${parts.join(', ')}.`;
+  }
+
   return {
     toBool,
     toNumber,
@@ -422,5 +487,11 @@
     daySegments,
     describePositioning,
     describeFixQuality,
+    describeNetwork,
+    describeDevice,
+    describeDataFlags,
+    portBit,
+    isPortSet,
+    setPort,
   };
 }));
