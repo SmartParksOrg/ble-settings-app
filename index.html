@@ -574,9 +574,21 @@
       <div id="flash-log-overlay-message" class="flash-log-overlay-message hidden"></div>
       <div class="ublox-fix-actions">
         <button id="flash-log-retry" type="button" class="primary hidden">Retry</button>
+        <button id="flash-log-save-partial" type="button" class="secondary hidden">Save partial log</button>
         <button id="flash-log-cancel" type="button" class="secondary">Cancel</button>
         <button id="flash-log-erase" type="button" class="secondary hidden">Erase all logs</button>
         <button id="flash-log-ok" type="button" class="primary hidden">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="flash-log-recover-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card flash-log-card">
+      <div class="dfu-waiting-text">Interrupted log download found</div>
+      <div id="flash-log-recover-text" class="flash-log-overlay-message"></div>
+      <div class="dfu-confirmation-actions">
+        <button id="flash-log-recover-discard" class="secondary" type="button">Discard</button>
+        <button id="flash-log-recover-save" type="button">Save partial log</button>
       </div>
     </div>
   </div>
@@ -2201,6 +2213,168 @@
       setFlashLogOverlayVisible(true);
     }
 
+    // Partial log capture is mirrored to IndexedDB while it runs, so the packets
+    // received before a dropped connection, a crash or a reload are not lost.
+    const FLASH_LOG_DB_NAME = 'ble-settings-app';
+    const FLASH_LOG_STORE = 'flash-log-capture';
+    const FLASH_LOG_RECORD_KEY = 'current';
+    const FLASH_LOG_PERSIST_EVERY = 25;
+    let flashLogPersistPending = false;
+    let flashLogPersistQueue = Promise.resolve();
+
+    function openFlashLogDb() {
+      return new Promise((resolve, reject) => {
+        if (!('indexedDB' in window)) {
+          reject(new Error('IndexedDB not available'));
+          return;
+        }
+        const request = indexedDB.open(FLASH_LOG_DB_NAME, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(FLASH_LOG_STORE)) {
+            db.createObjectStore(FLASH_LOG_STORE);
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('IndexedDB open failed'));
+      });
+    }
+
+    function flashLogDbRequest(mode, action) {
+      return openFlashLogDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(FLASH_LOG_STORE, mode);
+        const store = tx.objectStore(FLASH_LOG_STORE);
+        const request = action(store);
+        tx.oncomplete = () => { db.close(); resolve(request ? request.result : undefined); };
+        tx.onerror = () => { db.close(); reject(tx.error || new Error('IndexedDB transaction failed')); };
+        tx.onabort = () => { db.close(); reject(tx.error || new Error('IndexedDB transaction aborted')); };
+      }));
+    }
+
+    function flashLogSnapshot(complete) {
+      return {
+        deviceName: flashLogState.deviceName,
+        logTypeLabel: flashLogState.logTypeLabel,
+        requestMode: flashLogState.requestMode,
+        requestedPort: flashLogState.requestedPort,
+        expectedTotal: flashLogState.expectedTotal,
+        startedAt: flashLogState.startedAt ? flashLogState.startedAt.toISOString() : new Date().toISOString(),
+        savedAt: new Date().toISOString(),
+        decodedMessages: flashLogState.decodedMessages,
+        lines: flashLogState.lines.slice(),
+        complete: Boolean(complete)
+      };
+    }
+
+    function persistFlashLogCapture(force = false) {
+      if (!flashLogState.lines.length) {
+        return;
+      }
+      if (!force && flashLogState.lines.length % FLASH_LOG_PERSIST_EVERY !== 0) {
+        return;
+      }
+      if (flashLogPersistPending && !force) {
+        return;
+      }
+      flashLogPersistPending = true;
+      const snapshot = flashLogSnapshot(false);
+      flashLogPersistQueue = flashLogPersistQueue
+        .then(() => flashLogDbRequest('readwrite', store => store.put(snapshot, FLASH_LOG_RECORD_KEY)))
+        .catch(error => console.warn('Failed to persist partial flash log', error))
+        .then(() => { flashLogPersistPending = false; });
+      return flashLogPersistQueue;
+    }
+
+    function clearPersistedFlashLogCapture() {
+      flashLogPersistQueue = flashLogPersistQueue
+        .then(() => flashLogDbRequest('readwrite', store => store.delete(FLASH_LOG_RECORD_KEY)))
+        .catch(error => console.warn('Failed to clear persisted flash log', error));
+      return flashLogPersistQueue;
+    }
+
+    function readPersistedFlashLogCapture() {
+      return flashLogDbRequest('readonly', store => store.get(FLASH_LOG_RECORD_KEY)).catch(() => null);
+    }
+
+    function saveTextFile(filename, contents) {
+      const blob = new Blob([contents], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function buildPartialFlashLogFilename(snapshot) {
+      const startedAt = snapshot.startedAt ? new Date(snapshot.startedAt) : new Date();
+      const deviceName = sanitizeFilenamePart(snapshot.deviceName || 'device');
+      const logType = sanitizeFilenamePart(snapshot.logTypeLabel || 'all');
+      const timestamp = formatFilenameTimestamp(startedAt);
+      const count = snapshot.decodedMessages > 0 ? snapshot.decodedMessages : snapshot.lines.length;
+      return `raw_logs-${logType}-${deviceName}_${timestamp}_PARTIAL-${count}msgs.txt`;
+    }
+
+    function savePartialFlashLog(snapshot) {
+      if (!snapshot || !Array.isArray(snapshot.lines) || !snapshot.lines.length) {
+        showToast('No log data was received yet.');
+        return null;
+      }
+      const filename = buildPartialFlashLogFilename(snapshot);
+      saveTextFile(filename, snapshot.lines.join('\n'));
+      const count = snapshot.decodedMessages > 0 ? snapshot.decodedMessages : snapshot.lines.length;
+      log(`Partial flash log saved (${count} messages, ${snapshot.lines.length} packets). File: ${filename}`);
+      return filename;
+    }
+
+    function saveCurrentPartialFlashLog() {
+      if (flashLogState.buffer) {
+        flashLogState.lines.push(flashLogState.buffer);
+        flashLogState.buffer = '';
+      }
+      const filename = savePartialFlashLog(flashLogSnapshot(false));
+      if (filename) {
+        flashLogState.lastFilename = filename;
+        const detailEl = document.getElementById('flash-log-overlay-message');
+        if (detailEl) {
+          detailEl.textContent = `Partial log saved as ${filename}. The device still holds all logs; Retry downloads them again from the start.`;
+          detailEl.classList.remove('warning');
+        }
+      }
+      return filename;
+    }
+
+    async function offerRecoveredFlashLog() {
+      const snapshot = await readPersistedFlashLogCapture();
+      if (!snapshot || !Array.isArray(snapshot.lines) || !snapshot.lines.length || snapshot.complete) {
+        if (snapshot) clearPersistedFlashLogCapture();
+        return;
+      }
+      const overlay = document.getElementById('flash-log-recover-overlay');
+      const text = document.getElementById('flash-log-recover-text');
+      const saveBtn = document.getElementById('flash-log-recover-save');
+      const discardBtn = document.getElementById('flash-log-recover-discard');
+      if (!overlay || !text || !saveBtn || !discardBtn) {
+        return;
+      }
+      const count = snapshot.decodedMessages > 0 ? snapshot.decodedMessages : snapshot.lines.length;
+      const when = snapshot.savedAt ? new Date(snapshot.savedAt).toLocaleString() : 'an earlier session';
+      text.textContent = `A log download from ${snapshot.deviceName || 'a device'} (${snapshot.logTypeLabel || 'all'}) was interrupted on ${when}. ${count} messages were received and are still stored in this browser.`;
+      const close = () => overlay.classList.add('hidden');
+      saveBtn.onclick = () => {
+        savePartialFlashLog(snapshot);
+        clearPersistedFlashLogCapture();
+        close();
+      };
+      discardBtn.onclick = () => {
+        clearPersistedFlashLogCapture();
+        close();
+      };
+      overlay.classList.remove('hidden');
+    }
+
     function buildFlashLogFilename() {
       const startedAt = flashLogState.startedAt || new Date();
       const deviceName = sanitizeFilenamePart(flashLogState.deviceName);
@@ -2240,6 +2414,7 @@
       cancelBtn.classList.add('hidden');
       eraseBtn.classList.remove('hidden');
       okBtn.classList.remove('hidden');
+      document.getElementById('flash-log-save-partial')?.classList.add('hidden');
       setFlashLogOverlayVisible(true);
     }
 
@@ -2270,6 +2445,7 @@
       cancelBtn.classList.add('hidden');
       eraseBtn.classList.remove('hidden');
       okBtn.classList.remove('hidden');
+      document.getElementById('flash-log-save-partial')?.classList.add('hidden');
       setFlashLogOverlayVisible(true);
     }
 
@@ -2291,21 +2467,39 @@
       }
 
       spinner.classList.add('hidden');
-      titleEl.textContent = 'Log download failed';
+      titleEl.textContent = 'Log download interrupted';
       detailEl.textContent = reason;
       const progressEl = document.getElementById('flash-log-overlay-progress');
       if (progressEl) {
         progressEl.classList.remove('hidden');
       }
-      messageEl.textContent = 'You can retry the download or cancel.';
+      const savePartialBtn = document.getElementById('flash-log-save-partial');
+      if (flashLogState.buffer) {
+        flashLogState.lines.push(flashLogState.buffer);
+        flashLogState.buffer = '';
+      }
+      const received = flashLogState.decodedMessages > 0 ? flashLogState.decodedMessages : flashLogState.lines.length;
+      if (flashLogState.lines.length > 0) {
+        persistFlashLogCapture(true);
+        const filename = savePartialFlashLog(flashLogSnapshot(false));
+        flashLogState.lastFilename = filename || '';
+        messageEl.textContent = filename
+          ? `${received} messages were received before the download stopped and were saved as ${filename}. The device still holds all logs; Retry downloads them again from the start.`
+          : `${received} messages were received before the download stopped. Use "Save partial log" to keep them.`;
+        messageEl.classList.remove('warning');
+        if (savePartialBtn) savePartialBtn.classList.remove('hidden');
+      } else {
+        messageEl.textContent = 'No log data was received. You can retry the download or cancel.';
+        messageEl.classList.add('warning');
+        if (savePartialBtn) savePartialBtn.classList.add('hidden');
+      }
       messageEl.classList.remove('hidden');
-      messageEl.classList.add('warning');
       retryBtn.classList.remove('hidden');
       cancelBtn.classList.remove('hidden');
       eraseBtn.classList.add('hidden');
       okBtn.classList.add('hidden');
       setFlashLogOverlayVisible(true);
-      log(`Flash log download failed: ${reason}`, true);
+      log(`Flash log download interrupted: ${reason} (${received} messages received)`, true);
     }
 
     function startFlashLogCapture({ logTypeLabel = 'all', requestMode = 'all', requestedPort = 0, expectedTotal = null } = {}) {
@@ -2337,6 +2531,8 @@
         total: expectedTotal,
         knownTotal: Number.isFinite(expectedTotal) && expectedTotal > 0
       });
+      document.getElementById('flash-log-save-partial')?.classList.add('hidden');
+      clearPersistedFlashLogCapture();
       scheduleFlashLogInactivityTimeout();
       log(`Starting flash log download (${logTypeLabel})...`);
     }
@@ -2800,6 +2996,7 @@
 
       log(`Flash log download complete (${lines.length} lines). File: ${filename}${reason ? ` (${reason})` : ''}`);
       flashLogState.active = false;
+      clearPersistedFlashLogCapture();
       showFlashLogSuccess(filename);
     }
 
@@ -2833,6 +3030,7 @@
 
       const base64Line = bytesToBase64(payload);
       flashLogState.lines.push(base64Line);
+      persistFlashLogCapture();
 
       const parsed = parseFlashLogRecordCount(data, flashLogState.frameBuffer);
       flashLogState.frameBuffer = parsed.remainder;
@@ -6245,7 +6443,10 @@
     document.getElementById('pending-changes-apply')?.addEventListener('click', reviewAndApplyPendingChanges);
     document.getElementById('pending-changes-discard')?.addEventListener('click', discardPendingChanges);
     window.addEventListener('beforeunload', event => {
-      if (settingsDraft.size > 0) {
+      if (flashLogState.active && flashLogState.lines.length) {
+        persistFlashLogCapture(true);
+      }
+      if (settingsDraft.size > 0 || flashLogState.active) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -7779,6 +7980,7 @@
         flashLogState.active = false;
         log('Flash log download cancelled by user.');
       }
+      clearPersistedFlashLogCapture();
       setFlashLogOverlayVisible(false);
     }
 
@@ -8431,6 +8633,14 @@
         cancelFlashLogDownload();
       });
     }
+
+    const flashLogSavePartialButton = document.getElementById('flash-log-save-partial');
+    if (flashLogSavePartialButton) {
+      flashLogSavePartialButton.addEventListener('click', () => {
+        saveCurrentPartialFlashLog();
+      });
+    }
+    offerRecoveredFlashLog();
 
     const flashLogRetryButton = document.getElementById('flash-log-retry');
     if (flashLogRetryButton) {

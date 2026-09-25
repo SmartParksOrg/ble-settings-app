@@ -14,7 +14,7 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v41`.
+- Service worker cache is currently `app-cache-v42`.
 
 Firmware v8 support completed:
 - Bundled the official v8.0.0 settings schema.
@@ -39,3 +39,15 @@ settings-UI change must be checked against them. Open items:
 6. (Done) Node tests exist; extend them when export/import code changes.
 7. After the guided panels land, re-run the full checklist on hardware: SP051307.
 
+
+## Partial raw logs (hardware test pending)
+
+Interrupted log downloads now save what was received (`..._PARTIAL-<n>msgs.txt`), mirror the
+capture to IndexedDB, and offer recovery on the next visit. To verify on SP051307:
+
+1. Start "Download all logs", walk out of range (or power the collar off) mid-download: the
+   overlay must say "Log download interrupted" and a PARTIAL file must land in Downloads.
+2. Same, but close the tab mid-download: reopening the app must show "Interrupted log download
+   found" with the message count; "Save partial log" must produce the file.
+3. Feed a PARTIAL file to the raw logs decoder; only the last record may be truncated.
+4. Retry after reconnecting must download the full set again (device keeps logs until erased).

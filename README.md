@@ -117,6 +117,17 @@ settings blocks are hidden because the panels edit those settings now.
   timing, air quality duty cycle, report-empty options). Settings the firmware does not
   document keep a plain label without claims about behaviour.
 
+## Raw log downloads
+
+Flash log downloads stream one packet per line (base64) into memory. If the connection drops,
+the device stops answering, or the page is closed mid-download, the packets received so far are
+not lost: the app saves them as `raw_logs-<type>-<device>_<timestamp>_PARTIAL-<n>msgs.txt` as
+soon as the download is interrupted, and the overlay offers "Save partial log" and "Retry". While
+a download runs, the packets are also mirrored to IndexedDB every 25 packets and on page unload;
+on the next visit the app offers to save or discard an interrupted capture it finds there. The
+device keeps all logs until "Erase all logs" is used, so Retry downloads the full set again from
+the start. The last record in a partial file may be cut mid-message.
+
 ## DFU flow
 
 DFU runs over MCUmgr SMP on the same GATT connection as the settings UART. Selecting a
