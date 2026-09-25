@@ -62,11 +62,12 @@
   </div>
 
   <div id="panels-area" class="commands-section panels-section page-section">
-    <div class="panels-search">
-      <input type="search" id="panels-search" placeholder="Find a setting in the panels..." aria-label="Find a setting in the panels" autocomplete="off">
+    <div class="section section-card panels-search">
+      <div class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</div>
+      <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
       <span id="panels-search-count" class="panels-search-count"></span>
+      <p class="panels-search-note">Editing a value in a panel includes that setting in the payload; untick it in the Settings list below to leave it out.</p>
     </div>
-    <p class="panel-description">Editing a value in a panel includes that setting in the payload; untick it in the Settings list below to leave it out.</p>
     <div id="panels-list"></div>
   </div>
 
