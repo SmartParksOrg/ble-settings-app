@@ -4,7 +4,8 @@
 // serves every bundled firmware version.
 //
 // Field shapes:
-//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, writeAfter }
+//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, writeAfter,
+//     warnings: [{ when: <condition>, text }] }   (a warning shows while its condition holds)
 //   (`reason` is shown when enabledWhen is false; a group's reason applies to its fields)
 //   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
 //   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
@@ -177,7 +178,9 @@
                 help: 'Satellites needed to continue the attempt.' },
               { key: 'ublox_min_satellites_timer', label: 'Check after', control: 'duration', unit: 's',
                 enabledWhen: { key: 'ublox_min_satellites', gt: 0 }, reason: 'Turn on the satellite check first.',
-                help: 'Seconds into an attempt at which the satellite count is checked.' },
+                help: 'Seconds into an attempt at which the satellite count is checked. The firmware minimum is 5 seconds; the default is 30.',
+                warnings: [{ when: { key: 'ublox_min_satellites_timer', lt: 5 },
+                  text: 'The device reports a value below the firmware minimum of 5 seconds (often 0 after an upgrade from older firmware). The check then runs every second and can stop fixes before satellites are found. Set it to 30 seconds.' }] },
             ],
           },
           {
