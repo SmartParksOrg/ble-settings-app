@@ -73,10 +73,12 @@ node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-e
 
 ## Guided settings (in progress)
 
-The settings list is being reworked into guided, task-oriented panels. Four panels are live
+The settings list is being reworked into guided, task-oriented panels. Six panels are live
 above the settings list: Positioning (GPS), Data sending and storing (a message-type matrix
-over the LoRaWAN, satellite, LP0 and flash-store flags), Network (LoRaWAN) and Device and
-security. They follow the Smart Parks Connect app's section names.
+over the LoRaWAN, satellite, LP0 and flash-store flags), Network (LoRaWAN), Device and
+security, Iridium satellite and VHF beacon. The three schedules (GPS, satellite, VHF) share
+one component: a switch, a schedule type (fixed or day/night), intervals, and a 24-hour bar.
+They follow the Smart Parks Connect app's section names.
 
 - `panels/panel-renderer.js` renders panels from the definitions. A panel is a view over the
   same state as the settings list: it reads effective values (pending edit, else the device

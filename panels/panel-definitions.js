@@ -12,6 +12,8 @@
 //   { control: 'text' | 'pin' | 'select' | 'hex' | 'ports', key, ... }   (hex: secret: true masks the value)
 //   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
 //   Panel: { id, title, icon, collapsed, description, summary, fields }
+//   summary is an id ('positioning', 'data', 'network', 'device') or { type: 'schedule', ...keys }
+//   zeroMeansOff fields may carry onAlso: [{ key, value, when }] applied when switched on.
 //   A duration with zeroMeansOff renders an on/off toggle; `onDefault` is the value used when
 //   turned on with no remembered value, `offLabel` the text shown while off.
 //   (`set` values are written when the option is chosen; `ensure` values only where the
@@ -172,9 +174,10 @@
           },
           {
             group: 'Abandon attempts with too few satellites',
-            help: 'Part-way into an attempt the receiver checks how many satellites it sees; with too few, the attempt is abandoned instead of running to its full duration.',
+            help: 'Part-way into an attempt the receiver checks how many satellites it sees; with too few, the attempt is abandoned instead of running to its full duration. The check is off when the satellite count is 0; the timer below has no off value.',
             fields: [
               { key: 'ublox_min_satellites', label: 'Satellite check', zeroMeansOff: true, onDefault: 3, offLabel: 'Off',
+                onAlso: [{ key: 'ublox_min_satellites_timer', value: 30, when: { key: 'ublox_min_satellites_timer', lt: 5 } }],
                 help: 'Satellites needed to continue the attempt.' },
               { key: 'ublox_min_satellites_timer', label: 'Check after', control: 'duration', unit: 's',
                 enabledWhen: { key: 'ublox_min_satellites', gt: 0 }, reason: 'Turn on the satellite check first.',
@@ -335,9 +338,106 @@
     ],
   };
 
+  function scheduleTypeField(multipleKey, interval1Key, interval2Key, enabledWhen, reason) {
+    return {
+      control: 'choice',
+      label: 'Schedule type',
+      keys: [multipleKey],
+      enabledWhen,
+      reason,
+      options: [
+        { id: 'fixed', label: 'Fixed interval', help: 'One interval, all day.',
+          when: { key: multipleKey, truthy: false }, set: { [multipleKey]: false } },
+        { id: 'day-night', label: 'Day and night schedule', help: 'Two intervals: one from the day start hour, another from the night start hour (UTC).',
+          when: { key: multipleKey, truthy: true }, set: { [multipleKey]: true },
+          ensure: { [interval1Key]: 3600, [interval2Key]: 86400 } },
+      ],
+    };
+  }
+
+  const satelliteOn = { key: 'satellite_enabled', truthy: true };
+  const satelliteDayNight = { key: 'satellite_multiple_intervals', truthy: true };
+  const satelliteReason = 'Turn on the satellite modem first.';
+  const satelliteDayNightReason = 'Only used with the day and night schedule.';
+
+  const satellite = {
+    id: 'satellite',
+    title: 'Iridium satellite',
+    icon: 'square-caret-up',
+    connectAppSection: 'Satellite',
+    collapsed: true,
+    description: 'When the tracker sends data over the Iridium satellite modem. Which message types go over satellite is set in Data sending and storing.',
+    summary: { type: 'schedule', enabledKey: 'satellite_enabled', interval1Key: 'satellite_send_interval', multipleKey: 'satellite_multiple_intervals',
+      start1Key: 'satellite_interval1_start', interval2Key: 'satellite_send_interval2', start2Key: 'satellite_send_interval2_start', verb: 'Send', subject: 'Satellite sending' },
+    fields: [
+      { key: 'satellite_enabled', label: 'Satellite sending', control: 'toggle', help: 'Send queued messages over the Iridium satellite modem.' },
+      scheduleTypeField('satellite_multiple_intervals', 'satellite_send_interval', 'satellite_send_interval2', satelliteOn, satelliteReason),
+      { key: 'satellite_send_interval', label: 'Send interval', control: 'duration', unit: 's', enabledWhen: satelliteOn, reason: satelliteReason,
+        help: 'Time between satellite send attempts. With the day and night schedule this is the daytime interval.' },
+      { key: 'satellite_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+        help: 'UTC hour when the daytime interval starts.' },
+      { key: 'satellite_send_interval2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400, offLabel: 'No sending at night',
+        enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+        help: 'Time between send attempts from the night start hour until the day start hour.' },
+      { key: 'satellite_send_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+        help: 'UTC hour when the night interval starts.' },
+      {
+        group: 'Advanced',
+        advanced: true,
+        fields: [
+          { key: 'satellite_retry', label: 'Send retries', enabledWhen: satelliteOn, reason: satelliteReason, help: 'Satellite retry setting.' },
+          { key: 's_band_send_mode', label: 'S-Band send mode', help: 'S-band related setting.' },
+          { key: 's_band_send_interval', label: 'S-Band send interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600,
+            help: 'How often an S-Band satellite message is sent.' },
+          { key: 's_band_rf_frequency_hz', label: 'S-Band frequency', unit: 'Hz', help: 'S-band related setting.' },
+        ],
+      },
+    ],
+  };
+
+  const vhfOn = { key: 'vhf_enabled', truthy: true };
+  const vhfDayNight = { key: 'vhf_multiple_intervals', truthy: true };
+  const vhfReason = 'Turn on the VHF beacon first.';
+  const vhfDayNightReason = 'Only used with the day and night schedule.';
+
+  const vhf = {
+    id: 'vhf',
+    title: 'VHF beacon',
+    icon: 'bars',
+    collapsed: true,
+    description: 'When the tracker transmits VHF beacon pulses for directional tracking.',
+    summary: { type: 'schedule', enabledKey: 'vhf_enabled', interval1Key: 'vhf_interval1', multipleKey: 'vhf_multiple_intervals',
+      start1Key: 'vhf_interval1_start', interval2Key: 'vhf_interval2', start2Key: 'vhf_interval2_start', verb: 'Transmit', subject: 'The VHF beacon' },
+    fields: [
+      { key: 'vhf_enabled', label: 'VHF beacon', control: 'toggle', help: 'Transmit VHF beacon pulses on the schedule below.' },
+      scheduleTypeField('vhf_multiple_intervals', 'vhf_interval1', 'vhf_interval2', vhfOn, vhfReason),
+      { key: 'vhf_interval1', label: 'Transmit interval', control: 'duration', unit: 's', enabledWhen: vhfOn, reason: vhfReason,
+        help: 'Time between beacon bursts. With the day and night schedule this is the daytime interval.' },
+      { key: 'vhf_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+        help: 'UTC hour when the daytime interval starts.' },
+      { key: 'vhf_interval2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, offLabel: 'No beacon at night',
+        enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+        help: 'Time between bursts from the night start hour until the day start hour.' },
+      { key: 'vhf_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+        help: 'UTC hour when the night interval starts.' },
+      {
+        group: 'Transmitter',
+        advanced: true,
+        help: 'Radio parameters of the beacon. Match them to the receiver in use.',
+        fields: [
+          { key: 'vhf_tx_frequency_khz', label: 'Frequency', unit: 'kHz', help: 'Transmit frequency in kHz.' },
+          { key: 'vhf_num_of_packets_per_burst', label: 'Pulses per burst', help: 'Number of pulses transmitted per burst.' },
+          { key: 'vhf_time_between_packets_ms', label: 'Time between pulses', unit: 'ms', help: 'Milliseconds between pulses within a burst.' },
+          { key: 'vhf_single_pulse_duration_ms', label: 'Pulse duration', unit: 'ms', help: 'Duration of a single pulse in milliseconds.' },
+          { key: 'vhf_external_path', label: 'External antenna path', control: 'toggle', help: 'Vhf external path setting.' },
+        ],
+      },
+    ],
+  };
+
   return {
-    version: 2,
-    panels: [positioning, dataSending, network, device],
+    version: 3,
+    panels: [positioning, dataSending, network, device, satellite, vhf],
     portLabels,
   };
 }));

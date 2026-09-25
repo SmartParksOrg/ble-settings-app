@@ -322,5 +322,36 @@ test('every panel definition only references settings, options and ports that ex
     Object.keys(definitions.portLabels).forEach(port => {
         if (schema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
     });
-    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device']);
+    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'vhf']);
+    definitions.panels.forEach(panel => engine.walkFields(panel.fields, field => {
+        (field.warnings || []).forEach(item => engine.conditionKeys(item.when).forEach(key => assert.ok(schema.settings[key], `warning key ${key}`)));
+        (field.onAlso || []).forEach(item => assert.ok(schema.settings[item.key], `onAlso key ${item.key}`));
+    }));
+});
+
+test('the generic schedule summary covers off, fixed, day/night and zero-interval states', () => {
+    const cfg = { enabledKey: 'satellite_enabled', interval1Key: 'satellite_send_interval', multipleKey: 'satellite_multiple_intervals',
+        start1Key: 'satellite_interval1_start', interval2Key: 'satellite_send_interval2', start2Key: 'satellite_send_interval2_start',
+        verb: 'Send', subject: 'Satellite sending' };
+    const values = { satellite_enabled: 'false', satellite_send_interval: '86400', satellite_multiple_intervals: 'false',
+        satellite_interval1_start: '7', satellite_send_interval2: '86400', satellite_send_interval2_start: '19' };
+    const get = key => values[key] ?? null;
+    assert.equal(engine.describeSchedule(get, cfg), 'Satellite sending is off.');
+    values.satellite_enabled = 'true';
+    assert.equal(engine.describeSchedule(get, cfg), 'Send every 1 day, all day.');
+    values.satellite_multiple_intervals = 'true';
+    values.satellite_send_interval = '3600';
+    assert.equal(engine.describeSchedule(get, cfg, { localTime: h => `${Number(h) + 2}:00` }),
+        'Send every 1 hour from 07:00 UTC (9:00 local) to 19:00 UTC (21:00 local), and every 1 day the rest of the day.');
+    values.satellite_multiple_intervals = 'false';
+    values.satellite_send_interval = '0';
+    assert.equal(engine.describeSchedule(get, cfg), 'Satellite sending is on but its interval is 0, so nothing is sent.');
+});
+
+test('the fix-quality summary warns when the satellite timer is below the firmware minimum', () => {
+    const values = { ublox_min_satellites: '3', ublox_min_satellites_timer: '0' };
+    const text = engine.describeFixQuality(key => values[key] ?? null);
+    assert.match(text, /Warning: the satellite check runs every second \(timer 0 s, below the firmware minimum of 5 s\)/);
+    values.ublox_min_satellites_timer = '30';
+    assert.match(engine.describeFixQuality(key => values[key] ?? null), /abandoned after 30 seconds if fewer than 3/);
 });

@@ -369,6 +369,36 @@
     return sentences.join(' ');
   }
 
+  // Generic day/night schedule summary shared by satellite and VHF panels.
+  // cfg: { enabledKey, interval1Key, multipleKey, start1Key, interval2Key, start2Key, verb, subject }
+  function describeSchedule(getValue, cfg, fmt = {}) {
+    const has = key => key && getValue(key) !== null && getValue(key) !== undefined;
+    const num = key => toNumber(getValue(key));
+    const duration = fmt.duration || formatDurationWords;
+    const hourLabel = hour => {
+      const utc = `${formatUtcHour(hour)} UTC`;
+      const local = fmt.localTime ? fmt.localTime(hour) : null;
+      return local ? `${utc} (${local} local)` : utc;
+    };
+    const verb = cfg.verb || 'Send';
+    const subject = cfg.subject || 'This feature';
+    if (has(cfg.enabledKey) && !toBool(getValue(cfg.enabledKey))) {
+      return `${subject} is off.`;
+    }
+    const interval1 = has(cfg.interval1Key) ? num(cfg.interval1Key) : 0;
+    const multiple = has(cfg.multipleKey) && toBool(getValue(cfg.multipleKey));
+    if (multiple) {
+      const interval2 = has(cfg.interval2Key) ? num(cfg.interval2Key) : 0;
+      const first = interval1 > 0 ? `every ${duration(interval1)}` : 'nothing';
+      const second = interval2 > 0 ? `every ${duration(interval2)}` : 'nothing';
+      return `${verb} ${first} from ${hourLabel(getValue(cfg.start1Key))} to ${hourLabel(getValue(cfg.start2Key))}, and ${second} the rest of the day.`;
+    }
+    if (interval1 > 0) {
+      return `${verb} every ${duration(interval1)}, all day.`;
+    }
+    return has(cfg.enabledKey) ? `${subject} is on but its interval is 0, so nothing is sent.` : `${subject} is off.`;
+  }
+
   // One or two sentences about how a fix attempt runs, from the fix-quality settings.
   function describeFixQuality(getValue, fmt = {}) {
     const has = key => getValue(key) !== null && getValue(key) !== undefined;
@@ -390,8 +420,13 @@
     if (has('ublox_min_satellites')) {
       const minimum = num('ublox_min_satellites');
       if (minimum > 0) {
-        const after = has('ublox_min_satellites_timer') ? ` after ${duration(num('ublox_min_satellites_timer'))}` : '';
-        sentences.push(`An attempt is abandoned${after} if fewer than ${minimum} satellites are visible.`);
+        const timer = has('ublox_min_satellites_timer') ? num('ublox_min_satellites_timer') : null;
+        if (timer !== null && timer < 5) {
+          sentences.push(`Warning: the satellite check runs every second (timer ${timer} s, below the firmware minimum of 5 s) and can stop attempts before ${minimum} satellites are found.`);
+        } else {
+          const after = timer !== null ? ` after ${duration(timer)}` : '';
+          sentences.push(`An attempt is abandoned${after} if fewer than ${minimum} satellites are visible.`);
+        }
       } else {
         sentences.push('Attempts are not abandoned early for too few satellites.');
       }
@@ -486,6 +521,7 @@
     formatUtcHour,
     daySegments,
     describePositioning,
+    describeSchedule,
     describeFixQuality,
     describeNetwork,
     describeDevice,
