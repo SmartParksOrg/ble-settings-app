@@ -222,6 +222,8 @@ test('the positioning summary reads as sentences for each mode', () => {
     const describe = (overrides = {}) => engine.describePositioning(key => ({ ...base, ...overrides })[key], { localTime: hour => `${Number(hour) + 2}:00` });
     assert.equal(describe(), 'Fix every 15 minutes, all day.');
     assert.equal(describe({ ublox_send_interval: '0' }), 'No scheduled fixes.');
+    assert.equal(describe({ ublox_send_interval: '0', enable_motion_trig_gps: 'true', ublox_active_tracking: 'true' }),
+        'No scheduled fixes. Motion-triggered and outdoor detection have no effect while the schedule is off.');
     assert.equal(describe({ ublox_multiple_intervals: 'true' }),
         'Fix every 15 minutes from 07:00 UTC (9:00 local) to 18:00 UTC (20:00 local), and every 1 hour the rest of the day.');
     assert.equal(describe({ enable_motion_trig_gps: 'true' }),

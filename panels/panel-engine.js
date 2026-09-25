@@ -292,6 +292,8 @@
     const multiple = has('ublox_multiple_intervals') && bool('ublox_multiple_intervals');
     const interval1 = has('ublox_send_interval') ? num('ublox_send_interval') : 0;
     const interval2 = has('ublox_send_interval_2') ? num('ublox_send_interval_2') : 0;
+    const outdoorOn = has('outdoor_detection_enabled') && bool('outdoor_detection_enabled');
+    const motionOn = has('enable_motion_trig_gps') && bool('enable_motion_trig_gps');
     if (multiple) {
       const first = interval1 > 0 ? `every ${duration(interval1)}` : 'no fixes';
       const second = interval2 > 0 ? `every ${duration(interval2)}` : 'no fixes';
@@ -300,11 +302,18 @@
       sentences.push(`Fix every ${duration(interval1)}, all day.`);
     } else {
       sentences.push('No scheduled fixes.');
+      if (outdoorOn || motionOn) {
+        sentences.push('Motion-triggered and outdoor detection have no effect while the schedule is off.');
+      }
+      if (has('gps_resend_interval') && num('gps_resend_interval') > 0) {
+        sentences.push(`The last position is resent every ${duration(num('gps_resend_interval'))}.`);
+      }
+      return sentences.join(' ');
     }
-    if (has('outdoor_detection_enabled') && bool('outdoor_detection_enabled')) {
+    if (outdoorOn) {
       sentences.push('Fixes are only attempted when the tracker is probably outdoors.');
     }
-    if (has('enable_motion_trig_gps') && bool('enable_motion_trig_gps')) {
+    if (motionOn) {
       const windowSeconds = has('gps_triggered_interval') ? num('gps_triggered_interval') : 0;
       const needed = has('gps_motion_triggered_min_num_of_triggers_per_interval') ? num('gps_motion_triggered_min_num_of_triggers_per_interval') : 0;
       if (windowSeconds > 0 && needed > 0) {
