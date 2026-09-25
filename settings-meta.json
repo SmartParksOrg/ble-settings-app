@@ -358,7 +358,7 @@
         },
         {
           "value": 1,
-          "label": "Only configured manufacturer ID (ble_scan_manufacturer_id)"
+          "label": "Only configured manufacturer ID"
         },
         {
           "value": 2,
@@ -370,7 +370,7 @@
         },
         {
           "value": 4,
-          "label": "Exclude configured manufacturer ID (ble_scan_manufacturer_id)"
+          "label": "Exclude configured manufacturer ID"
         }
       ],
       "options": [
@@ -384,7 +384,7 @@
         },
         {
           "value": 2,
-          "label": "Configured manufacturer ID (ble_scan_manufacturer_id)"
+          "label": "Configured manufacturer ID"
         },
         {
           "value": 3,
