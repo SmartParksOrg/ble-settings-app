@@ -22,3 +22,28 @@ Firmware v8 support completed:
 - Preserved legacy firmware support and setting-name-based JSON profiles.
 - Updated v8 BLE scan filter choices and added protocol regression tests.
 - Physical-device verification remains to be performed on v8 hardware.
+
+# Settings import/export verification (must work perfectly)
+
+Import and export are the way profiles move between devices and firmware versions, so every
+settings-UI change must be checked against them. Open items:
+
+1. Export must reflect device values, not unapplied edits. `exportToJson` reads the list inputs,
+   so a pending (unapplied) change would be exported as if it were on the device. Decide: block
+   export while changes are pending, or export device values (currentSettingValues) and say so.
+2. Import while changes are pending: the preview compares against the inputs (draft values),
+   not the device values, so "unchanged" rows can be wrong. Discard or block the draft first,
+   or compare against device values.
+3. Import should use the same write-then-read-back verification as "Review and apply"
+   (`PanelEngine.runApply`) and the same dependency ordering (`planWriteOrder`), instead of
+   fixed 200 ms spacing and a blind `fetchAllSettings` afterwards.
+4. Round trip test: export on a v8.0.1 device, import the same file on the same device -> zero
+   changes; import a v7.2.0 profile on v8.0.1 -> only settings present in both schemas, keyed by
+   name, credentials skipped unless the checkbox is set.
+5. Byte-array, PIN, MAC and coordinate settings: confirm the exported form re-imports to an
+   identical raw value (device_pin, cmdq_searched_mac_address, lp0_* keys, gps_init_lat/lon,
+   outdoor_detection_parameters).
+6. Add a Node test that runs export -> import over the v8.0.1 schema in the vm harness
+   (tests/settings-protocol.test.cjs) so regressions are caught without a device.
+7. After the guided panels land (Phase 2+), re-run the full checklist on hardware: SP051307.
+
