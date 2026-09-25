@@ -1,3 +1,6 @@
+// Wrapped in a function scope so no top-level declaration becomes a window
+// property. Everything index.html needs is exported on window explicitly below.
+(function () {
 'use strict';
 
 const DfuFileCheckResult = {
@@ -1160,9 +1163,10 @@ async function startAutoReconnect({ device = null, immediate = false } = {}) {
 
 // After verification, leave DFU mode and run the normal connect flow (PIN, status,
 // settings) over the GATT link that is already open.
-async function returnToDeviceAfterDfu(version = null) {
+async function returnToDeviceAfterDfu(version = null, message = null) {
+  setWaitingOverlay(true);
   setWaitingOverlayState({
-    message: version ? `Firmware v${version} verified. Returning to the device...` : 'Firmware verified. Returning to the device...',
+    message: message || (version ? `Firmware v${version} verified. Returning to the device...` : 'Firmware verified. Returning to the device...'),
     showSpinner: true,
     showCountdown: false,
     showReconnect: false,
@@ -1236,7 +1240,8 @@ function setMainBleRefs(selectedDevice, server, rxChar, txChar) {
   }
 }
 
-async function runMainBleDuringDfu(task) {
+// index.html exports its lock-aware runner on window; fall back to a plain call.
+async function withMainBleAllowed(task) {
   if (typeof window.runMainBleDuringDfu === 'function') {
     return window.runMainBleDuringDfu(task);
   }
@@ -1275,7 +1280,7 @@ async function restoreMainBleSession(options = {}) {
     throw new Error('No known device to reconnect.');
   }
 
-  await runMainBleDuringDfu(async () => {
+  await withMainBleAllowed(async () => {
     if (forceDiscover || requestStatus || !hasMainBleUartReady()) {
       await window.connectToDevice(target, { reuseConnected: true });
       setMainBleRefs(target, window.server, window.rxCharacteristic, window.txCharacteristic);
@@ -2785,10 +2790,9 @@ function attachHandlers() {
   if (elements.finishButton) {
     elements.finishButton.addEventListener('click', async () => {
       try {
-        await restoreMainBleSession({ disconnectDfu: true, requestStatus: true });
-        if (typeof window.toggleDfuView === 'function') {
-          window.toggleDfuView(false);
-        }
+        // The GATT link is shared with the settings UART, so there is no need to
+        // drop it; leave DFU mode and run the normal connect flow on it.
+        await returnToDeviceAfterDfu(null, 'Returning to the device...');
       } catch (error) {
         logDfu(`Finish DFU failed: ${error.message || error}`, true);
         showToast(`Finish DFU failed: ${error.message || error}`);
@@ -2861,3 +2865,4 @@ window.DfuApp = {
   connect: connectIfAvailable,
   isAwaitingReboot: () => dfuState.awaitingReboot,
 };
+}());
