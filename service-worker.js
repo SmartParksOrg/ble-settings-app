@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v35';
+const CACHE_NAME = 'app-cache-v36';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const DFU_MANIFEST_URL = toUrl('assets/dfu/manifest.json');

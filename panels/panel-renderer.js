@@ -59,6 +59,9 @@
       if (on) {
         const value = engine.toNumber(remembered) > 0 ? remembered : fallback();
         host.setValue(field.key, String(value));
+        (field.onAlso || []).forEach(item => {
+          if (engine.evaluateCondition(item.when, host.getValue)) host.setValue(item.key, String(item.value));
+        });
       } else {
         const current = host.getValue(field.key);
         if (engine.toNumber(current) > 0) remembered = current;
@@ -655,6 +658,48 @@
 
   // ---- panel ------------------------------------------------------------------------
 
+  function makeDayBar() {
+    const bar = el('div', 'panel-daybar hidden');
+    const track = el('div', 'panel-daybar-track');
+    bar.appendChild(track);
+    const labels = el('div', 'panel-daybar-labels');
+    ['00', '06', '12', '18', '24'].forEach(text => labels.appendChild(el('span', null, text)));
+    bar.appendChild(labels);
+    const legend = el('div', 'panel-daybar-legend', '');
+    bar.appendChild(legend);
+    return {
+      bar,
+      update(show, start1, start2, interval1, interval2, verb) {
+        bar.classList.toggle('hidden', !show);
+        if (!show) return;
+        track.innerHTML = '';
+        engine.daySegments(start1, start2).forEach(segment => {
+          const seg = el('div', 'panel-daybar-seg');
+          seg.style.left = `${segment.left}%`;
+          seg.style.width = `${segment.width}%`;
+          track.appendChild(seg);
+        });
+        legend.textContent = `Shaded: ${engine.formatUtcHour(start1)} to ${engine.formatUtcHour(start2)} UTC, ${verb} every ${engine.formatDurationWords(interval1)}. Unshaded: every ${engine.formatDurationWords(interval2)}.`;
+      },
+    };
+  }
+
+  function renderScheduleExtras(panel, host, state, body, cfg) {
+    const summary = el('p', 'panel-summary', '');
+    const dayBar = makeDayBar();
+    body.appendChild(summary);
+    body.appendChild(dayBar.bar);
+    state.updaters.push(() => {
+      summary.textContent = engine.describeSchedule(host.getValue, cfg, {
+        localTime: hour => (host.formatLocalTime ? host.formatLocalTime(hour) : null),
+      });
+      const enabled = !cfg.enabledKey || !host.getSetting(cfg.enabledKey) || engine.toBool(host.getValue(cfg.enabledKey));
+      const multiple = enabled && host.getSetting(cfg.multipleKey) && engine.toBool(host.getValue(cfg.multipleKey));
+      dayBar.update(Boolean(multiple), host.getValue(cfg.start1Key), host.getValue(cfg.start2Key),
+        host.getValue(cfg.interval1Key), host.getValue(cfg.interval2Key), (cfg.verb || 'send').toLowerCase());
+    });
+  }
+
   function renderPositioningExtras(panel, host, state, body) {
     const summary = el('p', 'panel-summary', '');
     const bar = el('div', 'panel-daybar hidden');
@@ -703,6 +748,8 @@
     if (panel.description) body.appendChild(el('p', 'panel-description', panel.description));
     if (panel.summary === 'positioning') {
       renderPositioningExtras(panel, host, state, body);
+    } else if (panel.summary && typeof panel.summary === 'object' && panel.summary.type === 'schedule') {
+      renderScheduleExtras(panel, host, state, body, panel.summary);
     } else if (panel.summary) {
       const summary = el('p', 'panel-summary', '');
       body.appendChild(summary);
