@@ -220,6 +220,17 @@
     </div>
   </div>
 
+  <div id="sticky-status-bar" class="sticky-status-bar hidden-when-disconnected dfu-hide" role="region" aria-label="Connected device">
+    <button type="button" id="sticky-status-top" class="sticky-status-identity" title="Back to top">
+      <span class="sticky-status-dot" aria-hidden="true"></span>
+      <span id="sticky-status-name" class="sticky-status-name">Device</span>
+    </button>
+    <span id="sticky-status-fw" class="sticky-status-meta sticky-status-fw hidden" title="Firmware version"><span class="icon fw-version" aria-hidden="true"></span><span id="sticky-status-fw-text"></span></span>
+    <span id="sticky-status-battery" class="sticky-status-meta sticky-status-battery hidden" title="Battery"><span class="icon battery" aria-hidden="true"></span><span id="sticky-status-battery-text"></span></span>
+    <button type="button" id="sticky-status-pending" class="sticky-status-pending hidden" title="Go to the first pending change"></button>
+    <button type="button" id="sticky-status-disconnect" class="sticky-status-disconnect">Disconnect</button>
+  </div>
+
   <div id="status-area" class="status-section page-section hidden-when-no-status">
     <details class="section section-card" open>
       <summary class="section-card-title"><span class="icon square-poll-horizontal" aria-hidden="true"></span>Status</summary>
@@ -1512,6 +1523,73 @@
       }
       indicator.classList.toggle('hidden', !isBusy);
     }
+
+    // Slim bar pinned to the top once the header scrolls out of view: device
+    // identity, connection state, firmware, battery, pending edits, Disconnect.
+    const stickyStatus = (() => {
+      const byId = id => document.getElementById(id);
+      let observer = null;
+      let pastHeader = false;
+      function render() {
+        const bar = byId('sticky-status-bar');
+        if (bar) bar.classList.toggle('is-visible', pastHeader);
+      }
+      function init() {
+        const header = byId('header-section');
+        const bar = byId('sticky-status-bar');
+        if (!header || !bar || !('IntersectionObserver' in window)) return;
+        observer = new IntersectionObserver(entries => {
+          const entry = entries[0];
+          pastHeader = !entry.isIntersecting && entry.boundingClientRect.bottom < 0;
+          render();
+        }, { threshold: 0 });
+        observer.observe(header);
+        byId('sticky-status-top').addEventListener('click', () => {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+        byId('sticky-status-disconnect').addEventListener('click', () => {
+          byId('disconnect-button').click();
+        });
+        byId('sticky-status-pending').addEventListener('click', () => {
+          const first = settingsDraft.entries()[0];
+          if (first) openFeatureSetting(first.key);
+        });
+      }
+      function setDevice(name) {
+        const el = byId('sticky-status-name');
+        if (el) el.textContent = name || 'Device';
+      }
+      function setStatus(info) {
+        const fw = byId('sticky-status-fw');
+        const fwText = byId('sticky-status-fw-text');
+        const battery = byId('sticky-status-battery');
+        const batteryText = byId('sticky-status-battery-text');
+        if (fw && fwText) {
+          fw.classList.toggle('hidden', !info || !info.fwVersion);
+          fwText.textContent = info && info.fwVersion ? `v${info.fwVersion}` : '';
+        }
+        if (battery && batteryText) {
+          const has = info && Number.isFinite(info.batteryMv);
+          battery.classList.toggle('hidden', !has);
+          batteryText.textContent = has ? `${info.batteryMv} mV` : '';
+        }
+      }
+      function setPending(count, invalid) {
+        const chip = byId('sticky-status-pending');
+        if (!chip) return;
+        chip.classList.toggle('hidden', !count);
+        chip.classList.toggle('is-invalid', invalid > 0);
+        chip.textContent = count ? `${count} change${count === 1 ? '' : 's'}${invalid > 0 ? ', ' + invalid + ' invalid' : ''}` : '';
+      }
+      function reset() {
+        pastHeader = false;
+        render();
+        setDevice('');
+        setStatus(null);
+        setPending(0, 0);
+      }
+      return { init, setDevice, setStatus, setPending, reset };
+    })();
 
     function setConnectionBootstrapState(active, title = 'Connecting...', text = 'Preparing device data.') {
       document.body.classList.toggle('bootstrapping', Boolean(active));
@@ -3633,6 +3711,10 @@
         );
       }
 
+      stickyStatus.setStatus({
+        fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
+        batteryMv: Number(statusMessage.bat)
+      });
       statusMessageElement.innerHTML = `
         <div class="status-header">
           <h4>${device.name}</h4>
@@ -5908,6 +5990,7 @@
       });
       pendingRowKeys = nextKeys;
       document.body.classList.toggle('has-pending-changes', entries.length > 0);
+      stickyStatus.setPending(entries.length, invalid);
       if (!bar || !text) {
         return;
       }
@@ -7065,6 +7148,7 @@
       setLrUpdateMode(false);
       setFirmwareV5Mode(false);
       document.body.classList.remove('connected');
+      stickyStatus.reset();
       setConnectionBootstrapState(false);
       const settingsSelection = document.getElementById('settings-selection');
       if (settingsSelection) {
@@ -7202,6 +7286,7 @@
         document.body.classList.add('connected');
         log(`Connected to device: ${device.name}`);
         lastConnectedDeviceName = device && device.name ? device.name : null;
+        stickyStatus.setDevice(lastConnectedDeviceName);
         updateDebugFabState();
 
         setConnectionBootstrapState(true, 'Loading device profile...', 'Fetching firmware status and matching settings.');
@@ -7246,6 +7331,8 @@
         log(`Error: ${error.message}`, true);
       }
     });
+
+    stickyStatus.init();
 
     document.getElementById('disconnect-button').addEventListener('click', function () {
       const inDfuMode = document.body.classList.contains('dfu-active');
