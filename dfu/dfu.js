@@ -177,7 +177,6 @@ function bindElements() {
     fileMatchStatus: document.getElementById('dfu-file-match'),
     userStatus: document.getElementById('dfu-user-status'),
     bundledSelect: document.getElementById('dfu-bundled-select'),
-    bundledUseButton: document.getElementById('dfu-bundled-use'),
     bundledStatus: document.getElementById('dfu-bundled-status'),
     bundledPicker: document.getElementById('dfu-bundled-picker'),
     confirmationPanel: document.getElementById('dfu-confirmation'),
@@ -202,6 +201,7 @@ function bindElements() {
     waitingRetryButton: document.getElementById('dfu-waiting-retry'),
     uploadMtu: document.getElementById('dfu-upload-mtu'),
     uploadTimeout: document.getElementById('dfu-upload-timeout'),
+    uploadWindow: document.getElementById('dfu-upload-window'),
     progressBar: document.getElementById('dfu-progress-bar'),
     progressText: document.getElementById('dfu-progress-text'),
     mainLog: document.getElementById('log'),
@@ -1369,11 +1369,15 @@ function applyUploadSettings() {
   if (!dfuState.mcumgr || !elements) return;
   const mtuValue = Number.parseInt(elements.uploadMtu?.value, 10);
   const timeoutValue = Number.parseInt(elements.uploadTimeout?.value, 10);
+  const windowValue = Number.parseInt(elements.uploadWindow?.value, 10);
   if (Number.isFinite(mtuValue) && mtuValue > 0) {
     dfuState.mcumgr.setMtu(mtuValue);
   }
   if (Number.isFinite(timeoutValue) && timeoutValue > 0) {
     dfuState.mcumgr.setChunkTimeout(timeoutValue);
+  }
+  if (Number.isFinite(windowValue) && windowValue > 0) {
+    dfuState.mcumgr.setPipelineDepth(windowValue);
   }
 }
 
@@ -1661,15 +1665,26 @@ async function handleFileSelection(event) {
   updateFileMatchStatus();
 
   if (isCheckAllowed(result)) {
-    showConfirmationPanel(true);
     resetUploadProgress();
     resetUploadStatus(true);
     updateUploadStatus('start', 'pending', '');
     updateUploadStatus('ack', 'pending', '');
     updateUploadStatus('finish', 'pending', '');
     setDfuStepGroup('pending', '');
-    if (dfuState.connected) {
-      refreshImageState();
+    if (result === DfuFileCheckResult.ok) {
+      // A clean check needs no extra confirmation; Start is the confirmation.
+      dfuState.userConfirmed = true;
+      showConfirmationPanel(false);
+      showUploadSection();
+      setSelectionReadyStatus('start');
+      if (dfuState.connected) {
+        evaluateSelectedFirmwarePresence();
+      }
+    } else {
+      showConfirmationPanel(true);
+      if (dfuState.connected) {
+        refreshImageState();
+      }
     }
   } else {
     resetUploadProgress();
@@ -2626,10 +2641,11 @@ async function startUpload() {
   const mtu = dfuState.mcumgr.getMtu ? dfuState.mcumgr.getMtu() : 'unknown';
   const timeout = dfuState.mcumgr.getChunkTimeout ? dfuState.mcumgr.getChunkTimeout() : 'unknown';
   const fallbacks = dfuState.mcumgr.getMtuFallbacks ? dfuState.mcumgr.getMtuFallbacks() : [];
+  const pipeline = dfuState.mcumgr.getPipelineDepth ? dfuState.mcumgr.getPipelineDepth() : 'unknown';
   const sizeKb = (dfuState.fileData.byteLength / 1024).toFixed(1);
   const imageVersion = dfuState.fileImageInfo && dfuState.fileImageInfo.version ? dfuState.fileImageInfo.version : 'unknown';
   const imageHash = normalizeHash(dfuState.fileImageInfo && dfuState.fileImageInfo.hash);
-  logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, fallbacks=${fallbacks.join(', ') || 'none'}`);
+  logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, pipeline=${pipeline}, fallbacks=${fallbacks.join(', ') || 'none'}`);
   logDfu(`Image info: version=${imageVersion}, hash=${imageHash || 'unknown'}`);
   dfuState.uploadInProgress = true;
   dfuState.uploadStartedAt = Date.now();
@@ -2661,12 +2677,10 @@ function attachHandlers() {
   if (elements.fileInput) {
     elements.fileInput.addEventListener('change', handleFileSelection);
   }
-  if (elements.bundledUseButton) {
-    elements.bundledUseButton.addEventListener('click', async () => {
+  if (elements.bundledSelect) {
+    elements.bundledSelect.addEventListener('change', async () => {
       const entry = getSelectedBundledEntry();
       if (!entry) {
-        setBundledStatus('Select a built-in update first.');
-        setUserStatus('Choose an update first.', 'warning');
         return;
       }
       await loadBundledFile(entry);

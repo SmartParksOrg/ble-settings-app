@@ -111,7 +111,7 @@ test('a rejected GATT write does not poison later writes', async () => {
 
 test('rejected chunk writes are retried, the MTU steps down, and acks advance the upload', async () => {
     const MCUManager = loadMcuManager();
-    const manager = new MCUManager({ mtu: 240, chunkTimeout: 60000, logger: silent });
+    const manager = new MCUManager({ mtu: 240, chunkTimeout: 60000, pipelineDepth: 1, logger: silent });
     const characteristic = fakeCharacteristic({ failWrites: 2 });
     manager._characteristic = characteristic;
     const errors = [];
@@ -184,4 +184,113 @@ test('attachDevice rejects on failure without firing disconnect, and never dupli
     assert.equal(device.characteristic.listenerCount(), 1, 'notification listener registered once');
     device.listeners[0]();
     assert.equal(disconnects.length, 1, 'a real GATT disconnect still reaches the callback');
+});
+
+function ackFrame(manager, off) {
+    const frame = smpFrame(3, 1, 1, 0, { rc: 0, off });
+    manager._notification({ target: { value: new DataView(Uint8Array.from(frame).buffer) } });
+}
+
+function decodeWrite(characteristic, index) {
+    return CBOR.decode(characteristic.writes[index].slice(8).buffer);
+}
+
+function dataLength(message) {
+    return message.data.byteLength ?? message.data.length;
+}
+
+test('pipelining keeps three packets in flight, aligns chunks, and resends a lost packet after two repeated offsets', async () => {
+    const MCUManager = loadMcuManager();
+    const manager = new MCUManager({ mtu: 240, chunkTimeout: 60000, pipelineDepth: 3, logger: silent });
+    const characteristic = fakeCharacteristic();
+    manager._characteristic = characteristic;
+    manager.onImageUploadProgress(() => {});
+    const errors = [];
+    manager.onImageUploadError(error => errors.push(error));
+    try {
+        await manager.cmdUpload(new Uint8Array(3000).buffer);
+        await wait(20);
+        assert.equal(characteristic.writes.length, 3, 'three packets in flight');
+        const c0 = decodeWrite(characteristic, 0);
+        const c1 = decodeWrite(characteristic, 1);
+        const c2 = decodeWrite(characteristic, 2);
+        assert.equal(c0.off, 0);
+        assert.equal(c0.len, 3000);
+        assert.equal(c1.off, dataLength(c0));
+        assert.equal(c1.sha, undefined);
+        assert.equal(c2.off, dataLength(c0) + dataLength(c1));
+        assert.equal(dataLength(c0) % 4, 0);
+        assert.equal(dataLength(c1) % 4, 0);
+        assert.ok(characteristic.writes.every(write => write.length <= 240));
+
+        ackFrame(manager, c1.off);
+        await wait(5);
+        assert.equal(characteristic.writes.length, 4, 'an ack releases the next packet');
+        assert.equal(decodeWrite(characteristic, 3).off, c2.off + dataLength(c2));
+
+        // Packet c1 is lost: the device answers c2 and c3 with the offset it still expects.
+        ackFrame(manager, c1.off);
+        await wait(5);
+        assert.equal(characteristic.writes.length, 4, 'one repeated offset is tolerated');
+        ackFrame(manager, c1.off);
+        await wait(5);
+        assert.equal(characteristic.writes.length, 5, 'a second repeated offset resends the lost packet');
+        assert.equal(decodeWrite(characteristic, 4).off, c1.off);
+        assert.equal(manager._window, 1, 'pipelining is disabled after a loss');
+        assert.deepEqual(errors, []);
+    } finally {
+        manager.cancelUpload();
+    }
+});
+
+test('a chunk timeout with nothing acknowledged drops to one packet in flight and a smaller MTU', async () => {
+    const MCUManager = loadMcuManager();
+    const manager = new MCUManager({ mtu: 240, chunkTimeout: 80, pipelineDepth: 3, logger: silent });
+    const characteristic = fakeCharacteristic();
+    manager._characteristic = characteristic;
+    manager.onImageUploadProgress(() => {});
+    const errors = [];
+    manager.onImageUploadError(error => errors.push(error));
+    try {
+        await manager.cmdUpload(new Uint8Array(2000).buffer);
+        await wait(20);
+        assert.equal(characteristic.writes.length, 3);
+        await wait(100); // one chunk timeout (80 ms) elapses, not two
+        assert.equal(manager._window, 1);
+        assert.equal(manager.getMtu(), 200);
+        assert.equal(characteristic.writes.length, 4, 'resent from offset 0 after the timeout');
+        assert.equal(decodeWrite(characteristic, 3).off, 0);
+        assert.ok(characteristic.writes[3].length <= 200);
+        assert.deepEqual(errors, []);
+    } finally {
+        manager.cancelUpload();
+    }
+});
+
+test('the upload finishes once when the device acknowledges the full length', async () => {
+    const MCUManager = loadMcuManager();
+    const manager = new MCUManager({ mtu: 240, chunkTimeout: 60000, pipelineDepth: 2, logger: silent });
+    const characteristic = fakeCharacteristic();
+    manager._characteristic = characteristic;
+    const progress = [];
+    manager.onImageUploadProgress(({ percentage }) => progress.push(percentage));
+    let finished = 0;
+    manager.onImageUploadFinished(() => { finished += 1; });
+    await manager.cmdUpload(new Uint8Array(700).buffer);
+    await wait(20);
+    let acked = 0;
+    let guard = 0;
+    while (finished === 0 && guard < 20) {
+        guard += 1;
+        const next = characteristic.writes.map((_, i) => decodeWrite(characteristic, i)).find(m => m.off === acked);
+        assert.ok(next, `packet at offset ${acked} was sent`);
+        acked += dataLength(next);
+        ackFrame(manager, acked);
+        await wait(5);
+    }
+    assert.equal(finished, 1);
+    assert.equal(acked, 700);
+    assert.equal(progress[progress.length - 1], 100);
+    assert.equal(manager._uploadIsInProgress, false);
+    assert.equal(manager._uploadTimeout, null, 'no timer left running');
 });
