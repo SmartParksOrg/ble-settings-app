@@ -3904,6 +3904,20 @@ body.has-pending-changes {
     padding-bottom: 14px;
 }
 
+.panel-field-switch {
+    grid-column: 1 / -1;
+}
+
+.panel-duration-inputs {
+    display: inline-flex;
+    gap: 8px;
+    flex: 1 1 auto;
+}
+
+.panel-duration-inputs.hidden {
+    display: none;
+}
+
 .panel-field-mode,
 .panel-field-choice,
 .panel-group {

@@ -7,6 +7,9 @@
 //   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, writeAfter }
 //   (`reason` is shown when enabledWhen is false; a group's reason applies to its fields)
 //   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
+//   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
+//   A duration with zeroMeansOff renders an on/off toggle; `onDefault` is the value used when
+//   turned on with no remembered value, `offLabel` the text shown while off.
 //   (`set` values are written when the option is chosen; `ensure` values only where the
 //   current value is empty or zero, so a mode never leaves an interval at 0 = off)
 //   { group, help, advanced, enabledWhen, fields: [...] }
@@ -22,6 +25,7 @@
   'use strict';
 
   const dayNightOn = { key: 'ublox_multiple_intervals', truthy: true };
+  const scheduleOn = { any: [{ key: 'ublox_send_interval', gt: 0 }, dayNightOn] };
   const motionOn = { key: 'enable_motion_trig_gps', truthy: true };
   const outdoorOn = { key: 'outdoor_detection_enabled', truthy: true };
   const windowMode = { all: [motionOn, { key: 'gps_triggered_interval', gt: 0 }, { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', gt: 0 }] };
@@ -38,22 +42,26 @@
     summary: 'positioning',
     fields: [
       {
-        control: 'mode',
-        label: 'Fix schedule',
+        control: 'switch',
+        label: 'Scheduled fixes',
         keys: ['ublox_send_interval', 'ublox_multiple_intervals'],
+        on: { any: [{ key: 'ublox_send_interval', gt: 0 }, { key: 'ublox_multiple_intervals', truthy: true }] },
+        turnOff: { ublox_send_interval: 0, ublox_multiple_intervals: false },
+        turnOn: { ensure: { ublox_send_interval: 300 } },
+        help: 'Take position fixes on a schedule. When off, motion-triggered and outdoor detection have no effect either.',
+      },
+      {
+        control: 'choice',
+        label: 'Schedule type',
+        keys: ['ublox_multiple_intervals'],
+        enabledWhen: scheduleOn,
+        reason: 'Turn on scheduled fixes first.',
         options: [
-          {
-            id: 'off',
-            label: 'Off',
-            help: 'No position fixes. Motion-triggered and outdoor detection have no effect while the schedule is off.',
-            when: { all: [{ key: 'ublox_send_interval', equals: 0 }, { key: 'ublox_multiple_intervals', truthy: false }] },
-            set: { ublox_send_interval: 0, ublox_multiple_intervals: false },
-          },
           {
             id: 'fixed',
             label: 'Fixed interval',
             help: 'One interval, all day.',
-            when: { all: [{ key: 'ublox_send_interval', gt: 0 }, { key: 'ublox_multiple_intervals', truthy: false }] },
+            when: { key: 'ublox_multiple_intervals', truthy: false },
             set: { ublox_multiple_intervals: false },
             ensure: { ublox_send_interval: 300 },
           },
@@ -67,17 +75,17 @@
           },
         ],
       },
-      { key: 'ublox_send_interval', label: 'Fix interval', control: 'duration', unit: 's', zeroMeansOff: true,
+      { key: 'ublox_send_interval', label: 'Fix interval', control: 'duration', unit: 's', enabledWhen: scheduleOn, reason: 'Turn on scheduled fixes first.',
         help: 'Time between position fixes. With the day and night schedule this is the daytime interval.' },
       { key: 'ublox_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'UTC hour when the daytime interval starts. Shown with your local time.' },
-      { key: 'ublox_send_interval_2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, enabledWhen: dayNightOn, reason: dayNightReason,
+      { key: 'ublox_send_interval_2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, offLabel: 'No fixes at night', enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'Time between fixes from the night start hour until the day start hour.' },
       { key: 'ublox_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: dayNightOn, reason: dayNightReason,
         help: 'UTC hour when the night interval starts.' },
       { key: 'ublox_active_tracking', label: 'Active tracking', control: 'toggle',
         help: 'Keep the GNSS receiver on between fixes. Adds heading and speed to position reports. Uses considerably more battery.' },
-      { key: 'gps_resend_interval', label: 'Resend last position', control: 'duration', unit: 's', zeroMeansOff: true,
+      { key: 'gps_resend_interval', label: 'Resend last position', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 600,
         help: 'How often the last known position is sent.' },
       {
         group: 'Motion-triggered fixes',
@@ -147,7 +155,7 @@
           { key: 'ublox_min_fix_time', label: 'Minimum fix time', control: 'duration', unit: 's', help: 'Minimum fix time in seconds.' },
           { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
           { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
-          { key: 'ublox_cold_fix_hour_interval', label: 'Cold fix allowed every', control: 'duration', unit: 'h', zeroMeansOff: true, help: 'How often a cold fix attempt is allowed, in hours.' },
+          { key: 'ublox_cold_fix_hour_interval', label: 'Limit cold fix attempts', control: 'duration', unit: 'h', zeroMeansOff: true, onDefault: 24, offLabel: 'No limit', help: 'How often a cold fix attempt is allowed, in hours.' },
           { key: 'gps_init_lat', label: 'Initial latitude', control: 'coordinate', help: 'Initial latitude in decimal degrees.' },
           { key: 'gps_init_lon', label: 'Initial longitude', control: 'coordinate' },
         ],
