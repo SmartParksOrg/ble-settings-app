@@ -923,12 +923,6 @@ function updateUploadButtons() {
 function setWaitingOverlay(visible) {
   if (!elements || !elements.waitingOverlay) return;
   elements.waitingOverlay.classList.toggle('hidden', !visible);
-  if (visible) {
-    const logFooter = document.getElementById('logFooter');
-    if (logFooter && !logFooter.classList.contains('open') && typeof window.toggleLog === 'function') {
-      window.toggleLog();
-    }
-  }
   if (!visible) {
     stopReconnectCountdown();
   }
@@ -2114,6 +2108,10 @@ async function refreshImageState() {
     updateFileMatchFromState(state);
     return state;
   } catch (error) {
+    if (!dfuState.connected && dfuState.awaitingReboot) {
+      // A poll that was in flight when the reset dropped the link; expected.
+      return null;
+    }
     logDfu(`Image state failed: ${error.message || error}`, true);
     return null;
   }
