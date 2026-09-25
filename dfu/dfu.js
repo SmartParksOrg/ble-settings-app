@@ -16,6 +16,7 @@ const DfuFileCheckResult = {
   deviceFwVersionMismatch: 12,
   fileFwVersionFormatError: 13,
   deviceCannotUpgradeToSix: 14,
+  invalidImage: 15,
 };
 
 const DFU_MANIFEST_URL = 'assets/dfu/manifest.json';
@@ -86,6 +87,7 @@ const dfuCheckMessages = {
   [DfuFileCheckResult.deviceFwVersionMismatch]: 'Firmware version in the file is older than the device.',
   [DfuFileCheckResult.fileFwVersionFormatError]: 'Firmware version in the file name is invalid.',
   [DfuFileCheckResult.deviceCannotUpgradeToSix]: 'This device cannot be upgraded to 6.0 or newer firmware without first installing the v5 migration firmware.',
+  [DfuFileCheckResult.invalidImage]: 'Selected file is not a valid MCUboot image (corrupt or truncated).',
 };
 
 const dfuState = {
@@ -112,10 +114,15 @@ const dfuState = {
   reconnectTimer: null,
   reconnectStart: null,
   reconnectAttempts: 0,
-  reconnectDelayMs: 1500,
+  autoReconnectActive: false,
+  rebootWatchdog: null,
+  rebootResends: 0,
+  wakeLock: null,
+  uploadStartedAt: null,
+  uploadTotalBytes: 0,
+  uploadAckedBytes: 0,
   autoActivateArmed: false,
   autoActivateInProgress: false,
-  reconnectUnlockAt: 0,
   userConfirmed: false,
   validHwVersionsByType: new Map(),
   uploadInProgress: false,
@@ -142,6 +149,12 @@ let lastChunkAckOffset = 0;
 let handlersAttached = false;
 
 const DFU_PENDING_KEY = 'dfuPending';
+// After a reset the device is silent while MCUboot swaps the image. Reconnect
+// attempts are sequential: each one waits for the platform's own connect timeout.
+const AUTO_RECONNECT_INITIAL_DELAY_MS = 3000;
+const AUTO_RECONNECT_RETRY_DELAY_MS = 2000;
+const AUTO_RECONNECT_TOTAL_MS = 180000;
+const REBOOT_WATCHDOG_MS = 15000;
 
 function isAppUpdateFile(fileName) {
   return String(fileName || '').trim().toLowerCase() === 'app_update.bin';
@@ -182,6 +195,7 @@ function bindElements() {
     waitingText: document.getElementById('dfu-waiting-text'),
     waitingSpinner: document.getElementById('dfu-waiting-spinner'),
     waitingContinueButton: document.getElementById('dfu-waiting-continue'),
+    waitingRetryButton: document.getElementById('dfu-waiting-retry'),
     uploadMtu: document.getElementById('dfu-upload-mtu'),
     uploadTimeout: document.getElementById('dfu-upload-timeout'),
     progressBar: document.getElementById('dfu-progress-bar'),
@@ -514,8 +528,10 @@ function clearPendingDfu() {
     clearTimeout(dfuState.reconnectTimer);
     dfuState.reconnectTimer = null;
   }
+  clearRebootWatchdog();
   dfuState.reconnectAttempts = 0;
-  dfuState.reconnectDelayMs = 1500;
+  dfuState.autoReconnectActive = false;
+  releaseWakeLock();
   try {
     sessionStorage.removeItem(DFU_PENDING_KEY);
   } catch (error) {
@@ -881,14 +897,13 @@ function updateUploadButtons() {
   elements.uploadButton.disabled = !canUpload;
   elements.cancelButton.disabled = dfuState.uploadInProgress && !dfuState.connected;
   if (elements.reconnectButton) {
-    const now = Date.now();
-    const locked = dfuState.reconnectUnlockAt && now < dfuState.reconnectUnlockAt;
-    elements.reconnectButton.disabled = dfuState.connected || dfuState.connecting || locked;
+    elements.reconnectButton.disabled = dfuState.connected || dfuState.connecting;
   }
   if (elements.waitingScanButton) {
-    const now = Date.now();
-    const locked = dfuState.reconnectUnlockAt && now < dfuState.reconnectUnlockAt;
-    elements.waitingScanButton.disabled = dfuState.connected || dfuState.connecting || locked;
+    elements.waitingScanButton.disabled = dfuState.connecting || dfuState.autoReconnectActive;
+  }
+  if (elements.waitingRetryButton) {
+    elements.waitingRetryButton.disabled = dfuState.connecting || dfuState.autoReconnectActive;
   }
   if (elements.refreshStateButton) {
     elements.refreshStateButton.disabled = !dfuState.connected;
@@ -920,6 +935,7 @@ function setWaitingOverlayState({
   showSpinner = true,
   showCountdown = false,
   showReconnect = false,
+  showRetry = false,
   showContinue = false,
 } = {}) {
   if (!elements) return;
@@ -941,50 +957,20 @@ function setWaitingOverlayState({
   if (elements.waitingContinueButton) {
     elements.waitingContinueButton.classList.toggle('hidden', !showContinue);
   }
-}
-
-function setReconnectLock(ms = 40000) {
-  dfuState.reconnectUnlockAt = Date.now() + ms;
-  updateUploadButtons();
-  setWaitingOverlayState({
-    message: 'Device is rebooting. Reconnect will be enabled shortly.',
-    showSpinner: true,
-    showCountdown: true,
-    showReconnect: true,
-    showContinue: false,
-  });
-  startReconnectCountdown();
-  if (dfuState.reconnectTimer) {
-    clearTimeout(dfuState.reconnectTimer);
+  if (elements.waitingRetryButton) {
+    elements.waitingRetryButton.classList.toggle('hidden', !showRetry);
   }
-  dfuState.reconnectTimer = setTimeout(() => {
-    updateUploadButtons();
-  }, ms + 100);
 }
 
-function ensureReconnectLock(ms = 40000) {
-  const now = Date.now();
-  if (dfuState.reconnectUnlockAt && now < dfuState.reconnectUnlockAt) {
-    updateUploadButtons();
-    return;
-  }
-  setReconnectLock(ms);
-}
-
-function startReconnectCountdown() {
+function startReconnectElapsedTimer() {
   if (!elements || !elements.waitingCountdown) return;
   stopReconnectCountdown();
   const update = () => {
-    const remainingMs = Math.max(0, dfuState.reconnectUnlockAt - Date.now());
-    const remainingSec = Math.ceil(remainingMs / 1000);
-    if (remainingSec > 0) {
-      elements.waitingCountdown.textContent = `Reconnect available in ${remainingSec}s…`;
-      elements.waitingCountdown.classList.remove('hidden');
-    } else {
-      elements.waitingCountdown.textContent = 'Reconnect is now available.';
-      elements.waitingCountdown.classList.remove('hidden');
-      stopReconnectCountdown({ clearText: false });
-    }
+    const start = dfuState.reconnectStart || Date.now();
+    const elapsedSec = Math.max(0, Math.round((Date.now() - start) / 1000));
+    const attempt = dfuState.reconnectAttempts ? ` (attempt ${dfuState.reconnectAttempts})` : '';
+    elements.waitingCountdown.textContent = `Waiting for the device... ${elapsedSec}s${attempt}`;
+    elements.waitingCountdown.classList.remove('hidden');
   };
   update();
   dfuState.reconnectCountdownTimer = setInterval(update, 1000);
@@ -999,6 +985,213 @@ function stopReconnectCountdown(options = {}) {
   if (options.clearText !== false) {
     elements.waitingCountdown.textContent = '';
     elements.waitingCountdown.classList.add('hidden');
+  }
+}
+
+async function acquireWakeLock() {
+  if (typeof navigator === 'undefined' || !navigator.wakeLock || dfuState.wakeLock) return;
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    dfuState.wakeLock = lock;
+    lock.addEventListener('release', () => {
+      if (dfuState.wakeLock === lock) {
+        dfuState.wakeLock = null;
+      }
+    });
+    logDfu('Screen wake lock acquired.');
+  } catch (error) {
+    logDfu(`Screen wake lock unavailable: ${error.message || error}`);
+  }
+}
+
+async function releaseWakeLock() {
+  const lock = dfuState.wakeLock;
+  dfuState.wakeLock = null;
+  if (!lock) return;
+  try {
+    await lock.release();
+    logDfu('Screen wake lock released.');
+  } catch (error) {
+    // The lock may already have been released by the browser.
+  }
+}
+
+function clearRebootWatchdog() {
+  if (dfuState.rebootWatchdog) {
+    clearTimeout(dfuState.rebootWatchdog);
+    dfuState.rebootWatchdog = null;
+  }
+}
+
+// If the device stays connected after a reset command, send it once more; if it
+// still does not restart, hand control back to the user instead of waiting forever.
+function armRebootWatchdog(ms = REBOOT_WATCHDOG_MS) {
+  clearRebootWatchdog();
+  dfuState.rebootWatchdog = setTimeout(() => {
+    dfuState.rebootWatchdog = null;
+    if (!dfuState.awaitingReboot || !dfuState.connected || dfuState.autoReconnectActive) return;
+    if (dfuState.rebootResends < 1 && dfuState.mcumgr) {
+      dfuState.rebootResends += 1;
+      logDfu('Device did not restart after the reset command; sending reset again.', true);
+      dfuState.mcumgr.cmdReset()
+        .then(() => armRebootWatchdog(ms))
+        .catch(error => logDfu(`Reset retry failed: ${error.message || error}`, true));
+      return;
+    }
+    logDfu('Device did not restart after two reset commands.', true);
+    updateUploadStatus('reboot', 'error', 'No restart');
+    clearPendingDfu();
+    updateUploadButtons();
+    setUserStatus('The device did not restart. Power-cycle it and start the update again.', 'error');
+    setWaitingOverlayState({
+      message: 'The device did not restart after the reset command. Power-cycle it, then return to the device and start the update again.',
+      showSpinner: false,
+      showCountdown: false,
+      showReconnect: false,
+      showRetry: false,
+      showContinue: true,
+    });
+  }, ms);
+}
+
+function showRebootOverlay() {
+  dfuState.rebootResends = 0;
+  setWaitingOverlay(true);
+  setWaitingOverlayState({
+    message: 'Restarting the device to activate the update...',
+    showSpinner: true,
+    showCountdown: false,
+    showReconnect: false,
+    showRetry: false,
+    showContinue: false,
+  });
+}
+
+function showManualReconnect(reason) {
+  stopReconnectCountdown();
+  updateUploadStatus('reconnect', 'warning', 'Manual');
+  updateConnectionStatus('Device not reconnected.', 'error');
+  setUserStatus(`${reason} Retry, or scan for the device.`, 'warning');
+  setWaitingOverlayState({
+    message: `${reason} Make sure the device is powered on and nearby, then retry or scan for it.`,
+    showSpinner: false,
+    showCountdown: false,
+    showReconnect: true,
+    showRetry: true,
+    showContinue: false,
+  });
+  updateUploadButtons();
+}
+
+// The device object the page already holds can be reconnected without a chooser.
+async function getReconnectCandidate() {
+  if (dfuState.existingDevice && dfuState.existingDevice.gatt) {
+    return dfuState.existingDevice;
+  }
+  if (window.device && window.device.gatt) {
+    return window.device;
+  }
+  if (navigator.bluetooth && navigator.bluetooth.getDevices && dfuState.deviceInfo?.deviceName) {
+    try {
+      const devices = await navigator.bluetooth.getDevices();
+      const match = devices.find(known => known.name === dfuState.deviceInfo.deviceName);
+      if (match) return match;
+    } catch (error) {
+      logDfu(`Known-device lookup failed: ${error.message || error}`, true);
+    }
+  }
+  return null;
+}
+
+async function startAutoReconnect({ device = null, immediate = false } = {}) {
+  if (dfuState.autoReconnectActive || !dfuState.awaitingReboot || !dfuState.mcumgr) return;
+  dfuState.autoReconnectActive = true;
+  if (!dfuState.reconnectStart || Date.now() >= dfuState.reconnectStart + AUTO_RECONNECT_TOTAL_MS) {
+    dfuState.reconnectStart = Date.now();
+    dfuState.reconnectAttempts = 0;
+  }
+  updateUploadButtons();
+  updateUploadStatus('reconnect', 'active', 'Reconnecting');
+  updateConnectionStatus('Waiting for device to reboot...', 'pending');
+  setWaitingOverlay(true);
+  setWaitingOverlayState({
+    message: 'The device is restarting with the new firmware. Reconnecting automatically...',
+    showSpinner: true,
+    showCountdown: true,
+    showReconnect: false,
+    showRetry: false,
+    showContinue: false,
+  });
+  startReconnectElapsedTimer();
+  await acquireWakeLock();
+  try {
+    const target = device || await getReconnectCandidate();
+    if (!target) {
+      showManualReconnect('No known device to reconnect to.');
+      return;
+    }
+    dfuState.existingDevice = target;
+    const deadline = dfuState.reconnectStart + AUTO_RECONNECT_TOTAL_MS;
+    if (!immediate) {
+      await delay(AUTO_RECONNECT_INITIAL_DELAY_MS);
+    }
+    while (dfuState.awaitingReboot && dfuState.autoReconnectActive && Date.now() < deadline) {
+      dfuState.reconnectAttempts += 1;
+      const attempt = dfuState.reconnectAttempts;
+      try {
+        logDfu(`Auto reconnect attempt ${attempt}...`);
+        await dfuState.mcumgr.attachDevice(target);
+        const elapsedSec = Math.round((Date.now() - dfuState.reconnectStart) / 1000);
+        logDfu(`Auto reconnect succeeded on attempt ${attempt} after ${elapsedSec}s.`);
+        return;
+      } catch (error) {
+        logDfu(`Auto reconnect attempt ${attempt} failed: ${error.message || error}`);
+        await delay(AUTO_RECONNECT_RETRY_DELAY_MS);
+      }
+    }
+    if (dfuState.awaitingReboot) {
+      showManualReconnect('Automatic reconnect timed out.');
+    }
+  } finally {
+    dfuState.autoReconnectActive = false;
+    updateUploadButtons();
+  }
+}
+
+// After verification, leave DFU mode and run the normal connect flow (PIN, status,
+// settings) over the GATT link that is already open.
+async function returnToDeviceAfterDfu(version = null) {
+  setWaitingOverlayState({
+    message: version ? `Firmware v${version} verified. Returning to the device...` : 'Firmware verified. Returning to the device...',
+    showSpinner: true,
+    showCountdown: false,
+    showReconnect: false,
+    showRetry: false,
+    showContinue: false,
+  });
+  await releaseWakeLock();
+  const target = dfuState.existingDevice || window.device || null;
+  if (!target || typeof window.connectToDevice !== 'function') {
+    setWaitingOverlayState({
+      message: 'Firmware verified. Use "Go to device" to return.',
+      showSpinner: false,
+      showCountdown: false,
+      showReconnect: false,
+      showRetry: false,
+      showContinue: true,
+    });
+    return;
+  }
+  try {
+    if (typeof window.toggleDfuView === 'function') {
+      window.toggleDfuView(false);
+    }
+    resetUi();
+    setWaitingOverlay(false);
+    await window.connectToDevice(target, { reuseConnected: true });
+  } catch (error) {
+    logDfu(`Return to device failed: ${error.message || error}`, true);
+    showToast(`Update installed, but reconnecting the device screen failed: ${error.message || error}`);
   }
 }
 
@@ -1138,11 +1331,37 @@ async function returnToMainDeviceScreen() {
   }
 }
 
+function formatDurationShort(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function buildUploadProgressText(percentage) {
+  const parts = [`Upload progress: ${percentage}%`];
+  const { uploadStartedAt, uploadAckedBytes, uploadTotalBytes } = dfuState;
+  if (uploadStartedAt && uploadAckedBytes > 0 && uploadTotalBytes > 0) {
+    const elapsedSec = (Date.now() - uploadStartedAt) / 1000;
+    if (elapsedSec >= 2) {
+      const rate = uploadAckedBytes / elapsedSec;
+      parts.push(`${(rate / 1024).toFixed(1)} KB/s`);
+      if (uploadAckedBytes < uploadTotalBytes) {
+        const remaining = formatDurationShort((uploadTotalBytes - uploadAckedBytes) / rate);
+        if (remaining) parts.push(`about ${remaining} left`);
+      }
+    }
+  }
+  return parts.join(' \u00b7 ');
+}
+
 function setUploadProgress(percentage) {
   if (!elements) return;
   const safePercentage = Number.isFinite(percentage) ? percentage : 0;
   elements.progressBar.style.width = `${safePercentage}%`;
-  elements.progressText.textContent = `Upload progress: ${safePercentage}%`;
+  elements.progressText.textContent = buildUploadProgressText(safePercentage);
   updateMainDfuFlowUi();
 }
 
@@ -1175,6 +1394,9 @@ async function attemptStatusRefresh() {
 
 function resetUploadProgress() {
   if (!elements) return;
+  dfuState.uploadStartedAt = null;
+  dfuState.uploadTotalBytes = 0;
+  dfuState.uploadAckedBytes = 0;
   elements.progressBar.style.width = '0%';
   elements.progressText.textContent = 'Upload progress: 0%';
   updateMainDfuFlowUi();
@@ -1350,7 +1572,7 @@ function hydratePendingDfu() {
       updateUploadStatus('state', 'error', 'Verification failed');
     });
   } else {
-    scheduleReconnectAttempt();
+    startAutoReconnect().catch(error => logDfu(`Auto reconnect failed: ${error.message || error}`, true));
   }
 }
 
@@ -1398,8 +1620,17 @@ async function handleFileSelection(event) {
     try {
       dfuState.fileImageInfo = await dfuState.mcumgr.imageInfo(dfuState.fileData);
     } catch (error) {
+      logDfu(`Image header check failed: ${error.message || error}`, true);
       dfuState.fileImageInfo = null;
     }
+  }
+  if (dfuState.fileData && dfuState.mcumgr && (!dfuState.fileImageInfo || dfuState.fileImageInfo.hashValid === false)) {
+    updateCheckStatus(DfuFileCheckResult.invalidImage);
+    setUserStatus(dfuCheckMessages[DfuFileCheckResult.invalidImage], 'error');
+    updateUploadStatus('file', 'error', 'Invalid image');
+    updateFileMatchStatus();
+    resetUploadProgress();
+    return;
   }
 
   const deviceFwType = dfuState.deviceInfo && Number.isFinite(dfuState.deviceInfo.fwType) ? dfuState.deviceInfo.fwType : FwTypeEnum.default;
@@ -1470,7 +1701,9 @@ function setupMcuManager() {
     if (elements.disconnectButton) {
       elements.disconnectButton.disabled = false;
     }
-    resetUploadStatus(true);
+    if (!dfuState.awaitingReboot) {
+      resetUploadStatus(true);
+    }
     updateUploadButtons();
     if (dfuState.awaitingReboot) {
       setWaitingOverlay(true);
@@ -1510,17 +1743,18 @@ function setupMcuManager() {
     if (elements.disconnectButton) {
       elements.disconnectButton.disabled = true;
     }
-    resetUploadStatus(true);
+    if (!dfuState.awaitingReboot) {
+      resetUploadStatus(true);
+    }
     updateUploadButtons();
     if (dfuState.awaitingReboot) {
-      updateUploadStatus('reboot', 'active', 'Waiting');
+      clearRebootWatchdog();
+      updateUploadStatus('reboot', 'completed', 'Restarted');
       updateUploadStatus('reconnect', 'active', 'Waiting');
       updateConnectionStatus('Waiting for device to reboot...', 'pending');
-      setWaitingOverlay(true);
-      ensureReconnectLock();
-      dfuState.reconnectAttempts = 0;
-      dfuState.reconnectDelayMs = 1500;
-      scheduleReconnectAttempt();
+      if (!dfuState.autoReconnectActive) {
+        startAutoReconnect().catch(err => logDfu(`Auto reconnect failed: ${err.message || err}`, true));
+      }
     }
   });
 
@@ -1568,6 +1802,7 @@ function setupMcuManager() {
     setUserStatus(error || 'DFU upload failed.', 'error');
     updateUploadStatus('start', 'error', 'Failed');
     updateUploadStatus('finish', 'error', 'Failed');
+    releaseWakeLock();
     updateUploadButtons();
   });
 
@@ -1586,6 +1821,10 @@ function setupMcuManager() {
 
   dfuState.mcumgr.onImageUploadChunkAck(({ off }) => {
     if (off !== undefined) {
+      dfuState.uploadAckedBytes = off;
+      if (dfuState.uploadTotalBytes > 0) {
+        setUploadProgress(Math.floor(off / dfuState.uploadTotalBytes * 100));
+      }
       updateUploadStatus('ack', 'completed', `${off.toLocaleString()} bytes`);
       const now = Date.now();
       if (off - lastChunkAckOffset >= 65536 || now - lastChunkAckLogAt >= 1500) {
@@ -1925,15 +2164,16 @@ async function testUploadedImage(stateOverride = null) {
     updateUploadButtons();
     setUserStatus('Device is rebooting to activate the update...', 'success');
     logDfu('Reboot requested; waiting for reconnect.');
-    setWaitingOverlay(true);
-    setReconnectLock();
+    showRebootOverlay();
     savePendingDfu({
       deviceName: dfuState.deviceInfo ? dfuState.deviceInfo.deviceName : null,
       expectedHash: targetBytes,
       expectedVersion: dfuState.fileImageInfo ? dfuState.fileImageInfo.version : null,
       startedAt: dfuState.reconnectStart,
     });
+    await acquireWakeLock();
     await dfuState.mcumgr.cmdReset();
+    armRebootWatchdog();
   } catch (error) {
     updateUploadStatus('test', 'error', 'Failed');
     logDfu(`Test image failed: ${error.message || error}`, true);
@@ -2054,32 +2294,24 @@ async function handlePostUploadFlow(existingState = null) {
     updateUploadButtons();
     setUserStatus('Device is rebooting to activate the update...', 'success');
     logDfu('Reboot requested; waiting for reconnect.');
+    showRebootOverlay();
     savePendingDfu({
       deviceName: dfuState.deviceInfo ? dfuState.deviceInfo.deviceName : null,
       expectedHash: expectedHashBytes || expectedHash,
       expectedVersion: dfuState.expectedImageVersion,
       startedAt: dfuState.reconnectStart,
     });
+    await acquireWakeLock();
     await dfuState.mcumgr.cmdReset();
+    armRebootWatchdog();
   } catch (error) {
     updateUploadStatus('reboot', 'error', 'Reboot failed');
     throw error;
   }
 }
 
-function shouldKeepReconnecting() {
-  if (!dfuState.awaitingReboot) return false;
-  const start = dfuState.reconnectStart || Date.now();
-  return Date.now() - start < 120000;
-}
-
-function scheduleReconnectAttempt() {
-  updateUploadStatus('reconnect', 'active', 'Waiting');
-  updateConnectionStatus('Waiting for device to reboot...', 'pending');
-  setWaitingOverlay(true);
-}
-
 async function verifyRebootedFirmware() {
+  clearRebootWatchdog();
   if (!dfuState.expectedImageHash) {
     clearPendingDfu();
     updateUploadStatus('reconnect', 'completed', 'Done');
@@ -2089,60 +2321,84 @@ async function verifyRebootedFirmware() {
       showSpinner: false,
       showCountdown: false,
       showReconnect: false,
+      showRetry: false,
       showContinue: true,
     });
     return;
   }
+  stopReconnectCountdown();
+  updateUploadStatus('reconnect', 'completed', 'Done');
   updateUploadStatus('verify', 'active', 'Verifying');
-  const response = await fetchImageStateWithRetry(4, 1000);
+  setWaitingOverlayState({
+    message: 'Reconnected. Verifying the new firmware...',
+    showSpinner: true,
+    showCountdown: false,
+    showReconnect: false,
+    showRetry: false,
+    showContinue: false,
+  });
+  let response = null;
+  try {
+    response = await fetchImageStateWithRetry(5, 1000);
+  } catch (error) {
+    logDfu(`Image state after reboot failed: ${error.message || error}`, true);
+  }
   if (!response || !response.images) {
     updateUploadStatus('verify', 'error', 'No data');
+    setWaitingOverlayState({
+      message: 'Reconnected, but the firmware state could not be read. Retry, or go to the device and check the firmware version there.',
+      showSpinner: false,
+      showCountdown: false,
+      showReconnect: false,
+      showRetry: true,
+      showContinue: true,
+    });
     return;
   }
+  renderImageState(response);
   const image = findImageByHash(response.images, dfuState.expectedImageHash);
   if (image && image.active) {
-    updateUploadStatus('verify', 'completed', 'Active');
-    try {
-      const hashBytes = dfuState.expectedImageHashBytes || hashToBytes(dfuState.expectedImageHash);
-      if (!hashBytes) {
-        throw new Error('No image hash bytes available for confirm');
+    const version = image.version || dfuState.expectedImageVersion || null;
+    updateUploadStatus('verify', 'completed', version ? `Active (v${version})` : 'Active');
+    if (image.confirmed) {
+      updateUploadStatus('confirm', 'completed', 'Confirmed by device');
+    } else {
+      updateUploadStatus('confirm', 'active', 'Confirming');
+      try {
+        const hashBytes = dfuState.expectedImageHashBytes || hashToBytes(dfuState.expectedImageHash);
+        if (!hashBytes) {
+          throw new Error('No image hash bytes available for confirm');
+        }
+        await dfuState.mcumgr.cmdImageConfirm(hashBytes);
+        updateUploadStatus('confirm', 'completed', 'Confirmed');
+      } catch (error) {
+        logDfu(`Confirm failed: ${error.message || error}`, true);
+        updateUploadStatus('confirm', 'warning', 'Not confirmed');
       }
-      if (!image.confirmed) {
-        updateUploadStatus('confirm', 'active', 'Confirming');
-      } else {
-        updateUploadStatus('confirm', 'completed', 'Already confirmed');
-      }
-      await dfuState.mcumgr.cmdImageConfirm(hashBytes);
-      updateUploadStatus('confirm', 'completed', 'Confirmed');
-      updateFirmwarePresenceUi({ status: 'active', image, state: response });
-      clearPendingDfu();
-      updateUploadButtons();
-      await attemptStatusRefresh();
-      setWaitingOverlayState({
-        message: 'Firmware verified. You can return to the device.',
-        showSpinner: false,
-        showCountdown: false,
-        showReconnect: false,
-        showContinue: true,
-      });
-      if (typeof window.toggleDfuView === 'function') {
-        showToast('DFU complete. You can return to the main screen.');
-      }
-    } catch (error) {
-      logDfu(`Confirm failed: ${error.message || error}`, true);
-      setWaitingOverlayState({
-        message: 'Reconnected, but firmware confirmation failed.',
-        showSpinner: false,
-        showCountdown: false,
-        showReconnect: true,
-        showContinue: false,
-      });
     }
+    updateFirmwarePresenceUi({ status: 'active', image, state: response });
+    clearPendingDfu();
     updateUploadButtons();
+    logDfu(`Firmware verified: ${summarizeImageState(response)}`);
+    showToast(version ? `DFU complete. Firmware v${version} is active.` : 'DFU complete.');
+    await returnToDeviceAfterDfu(version);
     return;
   }
-  updateUploadStatus('verify', 'warning', 'Not active yet');
-  scheduleReconnectAttempt();
+  const active = pickActiveImage(response.images);
+  const activeLabel = active && active.version ? `v${active.version}` : 'the previous firmware';
+  updateUploadStatus('verify', 'error', 'Not active');
+  logDfu(`Uploaded image is not active after reboot: ${summarizeImageState(response)}`, true);
+  clearPendingDfu();
+  updateUploadButtons();
+  setUserStatus(`The device restarted but is still running ${activeLabel}. Start the update again.`, 'error');
+  setWaitingOverlayState({
+    message: `The device restarted but is still running ${activeLabel}. Return to the device and start the update again.`,
+    showSpinner: false,
+    showCountdown: false,
+    showReconnect: false,
+    showRetry: false,
+    showContinue: true,
+  });
 }
 
 async function checkFirmwareAlreadyInstalled() {
@@ -2369,7 +2625,11 @@ async function startUpload() {
   logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, fallbacks=${fallbacks.join(', ') || 'none'}`);
   logDfu(`Image info: version=${imageVersion}, hash=${imageHash || 'unknown'}`);
   dfuState.uploadInProgress = true;
+  dfuState.uploadStartedAt = Date.now();
+  dfuState.uploadTotalBytes = dfuState.fileData.byteLength;
+  dfuState.uploadAckedBytes = 0;
   updateUploadButtons();
+  await acquireWakeLock();
   try {
     await dfuState.mcumgr.cmdUpload(dfuState.fileData);
   } catch (error) {
@@ -2444,10 +2704,6 @@ function attachHandlers() {
           showToast('Bluetooth scan not supported in this browser.');
           return;
         }
-        if (typeof window.connectToDevice !== 'function') {
-          showToast('Main connection handler unavailable.');
-          return;
-        }
         const nameFilters = dfuState.deviceInfo?.deviceName ? [{ name: dfuState.deviceInfo.deviceName }] : [];
         const manufacturerFilter = { manufacturerData: [{ companyIdentifier: 0x0A61 }] };
         const filters = nameFilters.length
@@ -2460,6 +2716,17 @@ function attachHandlers() {
             '8d53dc1d-1db7-4cd3-868b-8a527460aa84',
           ],
         });
+        dfuState.existingDevice = selected;
+        setMainBleRefs(selected, null, null, null);
+        if (dfuState.awaitingReboot) {
+          // The chooser gave us a fresh device object; run the same verify flow.
+          await startAutoReconnect({ device: selected, immediate: true });
+          return;
+        }
+        if (typeof window.connectToDevice !== 'function') {
+          showToast('Main connection handler unavailable.');
+          return;
+        }
         if (dfuState.mcumgr && dfuState.connected) {
           try {
             dfuState.mcumgr.disconnect();
@@ -2468,7 +2735,6 @@ function attachHandlers() {
           }
           await delay(400);
         }
-        setMainBleRefs(selected, window.server, window.rxCharacteristic, window.txCharacteristic);
         await restoreMainBleSession({ requestStatus: true });
         clearPendingDfu();
         setWaitingOverlayState({
@@ -2476,6 +2742,7 @@ function attachHandlers() {
           showSpinner: false,
           showCountdown: false,
           showReconnect: false,
+          showRetry: false,
           showContinue: true,
         });
       } catch (error) {
@@ -2491,6 +2758,22 @@ function attachHandlers() {
       }
     });
   }
+  if (elements.waitingRetryButton) {
+    elements.waitingRetryButton.addEventListener('click', () => {
+      if (!dfuState.awaitingReboot) {
+        returnToMainDeviceScreen();
+        return;
+      }
+      dfuState.reconnectStart = Date.now();
+      dfuState.reconnectAttempts = 0;
+      startAutoReconnect({ immediate: true }).catch(error => logDfu(`Auto reconnect failed: ${error.message || error}`, true));
+    });
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && window.isDfuSessionActive && window.isDfuSessionActive()) {
+      acquireWakeLock();
+    }
+  });
   if (elements.waitingContinueButton) {
     elements.waitingContinueButton.addEventListener('click', () => {
       returnToMainDeviceScreen();
@@ -2532,6 +2815,8 @@ function resetUi() {
   dfuState.userConfirmed = false;
   dfuState.selectionInProgress = false;
   dfuState.selectionRequestId += 1;
+  dfuState.autoReconnectActive = false;
+  stopReconnectCountdown();
   resetFirmwarePresenceState();
   if (elements.fileInput) {
     elements.fileInput.value = '';
