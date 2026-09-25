@@ -412,6 +412,50 @@
     };
   }
 
+  function makeMacControl(field, setting, host) {
+    const input = el('input', 'panel-input panel-input-mono');
+    input.type = 'text';
+    input.placeholder = 'AA:BB:CC:DD:EE:FF';
+    input.spellcheck = false;
+    input.addEventListener('input', () => {
+      const hex = host.macFromInput ? host.macFromInput(input.value) : input.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+      if (hex.length === 12) host.setValue(field.key, hex);
+    });
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(input);
+    return {
+      node: wrap,
+      focusable: input,
+      update(value) { if (!isFocused(input)) input.value = host.macDisplay ? host.macDisplay(value) : (value ?? ''); },
+      setDisabled(disabled) { input.disabled = disabled; },
+    };
+  }
+
+  function makeHexNumberControl(field, setting, host) {
+    const input = el('input', 'panel-input panel-input-mono');
+    input.type = 'text';
+    input.placeholder = '0x0000';
+    input.spellcheck = false;
+    input.addEventListener('input', () => {
+      const clean = input.value.trim().replace(/^0x/i, '');
+      if (/^[0-9a-fA-F]{1,4}$/.test(clean)) host.setValue(field.key, String(parseInt(clean, 16)));
+    });
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(input);
+    const decimal = el('span', 'panel-hint', '');
+    wrap.appendChild(decimal);
+    return {
+      node: wrap,
+      focusable: input,
+      update(value) {
+        const number = engine.toNumber(value);
+        if (!isFocused(input)) input.value = Number.isFinite(number) ? `0x${number.toString(16).toUpperCase().padStart(4, '0')}` : '';
+        decimal.textContent = Number.isFinite(number) ? `= ${number}` : '';
+      },
+      setDisabled(disabled) { input.disabled = disabled; },
+    };
+  }
+
   function portRows(host) {
     return host.getPorts ? host.getPorts() : [];
   }
@@ -537,6 +581,10 @@
         return makePortsControl(field, setting, host);
       case 'matrix':
         return makeMatrixControl(field, host, field.__columns || []);
+      case 'mac':
+        return makeMacControl(field, setting, host);
+      case 'hex-number':
+        return makeHexNumberControl(field, setting, host);
       case 'duration':
         return makeDurationControl(field, setting, host);
       case 'utc-hour':
@@ -616,6 +664,7 @@
     };
     state.updaters.push(updater);
     keys.forEach(key => state.fieldElements.set(key, row));
+    state.searchable.push({ row, text: `${fieldLabel(field, host)} ${help} ${keys.join(' ')}`.toLowerCase() });
     return row;
   }
 
@@ -770,13 +819,38 @@
     const fields = el('div', 'panel-fields');
     fields.appendChild(renderFields(panel.fields, panel, host, null, state));
     body.appendChild(fields);
+    if (host.getDefault) {
+      const actions = el('div', 'panel-actions');
+      const reset = el('button', 'secondary panel-reset', 'Reset this panel to defaults');
+      reset.type = 'button';
+      reset.title = 'Loads the firmware defaults for every setting in this panel into the pending changes. Nothing is written until you review and apply.';
+      reset.addEventListener('click', () => {
+        const keys = new Set();
+        engine.walkFields(panel.fields, field => {
+          engine.fieldKeys(field).forEach(key => keys.add(key));
+          (field.__columns || []).forEach(column => keys.add(column.key));
+        });
+        let count = 0;
+        keys.forEach(key => {
+          if (!host.getSetting(key)) return;
+          const value = host.getDefault(key);
+          if (value === null || value === undefined) return;
+          host.setValue(key, String(value));
+          count += 1;
+        });
+        if (host.notify) host.notify(`Defaults loaded for ${count} setting${count === 1 ? '' : 's'} in ${panel.title}. Review and apply to write them.`);
+      });
+      actions.appendChild(reset);
+      body.appendChild(actions);
+    }
     card.appendChild(body);
+    state.panelCards.push({ panel, card });
     return fields.children.length ? card : null;
   }
 
   function mount(container, definitions, host) {
     container.innerHTML = '';
-    const state = { container, host, updaters: [], fieldElements: new Map() };
+    const state = { container, host, updaters: [], fieldElements: new Map(), searchable: [], panelCards: [] };
     const panels = Array.isArray(definitions) ? definitions : (definitions && definitions.panels) || [];
     panels.forEach(panel => {
       const card = renderPanel(panel, host, state);
@@ -802,5 +876,38 @@
     return mounted ? mounted.fieldElements.get(key) || null : null;
   }
 
-  window.PanelRenderer = { mount, refresh, unmount, locate };
+  // Show only fields matching the query (label, help or key); open what contains a match.
+  // An empty query restores everything, including the panels' default open state.
+  function filter(query) {
+    if (!mounted) return 0;
+    const text = String(query || '').trim().toLowerCase();
+    const terms = text.split(/\s+/).filter(Boolean);
+    let matches = 0;
+    mounted.searchable.forEach(({ row, text: haystack }) => {
+      const hit = !terms.length || terms.every(term => haystack.includes(term));
+      row.classList.toggle('panel-search-miss', !hit);
+      if (hit && terms.length) matches += 1;
+    });
+    mounted.panelCards.forEach(({ panel, card }) => {
+      const visibleRows = card.querySelectorAll('.panel-field:not(.panel-search-miss)').length;
+      card.classList.toggle('hidden', terms.length > 0 && visibleRows === 0);
+      if (terms.length) {
+        card.open = visibleRows > 0;
+        card.querySelectorAll('details.panel-group').forEach(group => {
+          const inner = group.querySelectorAll('.panel-field:not(.panel-search-miss)').length;
+          group.classList.toggle('hidden', inner === 0);
+          if (inner) group.open = true;
+        });
+      } else {
+        card.open = !panel.collapsed;
+        card.querySelectorAll('details.panel-group').forEach(group => {
+          group.classList.remove('hidden');
+          group.open = !group.classList.contains('panel-group-advanced');
+        });
+      }
+    });
+    return matches;
+  }
+
+  window.PanelRenderer = { mount, refresh, unmount, locate, filter };
 }());

@@ -4320,3 +4320,41 @@ body.has-pending-changes {
         padding-right: 6px;
     }
 }
+
+/* Panel search and actions */
+.panels-search {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.panels-search input[type="search"] {
+    flex: 1 1 auto;
+    padding: 10px 12px;
+    border: 1px solid var(--sp-border);
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.9);
+}
+
+.panels-search-count {
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.7);
+    white-space: nowrap;
+}
+
+.panel-field.panel-search-miss {
+    display: none;
+}
+
+.panel-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+.panel-actions .panel-reset {
+    margin: 0;
+    font-size: 13px;
+    padding: 8px 12px;
+}

@@ -437,9 +437,179 @@
     ],
   };
 
+  const fenceAndSwitchWarning = {
+    when: { all: [{ key: 'fence_enabled', truthy: true }, { key: 'external_switch_detection_enabled', truthy: true }] },
+    text: 'Fence monitoring and external switch detection must not be enabled together; the firmware disables the switch function when both are on.',
+  };
+
+  const scanning = {
+    id: 'scanning',
+    title: 'WiFi and BLE scanning',
+    icon: 'wifi-scan',
+    collapsed: true,
+    description: 'Periodic scans for nearby WiFi networks and Bluetooth devices. Results are sent as their own message types (see Data sending and storing).',
+    fields: [
+      {
+        group: 'WiFi scan',
+        fields: [
+          { key: 'wifi_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a WiFi scan runs.' },
+          { key: 'wifi_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
+            enabledWhen: { key: 'wifi_scan_interval', gt: 0 }, reason: 'Turn on WiFi scanning first.', help: 'How often aggregated WiFi scan results are produced.' },
+          { key: 'wifi_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: { key: 'wifi_scan_interval', gt: 0 }, reason: 'Turn on WiFi scanning first.',
+            help: 'Also send a result when no networks were found.' },
+        ],
+      },
+      {
+        group: 'BLE scan',
+        fields: [
+          { key: 'ble_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a BLE scan runs.' },
+          { key: 'ble_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
+            enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.', help: 'How often aggregated BLE scan results are produced.' },
+          { key: 'ble_scan_duration', label: 'Scan duration', unit: 'ms', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.', help: 'Scan duration in milliseconds.' },
+          { key: 'ble_scan_filter', label: 'Filter', control: 'select', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.',
+            help: 'Filtering applied to scanned data before storing or sending. The options depend on the firmware version.' },
+          { key: 'ble_scan_manufacturer_id', label: 'Manufacturer ID', control: 'hex-number', enabledWhen: { key: 'ble_scan_filter', in: [1, 2, 4] }, reason: 'Only used with a manufacturer ID filter.',
+            help: 'Bluetooth manufacturer ID, in hex (Smart Parks is 0x0A61).' },
+          { key: 'ble_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.',
+            help: 'Also send a result when no devices were found.' },
+        ],
+      },
+    ],
+  };
+
+  const cmdqOn = { key: 'cmdq_enabled', truthy: true };
+  const cmdqReason = 'Turn on tracker search first.';
+  const cmdq = {
+    id: 'cmdq',
+    title: 'Tracker search (CMDQ)',
+    icon: 'bluetooth',
+    collapsed: true,
+    description: 'Search for one specific Bluetooth device nearby and report when it is detected.',
+    fields: [
+      { key: 'cmdq_enabled', label: 'Tracker search', control: 'toggle',
+        help: 'Scan for the device below on the search interval and report detections.',
+        warnings: [{ when: cmdqOn,
+          text: 'While tracker search is on, the device disconnects Bluetooth apps to scan. After enabling it, this app may not be able to reconnect until the scan is ready, which can take up to 5 minutes.' }] },
+      { key: 'cmdq_searched_mac_address', label: 'Device to search for', control: 'mac', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Bluetooth MAC address of the device to search for.' },
+      { key: 'cmdq_search_interval', label: 'Search interval', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+        help: 'Seconds between scans. For immediate and long scans this is the active scan duration; set it near the searched device\'s advertisement interval.' },
+      { key: 'cmdq_scan_duration', label: 'Short scan duration', unit: 'ms', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Milliseconds spent actively scanning during a short scan.' },
+      { key: 'cmdq_reporting_interval', label: 'Report detections every', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+        help: 'Seconds between composing and sending detection reports.' },
+      { key: 'cmdq_on_no_detection_wait_duration', label: 'Wait after a failed long scan', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+        help: 'Seconds to wait after a long scan finds nothing before trying again.' },
+      {
+        group: 'Advanced',
+        advanced: true,
+        fields: [
+          { key: 'cmdq_report_zero_messages_to_be_sent', label: 'Report when nothing was detected', control: 'toggle', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Cmdq report zero messages to be sent setting.' },
+        ],
+      },
+    ],
+  };
+
+  const fenceOn = { key: 'fence_enabled', truthy: true };
+  const fenceReason = 'Turn on fence monitoring first.';
+  const fence = {
+    id: 'fence',
+    title: 'Fence monitor',
+    icon: 'electric-fence',
+    collapsed: true,
+    description: 'Measure the voltage of an electric fence (requires supported hardware). Measurements and calibration are in the FenceEdge card.',
+    fields: [
+      { key: 'fence_enabled', label: 'Fence monitoring', control: 'toggle', help: 'Enable fence measurements (requires supported hardware).', warnings: [fenceAndSwitchWarning] },
+      { key: 'fence_interval', label: 'Measure', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, enabledWhen: fenceOn, reason: fenceReason,
+        help: 'Seconds between fence measurements.' },
+      { key: 'fence_sampling_length', label: 'Measurement length', control: 'duration', unit: 's', enabledWhen: fenceOn, reason: fenceReason, help: 'Measurement length in seconds (1 to 60).' },
+      { key: 'fence_led_blink', label: 'Blink LED on measurement', control: 'toggle', enabledWhen: fenceOn, reason: fenceReason, help: 'Fence led blink setting.' },
+      {
+        group: 'Advanced',
+        advanced: true,
+        fields: [
+          { key: 'fence_mv_scaling_factor', label: 'Voltage scaling factor', enabledWhen: fenceOn, reason: fenceReason, help: 'Scaling factor applied to the measured millivolts (1000 mV measured -> 10 kV at 10000).' },
+        ],
+      },
+    ],
+  };
+
+  const switchOn = { key: 'external_switch_detection_enabled', truthy: true };
+  const switchReason = 'Turn on switch detection first.';
+  const externalSwitch = {
+    id: 'switch',
+    title: 'External switch',
+    icon: 'power-off',
+    collapsed: true,
+    description: 'Detect activity on the external switch input, or count its pulses, and report it over LoRa.',
+    fields: [
+      { key: 'external_switch_detection_enabled', label: 'Switch detection', control: 'toggle', help: 'Turns on external switch detection.', warnings: [fenceAndSwitchWarning] },
+      { key: 'external_switch_counter_enabled', label: 'Count pulses instead of detecting activity', control: 'toggle', enabledWhen: switchOn, reason: switchReason,
+        help: 'When on, the device counts transitions from inactivity to activity (respecting the debounce) within the reporting interval.' },
+      { key: 'external_switch_detection_reporting_interval', label: 'Periodic report', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, enabledWhen: switchOn, reason: switchReason,
+        help: 'Interval for periodic status reports over LoRa. Activity and inactivity transitions are still sent immediately.' },
+      { key: 'external_switch_send_inactivity_report', label: 'Report inactivity too', control: 'toggle',
+        enabledWhen: { all: [switchOn, { key: 'external_switch_detection_reporting_interval', gt: 0 }] }, reason: 'Only used with a periodic report.',
+        help: 'Send an inactivity report when the reporting interval expires without activity.' },
+      {
+        group: 'Input wiring',
+        advanced: true,
+        help: 'How the AN (GPIO) input is read. Match these to the connected switch.',
+        fields: [
+          { key: 'external_switch_detection_trigger_type', label: 'Active level', control: 'select', enabledWhen: switchOn, reason: switchReason, help: 'Which logic level counts as activity.' },
+          { key: 'external_switch_input_pull', label: 'Input pull', control: 'select', enabledWhen: switchOn, reason: switchReason,
+            help: 'Pull of the input line. If the switch provides its own pull, a wrong setting can raise power use or cause undefined behaviour.' },
+          { key: 'external_switch_detection_gpio_pin_power_enabled', label: 'Power the switch from the GPIO pin', control: 'toggle', enabledWhen: switchOn, reason: switchReason, help: 'External switch detection gpio pin power enabled setting.' },
+          { key: 'external_switch_detection_trigger_debounce_ms', label: 'Debounce', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
+            help: 'Time after a state change during which further changes are ignored; the input is then re-read to confirm. 0 disables debouncing (not recommended).' },
+          { key: 'external_switch_minimal_report_duration_ms', label: 'Minimum activity to report', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
+            help: 'Minimum activity duration before a report is sent, to avoid flooding the LoRa queue with short detections.' },
+        ],
+      },
+    ],
+  };
+
+  const sensors = {
+    id: 'sensors',
+    title: 'Sensors and diagnostics',
+    icon: 'accelerometer',
+    collapsed: true,
+    description: 'Accelerometer, air quality and diagnostics reporting.',
+    fields: [
+      {
+        group: 'Accelerometer',
+        fields: [
+          { key: 'accel_odr_hz', label: 'Sample rate', unit: 'Hz', help: 'Output data rate in Hertz.' },
+          { key: 'accel_g_scale', label: 'Range', unit: 'g', help: 'Accel g scale setting.' },
+          { key: 'accel_movement_data_fifo_enabled', label: 'Movement data FIFO', control: 'toggle', help: 'Accel movement data fifo enabled setting.' },
+        ],
+      },
+      {
+        group: 'Air quality',
+        fields: [
+          { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Air quality enabled setting.' },
+          { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', enabledWhen: { key: 'air_quality_enabled', truthy: true }, reason: 'Turn on the air quality sensor first.',
+            help: 'How often the air quality function runs.' },
+        ],
+      },
+      {
+        group: 'Diagnostics',
+        advanced: true,
+        fields: [
+          { key: 'memfault_send_interval', label: 'Memfault diagnostics', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400, help: 'How often Memfault data is sent.' },
+        ],
+      },
+    ],
+  };
+
   return {
-    version: 3,
-    panels: [positioning, dataSending, network, device, satellite, vhf],
+    version: 4,
+    panels: [positioning, dataSending, network, device, satellite, vhf, scanning, cmdq, fence, externalSwitch, sensors],
     portLabels,
+    // Settings blocks inside the older feature cards that a panel now covers.
+    supersededSections: [
+      { elementId: 'cmdq-settings-section', key: 'cmdq_enabled' },
+      { elementId: 'fence-settings-section', key: 'fence_enabled' },
+      { elementId: 'wifi-scan-settings-section', key: 'wifi_scan_interval' },
+      { elementId: 'ble-scan-settings-section', key: 'ble_scan_interval' },
+    ],
   };
 }));
