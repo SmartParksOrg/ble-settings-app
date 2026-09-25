@@ -16,6 +16,9 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="manifest" href="composer-manifest.json">
   <script src="functions.js"></script>
+  <script src="panels/panel-engine.js"></script>
+  <script src="panels/panel-definitions.js"></script>
+  <script src="panels/panel-renderer.js"></script>
 </head>
 
 <body class="composer-page">
@@ -56,6 +59,15 @@
         <p>Select a settings file, review or adjust values, then choose a payload type at the bottom to copy/export the payload.</p>
       </div>
     </details>
+  </div>
+
+  <div id="panels-area" class="commands-section panels-section page-section">
+    <div class="panels-search">
+      <input type="search" id="panels-search" placeholder="Find a setting in the panels..." aria-label="Find a setting in the panels" autocomplete="off">
+      <span id="panels-search-count" class="panels-search-count"></span>
+    </div>
+    <p class="panel-description">Editing a value in a panel includes that setting in the payload; untick it in the Settings list below to leave it out.</p>
+    <div id="panels-list"></div>
   </div>
 
   <div id="settings-area" class="settings-section page-section">
@@ -292,6 +304,7 @@
       try {
         await loadSettings(selectedFile);
         displaySettings();
+        mountComposerPanels();
         displayCommands();
         updateComposerMessengerMeta();
         updateComposerMessengerPayload();
@@ -982,9 +995,112 @@
 
     function onInputChanged(setting, value, valid) {
       updateEncodedMessage();
+      if (window.PanelRenderer) {
+        PanelRenderer.refresh();
+      }
+    }
+
+    // ---- Guided panels in the composer --------------------------------------------
+    // A panel reads the included value of a setting (or its default when not included)
+    // and writes by including the setting and setting its list input.
+    function isSettingIncluded(setting) {
+      const checkbox = document.getElementById(`checkbox-${setting.id}`);
+      return Boolean(checkbox && checkbox.checked);
+    }
+
+    function includeSetting(setting) {
+      const checkbox = document.getElementById(`checkbox-${setting.id}`);
+      if (checkbox && !checkbox.checked) {
+        checkbox.checked = true;
+        updateCheckBox(checkbox, setting.id);
+      }
+    }
+
+    function composerDefault(setting) {
+      const rendered = normalizeRenderableValue(setting.default);
+      return setting.conversion === 'byte_array' ? stripBytes(rendered) : rendered;
+    }
+
+    function mountComposerPanels() {
+      const container = document.getElementById('panels-list');
+      if (!container || !window.PanelRenderer || !window.PanelDefinitions || !settingsData) {
+        return;
+      }
+      PanelRenderer.mount(container, PanelDefinitions.panels, {
+        getSetting: key => (settingsData && settingsData.settings ? settingsData.settings[key] || null : null),
+        getValue: key => {
+          const setting = settingsData.settings[key];
+          if (!setting) {
+            return null;
+          }
+          if (isSettingIncluded(setting)) {
+            const value = getInputValue(setting.id);
+            if (value !== undefined && value !== null && String(value) !== '') {
+              return value;
+            }
+          }
+          return composerDefault(setting);
+        },
+        setValue: (key, value) => {
+          const setting = settingsData.settings[key];
+          if (!setting) {
+            return;
+          }
+          includeSetting(setting);
+          setInputValue(setting.id, value);
+          __onInputChanged(setting.id);
+        },
+        isPending: key => {
+          const setting = settingsData.settings[key];
+          return Boolean(setting && isSettingIncluded(setting));
+        },
+        getLabel: key => getSettingLabel(key, getGroupName(key)),
+        getDescription: key => getSettingDescription(key),
+        validate: (key, value) => {
+          try {
+            validateInput(key, settingsData.settings[key], value);
+            return '';
+          } catch (error) {
+            return error.message;
+          }
+        },
+        formatLocalTime: hour => {
+          const number = Number(hour);
+          return Number.isFinite(number) ? formatLocalTimeValueFromUtcHour(number) : null;
+        },
+        getOptions: key => getSettingOptions(key),
+        getPorts: () => {
+          const ports = settingsData && settingsData.ports ? settingsData.ports : {};
+          const labels = (window.PanelDefinitions && PanelDefinitions.portLabels) || {};
+          return Object.entries(ports)
+            .filter(([name, number]) => Number.isFinite(number) && !skipPorts.includes(name))
+            .sort((a, b) => a[1] - b[1])
+            .map(([name, number]) => ({ name, number, label: labels[name] || name.replace(/^port_/, '').replace(/_/g, ' ') }));
+        },
+        pinDigits: value => devicePinDigitsFromStorage(value),
+        pinFromDigits: digits => digits.split('').map(digit => `0${digit}`).join('').toUpperCase(),
+        macDisplay: value => formatMacAddressForDisplay(value || '', 6),
+        macFromInput: text => normalizeMacAddressInput(text),
+        getDefault: key => (settingsData.settings[key] ? composerDefault(settingsData.settings[key]) : null),
+        notify: message => showToast(message),
+      });
+      const search = document.getElementById('panels-search');
+      if (search) {
+        search.value = '';
+        search.oninput = event => {
+          const matches = PanelRenderer.filter(event.target.value);
+          const count = document.getElementById('panels-search-count');
+          if (count) {
+            count.textContent = event.target.value.trim() ? `${matches} match${matches === 1 ? '' : 'es'}` : '';
+          }
+        };
+      }
     }
 
     function updateCheckBox(element, id) {
+      if (window.PanelRenderer) {
+        setTimeout(() => PanelRenderer.refresh(), 0);
+      }
       if (element.checked) {
         element.parentElement.parentElement.classList.remove('transparent');
         setDefaultValue(id);

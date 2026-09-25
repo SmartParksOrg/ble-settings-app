@@ -14,7 +14,7 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v38`.
+- Service worker cache is currently `app-cache-v39`.
 
 Firmware v8 support completed:
 - Bundled the official v8.0.0 settings schema.
