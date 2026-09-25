@@ -461,7 +461,7 @@
     "cold_fix_retry": {
       "category": "gps",
       "label": "cold fix retry",
-      "description": "Cold fix retry setting.",
+      "description": "Number of cold fix attempts. After the last unsuccessful attempt the GPS module is turned off.",
       "display_name": "cold fix retry"
     },
     "cold_fix_timeout": {
@@ -701,7 +701,7 @@
     "hot_fix_retry": {
       "category": "gps",
       "label": "hot fix retry",
-      "description": "Hot fix retry setting.",
+      "description": "Number of hot fix attempts before the fix is given up.",
       "display_name": "hot fix retry"
     },
     "hot_fix_timeout": {

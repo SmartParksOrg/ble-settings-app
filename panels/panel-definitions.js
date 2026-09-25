@@ -163,7 +163,7 @@
               { key: 'hot_fix_timeout', label: 'Attempt duration', control: 'duration', unit: 's',
                 help: 'Duration of a hot fix attempt.' },
               { key: 'hot_fix_retry', label: 'Attempts',
-                help: 'Number of hot fix attempts.' },
+                help: 'Number of hot fix attempts before the fix is given up.' },
             ],
           },
           {
