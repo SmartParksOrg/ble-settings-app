@@ -4011,9 +4011,17 @@ body.has-pending-changes {
 
 .panel-select {
     flex: 0 1 130px;
+    min-width: 0;
+    max-width: 100%;
     padding: 8px 10px;
     border: 1px solid var(--sp-border);
     border-radius: var(--radius-md);
+}
+
+/* A select is as wide as its longest option unless told otherwise; keep it
+   inside its column so long option labels do not push into the next field. */
+.panel-control > * {
+    min-width: 0;
 }
 
 .panel-unit,
@@ -4226,6 +4234,7 @@ body.has-pending-changes {
 /* Phase 2 panel controls */
 .panel-select-wide {
     flex: 1 1 220px;
+    width: 100%;
 }
 
 .panel-input-pin {
