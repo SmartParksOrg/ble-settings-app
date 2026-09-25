@@ -4367,3 +4367,144 @@ body.has-pending-changes {
     font-size: 13px;
     padding: 8px 12px;
 }
+
+/* Sticky status bar: slides in once the header has scrolled out of view. */
+html {
+    scroll-padding-top: 56px;
+}
+
+.sticky-status-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 6px 16px;
+    background: rgba(245, 247, 243, 0.96);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--sp-border);
+    box-shadow: 0 4px 14px rgba(28, 42, 33, 0.1);
+    transform: translateY(-110%);
+    transition: transform 0.16s ease;
+}
+
+.sticky-status-bar.is-visible {
+    transform: none;
+}
+
+.sticky-status-identity,
+.sticky-status-pending {
+    background: none;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+    color: var(--sp-ink);
+    font: inherit;
+    letter-spacing: normal;
+}
+
+.sticky-status-identity:hover,
+.sticky-status-pending:hover {
+    background: none;
+    transform: none;
+}
+
+.sticky-status-identity {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+}
+
+.sticky-status-dot {
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #3a9d5d;
+    box-shadow: 0 0 0 3px rgba(58, 157, 93, 0.2);
+}
+
+body.bootstrapping .sticky-status-dot {
+    background: #c9a227;
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.2);
+}
+
+.sticky-status-name {
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sticky-status-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.75);
+    white-space: nowrap;
+}
+
+.sticky-status-pending {
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(82, 115, 94, 0.14);
+    color: var(--sp-forest-dark);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.sticky-status-pending:hover {
+    background: rgba(82, 115, 94, 0.22);
+}
+
+.sticky-status-pending.is-invalid {
+    background: rgba(214, 69, 69, 0.14);
+    color: #a51616;
+}
+
+.sticky-status-disconnect {
+    flex: 0 0 auto;
+    height: 30px;
+    padding: 0 12px;
+    font-size: 13px;
+    background: linear-gradient(145deg, #d64545, #b91c1c);
+    border-color: transparent;
+    box-shadow: 0 3px 8px rgba(185, 28, 28, 0.25);
+}
+
+.sticky-status-disconnect:hover {
+    background: linear-gradient(145deg, #e35d5d, #a51616);
+}
+
+@media (max-width: 600px) {
+    .sticky-status-bar {
+        gap: 8px;
+        padding: 6px 12px;
+    }
+
+    .sticky-status-fw {
+        display: none;
+    }
+}
+
+@media (max-width: 430px) {
+    .sticky-status-battery {
+        display: none;
+    }
+
+    .sticky-status-disconnect {
+        padding: 0 10px;
+    }
+}

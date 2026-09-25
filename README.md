@@ -104,6 +104,11 @@ settings blocks are hidden because the panels edit those settings now.
   the device confirmed. The per-setting Update buttons still work and clear their draft entry.
 - Import uses the same ordered, verified apply path. Export and import refuse to run while
   edits are pending, so a profile always matches what the device reported.
+- Once the header scrolls out of view, a slim bar pins to the top with the device name,
+  a connection dot, firmware version, battery voltage, a pending-changes chip that jumps to
+  the first edited field, and a small Disconnect button. Tapping the name scrolls back to
+  the top. The bar hides on the DFU page and while disconnected; on narrow screens the
+  firmware version and then the battery are dropped.
 - The HEX composer mounts the same panels above its settings list. Editing a value in a
   panel ticks that setting for inclusion in the payload; unticking it in the list leaves it
   out again. Panel values that are not included show the firmware default.
