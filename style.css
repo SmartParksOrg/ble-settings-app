@@ -3763,3 +3763,90 @@ textarea {
         border-radius: var(--radius-md);
     }
 }
+
+/* Pending setting changes bar (review-then-apply) */
+.pending-changes-bar {
+    position: fixed;
+    left: 50%;
+    bottom: 20px;
+    transform: translateX(-50%);
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    border-radius: var(--radius-lg);
+    background: rgba(31, 42, 35, 0.96);
+    color: #fff;
+    box-shadow: var(--sp-shadow);
+    max-width: calc(100vw - 32px);
+}
+
+.pending-changes-bar.hidden {
+    display: none;
+}
+
+.pending-changes-text {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.pending-changes-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pending-changes-bar button {
+    margin: 0;
+}
+
+.pending-changes-bar button.secondary {
+    background: transparent;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+}
+
+body.has-pending-changes {
+    --body-bottom-padding: 96px;
+}
+
+.setting.has-pending-change {
+    border-color: var(--sp-forest);
+    box-shadow: inset 4px 0 0 var(--sp-forest);
+}
+
+.setting.has-pending-change .setting-heading::after {
+    content: 'changed';
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: var(--sp-forest);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+.import-preview-change-tag.warning {
+    background: rgba(217, 119, 6, 0.15);
+    color: #92400e;
+}
+
+@media (max-width: 600px) {
+    .pending-changes-bar {
+        left: 16px;
+        right: 16px;
+        transform: none;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 10px;
+    }
+
+    .pending-changes-actions {
+        justify-content: stretch;
+    }
+
+    .pending-changes-actions button {
+        flex: 1;
+    }
+}

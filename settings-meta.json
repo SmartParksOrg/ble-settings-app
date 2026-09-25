@@ -1,5 +1,278 @@
 {
-  "version": 1,
+  "version": 2,
+  "categories": {
+    "device": {
+      "title": "Device",
+      "order": 10,
+      "settings": [
+        "device_name",
+        "device_pin",
+        "led_enabled",
+        "tracker_type",
+        "init_time",
+        "check_error_interval"
+      ]
+    },
+    "status": {
+      "title": "Status reports",
+      "order": 20,
+      "settings": [
+        "status_send_interval"
+      ]
+    },
+    "gps": {
+      "title": "Positioning (GPS)",
+      "order": 30,
+      "settings": [
+        "ublox_send_interval",
+        "ublox_multiple_intervals",
+        "ublox_interval1_start",
+        "ublox_send_interval_2",
+        "ublox_interval2_start",
+        "ublox_active_tracking",
+        "gps_resend_interval",
+        "enable_motion_trig_gps",
+        "motion_ths",
+        "gps_skipped_triggered_interval",
+        "gps_triggered_interval",
+        "gps_motion_triggered_min_num_of_triggers_per_interval",
+        "horizontal_accuracy",
+        "cold_fix_timeout",
+        "cold_fix_retry",
+        "hot_fix_timeout",
+        "hot_fix_retry",
+        "ublox_min_satellites",
+        "ublox_min_satellites_timer",
+        "ublox_min_fix_time",
+        "ublox_leave_on",
+        "gps_backoff_factor",
+        "ublox_cold_fix_hour_interval",
+        "gps_init_lat",
+        "gps_init_lon",
+        "ublox_switch_interval"
+      ]
+    },
+    "outdoor": {
+      "title": "Outdoor detection",
+      "order": 40,
+      "settings": [
+        "outdoor_detection_enabled",
+        "outdoor_detection_tau",
+        "outdoor_detection_parameters"
+      ]
+    },
+    "lorawan": {
+      "title": "Network (LoRaWAN)",
+      "order": 50,
+      "settings": [
+        "lr_region",
+        "lr_adr",
+        "lr_adr_profile",
+        "rejoin_interval",
+        "device_eui",
+        "app_eui",
+        "app_key",
+        "lr_max_confirm_fail",
+        "lr_join_flag",
+        "lr_confirm_flag",
+        "lr_send_flag"
+      ]
+    },
+    "lr_messaging": {
+      "title": "Messaging",
+      "order": 60,
+      "settings": [
+        "lr_messaging_retry_interval",
+        "lr_messaging_retry_count"
+      ]
+    },
+    "logs": {
+      "title": "Data storage (flash)",
+      "order": 70,
+      "settings": [
+        "data_log",
+        "flash_store_flag",
+        "flash_status_interval"
+      ]
+    },
+    "satellite": {
+      "title": "Iridium satellite",
+      "order": 80,
+      "settings": [
+        "satellite_enabled",
+        "satellite_send_interval",
+        "satellite_multiple_intervals",
+        "satellite_interval1_start",
+        "satellite_send_interval2",
+        "satellite_send_interval2_start",
+        "satellite_retry",
+        "sat_send_flag",
+        "satellite_max_messages_per_interval",
+        "satellite_min_signal_strength"
+      ]
+    },
+    "s_band": {
+      "title": "S-Band satellite",
+      "order": 90,
+      "settings": [
+        "s_band_send_mode",
+        "s_band_send_interval",
+        "s_band_rf_frequency_hz",
+        "s_band_app_key",
+        "s_band_dev_adr",
+        "s_band_network_key"
+      ]
+    },
+    "vhf": {
+      "title": "VHF beacon",
+      "order": 100,
+      "settings": [
+        "vhf_enabled",
+        "vhf_interval1",
+        "vhf_multiple_intervals",
+        "vhf_interval1_start",
+        "vhf_interval2",
+        "vhf_interval2_start",
+        "vhf_tx_frequency_khz",
+        "vhf_num_of_packets_per_burst",
+        "vhf_time_between_packets_ms",
+        "vhf_single_pulse_duration_ms",
+        "vhf_external_path"
+      ]
+    },
+    "ble": {
+      "title": "Bluetooth",
+      "order": 110,
+      "settings": [
+        "ble_adv",
+        "ble_advertisement_interval",
+        "ble_auto_disconnect"
+      ]
+    },
+    "ble_scan": {
+      "title": "BLE scan",
+      "order": 120,
+      "settings": [
+        "ble_scan_interval",
+        "ble_scan_aggregated_interval",
+        "ble_scan_duration",
+        "ble_scan_filter",
+        "ble_scan_manufacturer_id",
+        "ble_scan_report_zero_connections_found"
+      ]
+    },
+    "wifi_scan": {
+      "title": "WiFi scan",
+      "order": 130,
+      "settings": [
+        "wifi_scan_interval",
+        "wifi_scan_aggregated_interval",
+        "wifi_scan_report_zero_connections_found"
+      ]
+    },
+    "cmdq": {
+      "title": "CMDQ (tracker search)",
+      "order": 140,
+      "settings": [
+        "cmdq_enabled",
+        "cmdq_searched_mac_address",
+        "cmdq_scan_duration",
+        "cmdq_search_interval",
+        "cmdq_reporting_interval",
+        "cmdq_on_no_detection_wait_duration",
+        "cmdq_report_zero_messages_to_be_sent"
+      ]
+    },
+    "fence": {
+      "title": "Fence monitor",
+      "order": 150,
+      "settings": [
+        "fence_enabled",
+        "fence_interval",
+        "fence_sampling_length",
+        "fence_mv_scaling_factor",
+        "fence_led_blink"
+      ]
+    },
+    "switch": {
+      "title": "External switch",
+      "order": 160,
+      "settings": [
+        "external_switch_detection_enabled",
+        "external_switch_detection_trigger_type",
+        "external_switch_input_pull",
+        "external_switch_detection_gpio_pin_power_enabled",
+        "external_switch_detection_trigger_debounce_ms",
+        "external_switch_minimal_report_duration_ms",
+        "external_switch_detection_reporting_interval",
+        "external_switch_send_inactivity_report",
+        "external_switch_counter_enabled"
+      ]
+    },
+    "air": {
+      "title": "Air quality",
+      "order": 170,
+      "settings": [
+        "air_quality_enabled",
+        "air_quality_interval"
+      ]
+    },
+    "accel": {
+      "title": "Accelerometer",
+      "order": 180,
+      "settings": [
+        "accel_odr_hz",
+        "accel_g_scale",
+        "accel_movement_data_fifo_enabled"
+      ]
+    },
+    "lr_gps": {
+      "title": "LR GPS (LoRa Edge)",
+      "order": 190,
+      "settings": [
+        "lr_gps_interval",
+        "gnss_constellation_to_use",
+        "gnss_assisted_scan",
+        "lr_sat_data"
+      ]
+    },
+    "lp0": {
+      "title": "LP0",
+      "order": 200,
+      "settings": [
+        "lp0_send_flag",
+        "lp0_tx_frequency_hz",
+        "lp0_rx_frequency_hz",
+        "lp0_dev_addr",
+        "lp0_network_key",
+        "lp0_app_key",
+        "lp0_communication_params",
+        "lp0_node_params"
+      ]
+    },
+    "rf_scan": {
+      "title": "RF scan (older firmware)",
+      "order": 210,
+      "settings": []
+    },
+    "rf_open_sky_detection": {
+      "title": "RF open sky detection (older firmware)",
+      "order": 220,
+      "settings": []
+    },
+    "gps_open_sky_detection": {
+      "title": "GPS open sky detection (older firmware)",
+      "order": 230,
+      "settings": []
+    },
+    "memfault": {
+      "title": "Memfault diagnostics",
+      "order": 240,
+      "settings": [
+        "memfault_send_interval"
+      ]
+    }
+  },
   "settings": {
     "accel_g_scale": {
       "category": "accel",
@@ -79,11 +352,26 @@
       "description": "Filtering applied to scanned data before storing or sending.",
       "display_name": "scan filter",
       "familyOptions": [
-        { "value": 0, "label": "No filter" },
-        { "value": 1, "label": "Only configured manufacturer ID (ble_scan_manufacturer_id)" },
-        { "value": 2, "label": "MAC address (not implemented in firmware)" },
-        { "value": 3, "label": "Smartphones" },
-        { "value": 4, "label": "Exclude configured manufacturer ID (ble_scan_manufacturer_id)" }
+        {
+          "value": 0,
+          "label": "No filter"
+        },
+        {
+          "value": 1,
+          "label": "Only configured manufacturer ID (ble_scan_manufacturer_id)"
+        },
+        {
+          "value": 2,
+          "label": "MAC address (not implemented in firmware)"
+        },
+        {
+          "value": 3,
+          "label": "Smartphones"
+        },
+        {
+          "value": 4,
+          "label": "Exclude configured manufacturer ID (ble_scan_manufacturer_id)"
+        }
       ],
       "options": [
         {
@@ -347,7 +635,7 @@
     "gps_backoff_factor": {
       "category": "gps",
       "label": "backoff factor",
-      "description": "GPS-related setting.",
+      "description": "Delay applied to the next GNSS fix after an unsuccessful fix attempt.",
       "display_name": "backoff factor"
     },
     "gps_init_lat": {
@@ -821,7 +1109,7 @@
     "ublox_active_tracking": {
       "category": "gps",
       "label": "active tracking",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "Keep the u-blox GNSS receiver on between fixes. When enabled, position reports on port 2 also include course over ground and speed over ground when available. Uses considerably more battery.",
       "display_name": "active tracking"
     },
     "ublox_cold_fix_hour_interval": {
@@ -833,19 +1121,19 @@
     "ublox_interval1_start": {
       "category": "gps",
       "label": "interval1 start",
-      "description": "UTC hour (0-23) when the primary u-blox GNSS fix interval starts. When ublox_multiple_intervals is enabled, ublox_send_interval is used from this hour until ublox_interval2_start.",
+      "description": "UTC hour (0-23) when the primary u-blox GNSS fix interval starts. Only used when ublox_multiple_intervals is enabled; ublox_send_interval then applies from this hour until ublox_interval2_start.",
       "display_name": "interval1 start"
     },
     "ublox_interval2_start": {
       "category": "gps",
       "label": "interval2 start",
-      "description": "UTC hour (0-23) when the secondary u-blox GNSS fix interval starts. When ublox_multiple_intervals is enabled, ublox_send_interval_2 is used from this hour until ublox_interval1_start on the next day.",
+      "description": "UTC hour (0-23) when the secondary u-blox GNSS fix interval starts. Only used when ublox_multiple_intervals is enabled; ublox_send_interval_2 then applies from this hour until ublox_interval1_start on the next day.",
       "display_name": "interval2 start"
     },
     "ublox_leave_on": {
       "category": "gps",
       "label": "leave on",
-      "description": "GNSS (u-blox) related setting.",
+      "description": "How long, in seconds, the u-blox receiver stays on after a fix completes.",
       "display_name": "leave on"
     },
     "ublox_min_fix_time": {

@@ -16,7 +16,8 @@
           || Boolean(body && body.classList.contains('bootstrapping'))
           || Boolean(body && body.classList.contains('dfu-active'))
           || Boolean(window.isDfuSessionActive && window.isDfuSessionActive())
-          || Boolean(window.hasPendingDfuSelection && window.hasPendingDfuSelection());
+          || Boolean(window.hasPendingDfuSelection && window.hasPendingDfuSelection())
+          || Boolean(window.hasPendingSettingChanges && window.hasPendingSettingChanges());
       }
 
       async function clearBrowserCaches() {
@@ -122,6 +123,8 @@
   <link rel="manifest" href="manifest.json">
   <script src="hardware-types.js"></script>
   <script src="functions.js"></script>
+  <script src="panels/panel-engine.js"></script>
+  <script src="panels/panel-definitions.js"></script>
 </head>
 
 <body>
@@ -504,6 +507,14 @@
   </div>
 
   <div id="toast"></div>
+
+  <div id="pending-changes-bar" class="pending-changes-bar hidden" role="region" aria-live="polite" aria-label="Pending setting changes">
+    <span id="pending-changes-text" class="pending-changes-text">No pending changes</span>
+    <div class="pending-changes-actions">
+      <button id="pending-changes-discard" type="button" class="secondary">Discard</button>
+      <button id="pending-changes-apply" type="button">Review and apply</button>
+    </div>
+  </div>
 
   <button id="debug-toggle-fab" class="debug-toggle-fab hidden hidden-when-disconnected dfu-keep-visible" type="button" onclick="toggleLog()" aria-label="Toggle debug log">
     <span class="icon toggle-log" aria-hidden="true"></span>
@@ -2773,6 +2784,7 @@
       }
 
       log(`Loading settings from ${selectedFile}...`);
+      settingsDraft.reset();
       document.body.classList.remove('has-settings');
       stopMessengerPolling();
       setConnectionBootstrapState(true, 'Loading settings...', `Reading ${selectedFile}.`);
@@ -3040,7 +3052,7 @@
       URL.revokeObjectURL(url);
     }
 
-    function showImportPreviewModal({ title, subtitle, rows, note }) {
+    function showImportPreviewModal({ title, subtitle, rows, note, confirmLabel = 'Import' }) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('import-preview-overlay');
         const titleEl = document.getElementById('import-preview-title');
@@ -3063,6 +3075,7 @@
         }
         if (confirmBtn) {
           confirmBtn.classList.remove('hidden');
+          confirmBtn.textContent = confirmLabel;
         }
         if (cancelBtn) {
           cancelBtn.textContent = 'Cancel';
@@ -3169,25 +3182,27 @@
       if (!row) return;
       const tag = row.querySelector('.import-preview-change-tag');
       if (!tag) return;
+      tag.classList.remove('updated', 'error', 'warning');
       if (status === 'success') {
-        tag.textContent = 'updated';
+        tag.textContent = label || 'updated';
         tag.classList.add('updated');
-        tag.classList.remove('error');
       } else if (status === 'error') {
-        tag.textContent = 'error';
+        tag.textContent = label || 'error';
         tag.classList.add('error');
-        tag.classList.remove('updated');
+      } else if (status === 'warning') {
+        tag.textContent = label || 'not confirmed';
+        tag.classList.add('warning');
       }
       row.scrollIntoView({ block: 'nearest' });
     }
 
-    function finishImportProgress({ total, success }) {
+    function finishImportProgress({ total, success, message = null }) {
       const progressText = document.getElementById('import-preview-progress-text');
       const cancelBtn = document.getElementById('import-preview-cancel');
       if (progressText) {
-        progressText.textContent = success
+        progressText.textContent = message || (success
           ? `Import complete. (${total}/${total})`
-          : `Import stopped. (${total} attempted)`;
+          : `Import stopped. (${total} attempted)`);
       }
       if (cancelBtn) cancelBtn.disabled = false;
     }
@@ -3289,9 +3304,9 @@
                 if (remainingSleep > 0) {
                   await sleep(remainingSleep);
                 }
-                updateImportProgress({ index, total: filteredEntries.length, label, status: 'success', settingId: settingObj.id });
+                updateImportProgress({ index, total: filteredEntries.length, status: 'success', settingId: settingObj.id });
               } catch (error) {
-                updateImportProgress({ index, total: filteredEntries.length, label, status: 'error', settingId: settingObj.id });
+                updateImportProgress({ index, total: filteredEntries.length, status: 'error', settingId: settingObj.id });
                 throw error;
               }
             }
@@ -3763,16 +3778,19 @@
         const settingsContainer = document.createElement('div');
         settingsContainer.className = 'settings-container';
 
-        let groupedKeys = new Set();
-        if (groupName === 'gps') {
-          groupedKeys = appendGpsMotionTriggeredSection(settingsContainer, group);
-        }
+        // The schedule settings come first; the motion-triggered subsection follows them.
+        const groupedKeys = groupName === 'gps'
+          ? new Set(GPS_MOTION_TRIGGER_SECTION.keys.filter(key => group[key]))
+          : new Set();
 
         for (const [key, setting] of Object.entries(group)) {
           if (groupedKeys.has(key)) {
             continue;
           }
           settingsContainer.appendChild(createSettingRow(key, setting));
+        }
+        if (groupName === 'gps') {
+          appendGpsMotionTriggeredSection(settingsContainer, group);
         }
         groupWrapper.appendChild(groupToggle);
         groupWrapper.appendChild(settingsContainer);
@@ -5844,7 +5862,204 @@
       `;
     }
 
+    // ---- Pending changes (draft) -------------------------------------------------
+    // Edits in the settings list are collected in a draft and written to the device
+    // together through "Review and apply". currentSettingValues holds what the device
+    // last reported, so a draft entry exists only while an input differs from that.
+    const settingsDraft = PanelEngine.createDraft();
+    const pendingSettingReads = new Map();
+    window.hasPendingSettingChanges = () => settingsDraft.size > 0;
+
+    function syncDraftFromInput(settingId, value, valid, key, setting) {
+      const idKey = String(settingId);
+      if (!currentSettingValues.has(idKey)) {
+        return;
+      }
+      const deviceValue = currentSettingValues.get(idKey);
+      const unchanged = valid && isSettingValueEqual(key, setting, deviceValue, value);
+      if (unchanged) {
+        settingsDraft.clear(key);
+      } else {
+        settingsDraft.set(key, { id: setting.id, value, valid, deviceValue });
+      }
+    }
+
+    let pendingRowKeys = new Set();
+    function renderPendingChangesBar() {
+      const bar = document.getElementById('pending-changes-bar');
+      const text = document.getElementById('pending-changes-text');
+      const applyButton = document.getElementById('pending-changes-apply');
+      const entries = settingsDraft.entries();
+      const invalid = settingsDraft.invalidCount();
+      const nextKeys = new Set(entries.map(entry => entry.key));
+      new Set([...pendingRowKeys, ...nextKeys]).forEach(key => {
+        const setting = settingsData && settingsData.settings ? settingsData.settings[key] : null;
+        const row = setting ? document.getElementById(`setting-${setting.id}`) : null;
+        if (row) {
+          row.classList.toggle('has-pending-change', nextKeys.has(key));
+        }
+      });
+      pendingRowKeys = nextKeys;
+      document.body.classList.toggle('has-pending-changes', entries.length > 0);
+      if (!bar || !text) {
+        return;
+      }
+      bar.classList.toggle('hidden', entries.length === 0);
+      const count = entries.length;
+      text.textContent = invalid > 0
+        ? `${count} pending change${count === 1 ? '' : 's'}, ${invalid} invalid`
+        : `${count} pending change${count === 1 ? '' : 's'}`;
+      if (applyButton) {
+        applyButton.disabled = invalid > 0;
+      }
+    }
+    settingsDraft.subscribe(renderPendingChangesBar);
+
+    function awaitSettingRead(settingId, timeoutMs = 3000) {
+      const idKey = String(settingId);
+      return new Promise(resolve => {
+        const previous = pendingSettingReads.get(idKey);
+        if (previous) {
+          clearTimeout(previous.timer);
+          previous.resolve(null);
+        }
+        const timer = setTimeout(() => {
+          pendingSettingReads.delete(idKey);
+          resolve(null);
+        }, timeoutMs);
+        pendingSettingReads.set(idKey, { resolve, timer });
+      });
+    }
+
+    function resolveSettingRead(settingId, value) {
+      const pending = pendingSettingReads.get(String(settingId));
+      if (!pending) {
+        return;
+      }
+      clearTimeout(pending.timer);
+      pendingSettingReads.delete(String(settingId));
+      pending.resolve(value);
+    }
+
+    function discardPendingChanges() {
+      const entries = settingsDraft.entries();
+      settingsDraft.reset();
+      entries.forEach(entry => {
+        if (currentSettingValues.has(String(entry.id))) {
+          updateSettingDisplay(entry.id, currentSettingValues.get(String(entry.id)));
+        }
+      });
+      if (entries.length) {
+        showToast(`Discarded ${entries.length} pending change${entries.length === 1 ? '' : 's'}.`);
+      }
+    }
+
+    async function reviewAndApplyPendingChanges() {
+      const entries = settingsDraft.entries();
+      if (!entries.length) {
+        return;
+      }
+      if (settingsDraft.invalidCount() > 0) {
+        showToast('Fix the highlighted invalid values first.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      if (isDfuMainBleLocked()) {
+        showToast('Finish DFU before applying settings.');
+        return;
+      }
+      const ordered = PanelEngine.planWriteOrder(
+        entries.map(entry => ({ key: entry.key, value: entry.value })),
+        window.PanelDefinitions ? window.PanelDefinitions.panels : []
+      );
+      const rows = ordered.map(({ key, value }) => {
+        const setting = getByKey(key);
+        const current = currentSettingValues.get(String(setting.id));
+        return {
+          key,
+          id: setting.id,
+          name: setting.display_name || getSettingLabel(key, getGroupName(key)),
+          description: getSettingDescription(key),
+          current: formatSettingValueForPreview(key, setting, current, value, 'current'),
+          next: formatSettingValueForPreview(key, setting, value, current, 'next'),
+          unchanged: false
+        };
+      });
+      const plural = rows.length === 1 ? '' : 's';
+      const ok = await showImportPreviewModal({
+        title: `Apply ${rows.length} change${plural}`,
+        subtitle: 'Each setting is written to the device and read back to confirm it.',
+        rows,
+        note: '',
+        confirmLabel: 'Apply'
+      });
+      if (!ok) {
+        return;
+      }
+      showImportProgress({
+        total: rows.length,
+        title: `Applying ${rows.length} change${plural}`,
+        subtitle: 'Writing and confirming...',
+        items: rows
+      });
+      log(`Applying ${rows.length} pending setting change${plural}: ${ordered.map(item => item.key).join(', ')}`);
+      const summary = await PanelEngine.runApply({
+        items: ordered,
+        write: async item => {
+          const setting = getByKey(item.key);
+          await updateBleSetting(setting.id, item.value);
+        },
+        read: async item => {
+          const setting = getByKey(item.key);
+          const pending = awaitSettingRead(setting.id, 3000);
+          await requestBleValue(setting.id, CMD_SINGLE_SETTING);
+          return pending;
+        },
+        isEqual: (item, readValue) => {
+          const setting = getByKey(item.key);
+          return isSettingValueEqual(item.key, setting, readValue, item.value);
+        },
+        onItem: ({ index, item, status, error }) => {
+          const setting = getByKey(item.key);
+          const statusMap = { verified: 'success', mismatch: 'error', failed: 'error', unverified: 'warning' };
+          const labelMap = { verified: 'confirmed', mismatch: 'device kept old value', failed: 'write failed', unverified: 'not confirmed' };
+          updateImportProgress({ index: index + 1, total: rows.length, status: statusMap[status], label: labelMap[status], settingId: setting.id });
+          if (error) {
+            log(`Apply ${item.key} failed: ${error.message || error}`, true);
+          }
+        },
+        settleMs: 150
+      });
+      const problems = summary.mismatch + summary.failed;
+      const message = problems === 0 && summary.unverified === 0
+        ? `All ${rows.length} change${plural} confirmed by the device.`
+        : `${summary.verified} confirmed, ${problems} not applied, ${summary.unverified} not confirmed.`;
+      finishImportProgress({ total: rows.length, success: problems === 0, message });
+      log(message, problems > 0);
+      if (summary.unverified > 0) {
+        // Unconfirmed writes may still have landed; refresh so the list shows device truth.
+        fetchAllSettings();
+      }
+      renderPendingChangesBar();
+    }
+
+    document.getElementById('pending-changes-apply')?.addEventListener('click', reviewAndApplyPendingChanges);
+    document.getElementById('pending-changes-discard')?.addEventListener('click', discardPendingChanges);
+    window.addEventListener('beforeunload', event => {
+      if (settingsDraft.size > 0) {
+        event.preventDefault();
+        event.returnValue = '';
+      }
+    });
+
     window.handleSettingInputChange = function (settingId, value, valid, key) {
+      const settingEntry = getById(settingId);
+      if (settingEntry) {
+        syncDraftFromInput(settingId, value, valid, key, settingEntry[1]);
+      }
       if (!valid) {
         return;
       }
@@ -6109,6 +6324,10 @@
     async function proceedOpenDfuPage() {
       if (!document.body.classList.contains('connected')) {
         showToast('Connect to a device before starting DFU.');
+        return;
+      }
+      if (settingsDraft.size > 0) {
+        showToast('Apply or discard your pending setting changes before starting DFU.');
         return;
       }
       try {
@@ -6691,6 +6910,10 @@
 
     function onDisconnected() {
       log('Disconnected from device');
+      if (settingsDraft.size > 0) {
+        showToast('Connection lost; pending setting changes were discarded.');
+      }
+      settingsDraft.reset();
       setBleReconnectOverlayVisible(false);
       const wasUserRequestedDisconnect = userRequestedDisconnect;
       if (flashLogState.active) {
@@ -7745,6 +7968,7 @@
         if (inputContainer) {
           updateSettingDisplay(setting.id, value);
         }
+        resolveSettingRead(setting.id, value);
         if (key === 'flash_nr_msg') {
           updateFlashLogCount(value);
         }
@@ -7786,7 +8010,16 @@
     function updateSettingDisplay(settingId, value) {
       currentSettingValues.set(String(settingId), value);
       setInputValue(settingId, value);
-      const [key] = getById(settingId);
+      const [key, settingMeta] = getById(settingId);
+      const pendingEntry = settingsDraft.get(key);
+      if (pendingEntry) {
+        if (isSettingValueEqual(key, settingMeta, value, pendingEntry.value)) {
+          settingsDraft.clear(key); // the device now has the drafted value
+        } else {
+          settingsDraft.set(key, { deviceValue: value }); // keep the edit, remember the new baseline
+          setInputValue(settingId, pendingEntry.value);
+        }
+      }
       if (String(key).startsWith('cmdq_')) {
         syncCmdqMirrorSetting(settingId, value);
       } else if (String(key).startsWith('fence_')) {

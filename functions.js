@@ -737,11 +737,22 @@ function getGroupName(key) {
     return key;
 }
 
+function getCategoryMeta(groupName) {
+    if (!settingsMeta || !settingsMeta.categories) {
+        return null;
+    }
+    return settingsMeta.categories[String(groupName || '').trim().toLowerCase()] || null;
+}
+
 function formatGroupTitle(groupName) {
     if (!groupName) {
         return '';
     }
     const normalized = String(groupName).trim().toLowerCase();
+    const categoryMeta = getCategoryMeta(normalized);
+    if (categoryMeta && categoryMeta.title) {
+        return categoryMeta.title;
+    }
     const customGroupTitles = {
         ble: 'BLE',
         ble_scan: 'BLE Scan',
@@ -799,9 +810,26 @@ function groupAndSortSettings() {
         }
     }
 
-    // Sort groups
-    const sortedGroups = Object.keys(grouped).sort().reduce((acc, group) => {
+    // Sort groups by the order in settings-meta.json (unknown groups after, "_other" last),
+    // and settings inside a group by their listed order, then by display name.
+    const groupRank = group => {
+        if (group === '_other') return Number.MAX_SAFE_INTEGER;
+        const categoryMeta = getCategoryMeta(group);
+        return categoryMeta && Number.isFinite(categoryMeta.order) ? categoryMeta.order : 100000;
+    };
+    const settingRank = (group, key) => {
+        const categoryMeta = getCategoryMeta(group);
+        const listed = categoryMeta && Array.isArray(categoryMeta.settings) ? categoryMeta.settings : [];
+        const index = listed.indexOf(key);
+        return index === -1 ? listed.length : index;
+    };
+    const sortedGroups = Object.keys(grouped).sort((a, b) => {
+        const rankDiff = groupRank(a) - groupRank(b);
+        return rankDiff !== 0 ? rankDiff : a.localeCompare(b);
+    }).reduce((acc, group) => {
         acc[group] = Object.keys(grouped[group]).sort((a, b) => {
+            const rankDiff = settingRank(group, a) - settingRank(group, b);
+            if (rankDiff !== 0) return rankDiff;
             const nameA = grouped[group][a].display_name.toLowerCase();
             const nameB = grouped[group][b].display_name.toLowerCase();
             return nameA.localeCompare(nameB);

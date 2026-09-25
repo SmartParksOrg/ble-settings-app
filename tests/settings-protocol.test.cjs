@@ -167,3 +167,19 @@ test('invalid family bytes and failed schema fetches clear the active schema', a
     await assert.rejects(ctx.loadSettings(v8), /HTTP 404/);
     assert.equal(ctx.evaluate('settingsData'), null);
 });
+
+test('the settings list follows the meta order instead of alphabetical order', async () => {
+    const ctx = app();
+    await ctx.loadSettingsMeta();
+    await ctx.loadSettings(v8);
+    const groups = plain(ctx.groupAndSortSettings());
+    const names = Object.keys(groups);
+    assert.deepEqual(names.slice(0, 4), ['device', 'status', 'gps', 'outdoor']);
+    assert.equal(names[names.length - 1] === '_other' || names.includes('memfault'), true);
+    const gps = Object.keys(groups.gps);
+    assert.deepEqual(gps.slice(0, 5), ['ublox_send_interval', 'ublox_multiple_intervals', 'ublox_interval1_start', 'ublox_send_interval_2', 'ublox_interval2_start']);
+    assert.equal(gps[gps.length - 1], 'gps_init_lon');
+    assert.equal(ctx.formatGroupTitle('gps'), 'Positioning (GPS)');
+    assert.equal(ctx.formatGroupTitle('lorawan'), 'Network (LoRaWAN)');
+    assert.equal(ctx.formatGroupTitle('unknown_group'), 'unknown group');
+});
