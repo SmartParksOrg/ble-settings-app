@@ -585,6 +585,8 @@
     if (help) row.appendChild(el('div', 'panel-field-help', help));
     const reason = el('div', 'panel-field-reason', '');
     row.appendChild(reason);
+    const warning = el('div', 'panel-field-warning', '');
+    row.appendChild(warning);
     const error = el('div', 'panel-field-error', '');
     row.appendChild(error);
 
@@ -605,6 +607,8 @@
       } else {
         control.update();
       }
+      const activeWarning = (field.warnings || []).find(item => engine.evaluateCondition(item.when, host.getValue));
+      warning.textContent = activeWarning ? activeWarning.text : '';
       badge.classList.toggle('visible', keys.some(key => host.isPending(key)));
     };
     state.updaters.push(updater);

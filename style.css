@@ -3961,8 +3961,19 @@ body.has-pending-changes {
 }
 
 .panel-field-reason:empty,
+.panel-field-warning:empty,
 .panel-field-error:empty {
     display: none;
+}
+
+.panel-field-warning {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: rgba(217, 119, 6, 0.12);
+    border-left: 3px solid #d97706;
+    color: #7c2d12;
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 .panel-field-error {
