@@ -289,7 +289,9 @@
         group: 'Credentials',
         help: 'Changing the app EUI or app key makes the device rejoin the network. Credentials are only exported when the export option is ticked.',
         fields: [
-          { key: 'device_eui', label: 'Device EUI', control: 'hex', help: 'The unique ID for this device.' },
+          { key: 'device_eui', label: 'Device EUI', control: 'hex', help: 'The unique ID for this device, read from the LoRa chip by the firmware.',
+            warnings: [{ when: { key: 'device_eui', in: ['0000000000000000', ''] },
+              text: 'The device reports an all-zero Device EUI. The firmware fills this from the LoRa chip after the modem is configured; an all-zero value means that has not happened yet, or the stored value was overwritten. The network join uses the chip EUI regardless, so joining is not affected, but do not copy this value as the device identity.' }] },
           { key: 'app_eui', label: 'App EUI (Join EUI)', control: 'hex', help: 'The app ID used when joining the network.' },
           { key: 'app_key', label: 'App key', control: 'hex', secret: true, help: 'The key used to join the network.' },
         ],
