@@ -68,8 +68,25 @@ firmware change. Bundled DFU releases are managed separately from settings schem
 Run the dependency-free regression tests with Node.js:
 
 ```bash
-node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs
+node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-engine.test.cjs
 ```
+
+## Guided settings (in progress)
+
+The settings list is being reworked into guided, task-oriented panels. The foundation is in place:
+
+- `panels/panel-engine.js` holds the draft of pending edits, evaluates panel conditions,
+  orders writes so dependents are written before a switch that enables them (and after one
+  that disables them), and runs write-then-read-back verification. It has no DOM code and is
+  tested in `tests/panel-engine.test.cjs`.
+- `panels/panel-definitions.js` is the declarative panel format; the Positioning (GPS) panel
+  is the reference definition. Keys absent from the loaded schema are skipped by renderers.
+- `settings-meta.json` carries `categories` with a title, display order, and the order of
+  settings inside each category; the settings list and the composer follow it instead of
+  alphabetical order.
+- Edits in the settings list collect in a draft. A bar offers "Review and apply", which shows
+  a before/after list, writes in dependency order, reads each value back, and reports what
+  the device confirmed. The per-setting Update buttons still work and clear their draft entry.
 
 ## DFU flow
 
