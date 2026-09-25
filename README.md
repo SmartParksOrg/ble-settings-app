@@ -73,9 +73,14 @@ node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs
 
 ## DFU flow
 
-DFU runs over MCUmgr SMP on the same GATT connection as the settings UART. After the
-image is uploaded and marked for test, the app resets the device and reconnects to the
-retained `BluetoothDevice` object automatically; no browser chooser is needed because
+DFU runs over MCUmgr SMP on the same GATT connection as the settings UART. Selecting a
+built-in version checks it against the device immediately and, when the check is clean,
+"Start DFU upload" is the only further click. The upload keeps up to three SMP packets in
+flight (the "Packets in flight" setting in the Advanced card); the device answers each
+packet with the offset it expects next, so a lost packet shows up as a repeated offset and
+is resent, and the client drops back to one packet in flight after any timeout, loss or
+rejected write. After the image is uploaded and marked for test, the app resets the device
+and reconnects to the retained `BluetoothDevice` object automatically; no browser chooser is needed because
 `gatt.connect()` does not require a user gesture, only `requestDevice()` does. The app
 keeps retrying for up to three minutes while MCUboot swaps the image, then reads the
 image state over SMP, checks that slot 0 carries the uploaded hash, and returns to the

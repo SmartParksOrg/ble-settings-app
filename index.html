@@ -585,16 +585,6 @@
     </div>
   </div>
 
-  <div id="dfu-warning-overlay" class="dfu-waiting-overlay hidden">
-    <div class="dfu-waiting-card">
-      <div class="dfu-waiting-text">Warning: The DFU feature is still in development and should not be used.</div>
-      <div class="dfu-confirmation-actions">
-        <button id="dfu-warning-cancel" class="secondary" type="button">Cancel</button>
-        <button id="dfu-warning-proceed" type="button">Proceed</button>
-      </div>
-    </div>
-  </div>
-
   <div id="reboot-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card">
       <div class="dfu-waiting-text">Warning: rebooting the device may cause it to lose its Join session to the LoRaWAN network.</div>
@@ -665,11 +655,11 @@
       <div class="section-card-title"><span class="icon file" aria-hidden="true"></span>Device Firmware Update</div>
       <div class="section-card-body">
         <div class="dfu-bundled-picker" id="dfu-bundled-picker">
-          <select id="dfu-bundled-select" class="dfu-bundled-select">
+          <select id="dfu-bundled-select" class="dfu-bundled-select" aria-label="Firmware version">
             <option value="">Available firmware versions (loading...)</option>
           </select>
-          <button id="dfu-bundled-use" type="button" class="scan-button">Use selected update</button>
         </div>
+        <div class="dfu-file-status">Select a version to check it. Keep the device nearby and this app in the foreground; the device restarts and reconnects on its own.</div>
         <div id="dfu-user-status" class="dfu-user-status hidden"></div>
         <div id="dfu-confirmation" class="dfu-confirmation hidden">
           <div class="dfu-confirmation-text">File checked. Do you want to continue with DFU?</div>
@@ -726,6 +716,10 @@
           <label class="dfu-upload-setting">
             Chunk timeout (ms)
             <input id="dfu-upload-timeout" type="number" min="1000" step="500" value="5000" />
+          </label>
+          <label class="dfu-upload-setting">
+            Packets in flight
+            <input id="dfu-upload-window" type="number" min="1" max="8" step="1" value="3" />
           </label>
         </div>
         <div class="dfu-upload-actions">
@@ -6112,12 +6106,6 @@
     }
     window.toggleDfuView = toggleDfuView;
 
-    function setDfuWarningOverlay(visible) {
-      const overlay = document.getElementById('dfu-warning-overlay');
-      if (!overlay) return;
-      overlay.classList.toggle('hidden', !visible);
-    }
-
     async function proceedOpenDfuPage() {
       if (!document.body.classList.contains('connected')) {
         showToast('Connect to a device before starting DFU.');
@@ -6183,7 +6171,7 @@
     }
 
     async function openDfuPage() {
-      setDfuWarningOverlay(true);
+      await proceedOpenDfuPage();
     }
 
     document.getElementById('dfu-back-top').addEventListener('click', () => {
@@ -6196,18 +6184,6 @@
       }
       toggleDfuView(false);
     });
-
-    const dfuWarningCancel = document.getElementById('dfu-warning-cancel');
-    const dfuWarningProceed = document.getElementById('dfu-warning-proceed');
-    if (dfuWarningCancel) {
-      dfuWarningCancel.addEventListener('click', () => setDfuWarningOverlay(false));
-    }
-    if (dfuWarningProceed) {
-      dfuWarningProceed.addEventListener('click', async () => {
-        setDfuWarningOverlay(false);
-        await proceedOpenDfuPage();
-      });
-    }
 
     function sendLocationAndTimeCommand(latitude, longitude) {
       const bytesArray = new Uint8Array(12);

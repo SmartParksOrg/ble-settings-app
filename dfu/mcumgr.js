@@ -71,6 +71,25 @@ class MCUManager {
         this._listenerDevice = null;
         this._boundNotification = null;
         this._maxMessageLength = 4096;
+        // Pipelining: number of upload packets kept in flight. The device answers each
+        // packet with the offset it expects next, so lost packets are detected by
+        // repeated offsets. Falls back to 1 on the first timeout, loss or write error.
+        this._pipelineDepth = Number.isInteger(di.pipelineDepth) && di.pipelineDepth > 0 ? Math.min(di.pipelineDepth, 8) : 3;
+        this._window = this._pipelineDepth;
+        this._inFlight = [];
+        this._nextOffset = 0;
+        this._imageSha = null;
+        this._offsetAtLastTimeout = -1;
+        this._resyncs = 0;
+        this._writeRetryTimer = null;
+    }
+    setPipelineDepth(depth) {
+        if (Number.isInteger(depth) && depth > 0) {
+            this._pipelineDepth = Math.min(depth, 8);
+        }
+    }
+    getPipelineDepth() {
+        return this._pipelineDepth;
     }
     _debug(message, extra = null) {
         if (!this._debugEnabled) return;
@@ -115,29 +134,33 @@ class MCUManager {
             });
         }
     }
-    // A GATT write that is rejected outright (not a timeout) is retried at the same
-    // offset. A second rejection at the same offset steps the MTU budget down, which
-    // covers stacks that negotiated a smaller ATT MTU than the budget assumes.
-    _handleChunkWriteError(error) {
+    // A GATT write that is rejected outright (not a timeout) is retried from the last
+    // acknowledged offset. A second rejection steps the MTU budget down, which covers
+    // stacks that negotiated a smaller ATT MTU than the budget assumes.
+    _handleChunkWriteError(error, off = this._uploadOffset) {
         if (!this._uploadIsInProgress) return;
-        if (this._uploadTimeout) {
-            clearTimeout(this._uploadTimeout);
-        }
+        this._clearChunkTimeout();
         const message = error && error.message ? error.message : String(error);
         this._writeRetries += 1;
         if (this._writeRetries > this._maxWriteRetries) {
-            this._handleUploadNextError(new Error(`GATT write failed repeatedly at offset ${this._uploadOffset}: ${message}`));
+            this._handleUploadNextError(new Error(`GATT write failed repeatedly at offset ${off}: ${message}`));
             return;
+        }
+        if (this._window > 1) {
+            this._window = 1;
         }
         if (this._writeRetries >= 2 && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
             this._mtuFallbackIndex += 1;
             this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
             this._logger.info(`DFU: Write rejected again; retrying with lower MTU (${this._mtu}).`);
         }
-        this._logger.info(`DFU: GATT write failed at off=${this._uploadOffset} (${message}); retry ${this._writeRetries}/${this._maxWriteRetries}.`);
-        setTimeout(() => {
+        this._logger.info(`DFU: GATT write failed at off=${off} (${message}); retry ${this._writeRetries}/${this._maxWriteRetries}.`);
+        if (this._writeRetryTimer) return;
+        this._writeRetryTimer = setTimeout(() => {
+            this._writeRetryTimer = null;
             if (!this._uploadIsInProgress) return;
-            this._uploadNext().catch(err => this._handleUploadNextError(err));
+            this._resync(this._uploadOffset);
+            this._fill().catch(err => this._handleUploadNextError(err));
         }, 300 * this._writeRetries);
     }
     async _requestDevice(filters) {
@@ -241,7 +264,8 @@ class MCUManager {
         await this._characteristic.startNotifications();
         await this._connected();
         if (this._uploadIsInProgress) {
-            this._uploadNext().catch(error => this._handleUploadNextError(error));
+            this._resync(this._uploadOffset);
+            this._fill().catch(error => this._handleUploadNextError(error));
         }
     }
     _connect(delay = 1000) {
@@ -311,6 +335,7 @@ class MCUManager {
         this._characteristic = null;
         this._uploadIsInProgress = false;
         this._userRequestedDisconnect = false;
+        this._clearChunkTimeout();
     }
     get name() {
         return this._device && this._device.name;
@@ -379,14 +404,10 @@ class MCUManager {
         });
 
         if (group === MGMT_GROUP_ID_IMAGE && id === IMG_MGMT_ID_UPLOAD) {
-            // Clear timeout since we received a response
-            if (this._uploadTimeout) {
-                clearTimeout(this._uploadTimeout);
-            }
-
             // Check for error response
             if (data.rc && data.rc !== 0) {
                 this._uploadIsInProgress = false;
+                this._clearChunkTimeout();
                 const errorMessages = {
                     1: 'Unknown error',
                     2: 'Slot is busy or in bad state. Try erasing the slot first or confirming/testing pending images.',
@@ -412,18 +433,9 @@ class MCUManager {
                 return;
             }
 
-            // Success response with offset
+            // Success response with the offset the device expects next
             if ((data.rc === 0 || data.rc === undefined) && data.off !== undefined) {
-                // Reset consecutive timeout counter on successful response
-                this._consecutiveTimeouts = 0;
-                this._writeRetries = 0;
-                this._lastAckOffset = data.off;
-                if (this._imageUploadChunkAckCallback) {
-                    this._imageUploadChunkAckCallback({ off: data.off });
-                }
-                this._uploadOffset = data.off;
-                this._debug(`[MCUManager DEBUG] Upload progress: device offset ${data.off}`);
-                this._uploadNext().catch(error => this._handleUploadNextError(error));
+                this._onChunkAck(data.off);
                 return;
             }
         }
@@ -450,120 +462,187 @@ class MCUManager {
     _hash(image) {
         return crypto.subtle.digest('SHA-256', image);
     }
-    async _uploadNext() {
-        if (this._uploadOffset >= this._uploadImage.byteLength) {
-            this._uploadIsInProgress = false;
-            this._imageUploadFinishedCallback();
-            return;
-        }
-
-        // Clear any existing timeout
+    _percentage() {
+        if (!this._uploadImage || !this._uploadImage.byteLength) return 0;
+        return Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100);
+    }
+    _armChunkTimeout() {
+        this._clearChunkTimeout();
+        this._uploadTimeout = setTimeout(() => this._onChunkTimeout(), this._chunkTimeout);
+    }
+    _clearChunkTimeout() {
         if (this._uploadTimeout) {
             clearTimeout(this._uploadTimeout);
+            this._uploadTimeout = null;
         }
-        // Set new timeout
-        this._uploadTimeout = setTimeout(() => {
-            this._consecutiveTimeouts++;
-            this._totalTimeouts++;
-
-            this._debug(`[MCUManager DEBUG] Upload chunk timeout at offset ${this._uploadOffset} (consecutive: ${this._consecutiveTimeouts}, total: ${this._totalTimeouts})`);
-            this._logger.info(`DFU: Chunk timeout off=${this._uploadOffset} consecutive=${this._consecutiveTimeouts} total=${this._totalTimeouts}`);
-
-            const noProgress = this._lastAckOffset === this._uploadOffset;
-            if (noProgress && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
-                this._mtuFallbackIndex += 1;
-                this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
-                this._logger.info(`DFU: No progress; retrying with lower MTU (${this._mtu}).`);
-                this._consecutiveTimeouts = 0;
-                this._totalTimeouts = 0;
-                this._chunkTimeout = this._initialChunkTimeout;
-                this._uploadNext().catch(error => this._handleUploadNextError(error));
-                return;
+    }
+    _onChunkTimeout() {
+        this._uploadTimeout = null;
+        if (!this._uploadIsInProgress) return;
+        this._consecutiveTimeouts++;
+        this._totalTimeouts++;
+        this._logger.info(`DFU: Chunk timeout off=${this._uploadOffset} consecutive=${this._consecutiveTimeouts} total=${this._totalTimeouts}`);
+        if (this._window > 1) {
+            this._window = 1;
+            this._logger.info('DFU: Timeout; sending one packet at a time for the rest of this upload.');
+        }
+        // Nothing acknowledged at all, or no progress since the previous timeout: the
+        // packets are probably larger than the negotiated MTU allows.
+        const noProgress = this._uploadOffset === 0 || this._uploadOffset === this._offsetAtLastTimeout;
+        this._offsetAtLastTimeout = this._uploadOffset;
+        if (noProgress && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
+            this._mtuFallbackIndex += 1;
+            this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
+            this._logger.info(`DFU: No progress; retrying with lower MTU (${this._mtu}).`);
+            this._consecutiveTimeouts = 0;
+            this._totalTimeouts = 0;
+            this._chunkTimeout = this._initialChunkTimeout;
+            this._resync(this._uploadOffset);
+            this._fill().catch(error => this._handleUploadNextError(error));
+            return;
+        }
+        if (this._totalTimeouts >= this._maxTotalTimeouts) {
+            this._uploadIsInProgress = false;
+            const error = `Upload failed: Device not responding after ${this._totalTimeouts} attempts. The device may be too slow or disconnected.`;
+            this._logger.error(error);
+            if (this._imageUploadErrorCallback) {
+                this._imageUploadErrorCallback({ error, consecutiveTimeouts: this._consecutiveTimeouts, totalTimeouts: this._totalTimeouts });
             }
-
-            // If we've hit too many total timeouts, attempt MTU fallback before giving up
-            if (this._totalTimeouts >= this._maxTotalTimeouts) {
-                if (this._uploadOffset === 0 && this._mtuFallbackIndex < this._mtuFallbacks.length - 1) {
-                    this._mtuFallbackIndex += 1;
-                    this._mtu = this._mtuFallbacks[this._mtuFallbackIndex];
-                    this._logger.info(`No upload response; retrying with lower MTU (${this._mtu}).`);
-                    this._consecutiveTimeouts = 0;
-                    this._totalTimeouts = 0;
-                    this._chunkTimeout = this._initialChunkTimeout;
-                    this._uploadNext().catch(error => this._handleUploadNextError(error));
-                    return;
-                }
-                this._uploadIsInProgress = false;
-                const error = `Upload failed: Device not responding after ${this._totalTimeouts} attempts. The device may be too slow or disconnected.`;
-                this._logger.error(error);
-                if (this._imageUploadErrorCallback) {
-                    this._imageUploadErrorCallback({ error, consecutiveTimeouts: this._consecutiveTimeouts, totalTimeouts: this._totalTimeouts });
-                }
-                return;
+            return;
+        }
+        if (this._consecutiveTimeouts >= this._maxConsecutiveTimeouts) {
+            this._chunkTimeout = Math.min(this._chunkTimeout * 2, 15000); // Max 15 seconds
+            this._logger.info(`DFU: Timeout adjusted to ${this._chunkTimeout}ms at ${this._percentage()}%`);
+            if (this._imageUploadProgressCallback) {
+                this._imageUploadProgressCallback({ percentage: this._percentage(), timeoutAdjusted: true, newTimeout: this._chunkTimeout });
             }
-
-            // If we've had several consecutive timeouts, increase the timeout duration
-            if (this._consecutiveTimeouts >= this._maxConsecutiveTimeouts) {
-                this._chunkTimeout = Math.min(this._chunkTimeout * 2, 15000); // Max 15 seconds
-                this._debug(`[MCUManager DEBUG] Increased chunk timeout to ${this._chunkTimeout}ms`);
-                this._logger.info(`DFU: Timeout adjusted to ${this._chunkTimeout}ms at ${Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100)}%`);
-                // Notify UI about timeout adjustment
-                if (this._imageUploadProgressCallback) {
-                    this._imageUploadProgressCallback({
-                        percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100),
-                        timeoutAdjusted: true,
-                        newTimeout: this._chunkTimeout
-                    });
-                }
-            }
-
-            this._uploadNext().catch(error => this._handleUploadNextError(error));
-        }, this._chunkTimeout);
-
+        }
+        this._resync(this._uploadOffset);
+        this._fill().catch(error => this._handleUploadNextError(error));
+    }
+    // Build the largest upload packet for this offset that fits the MTU budget. The
+    // first packet also carries the image length and SHA-256 so the device can start
+    // a fresh upload. Every chunk but the last is a multiple of 4 bytes (flash writes).
+    _buildChunk(off) {
         const nmpOverhead = 8;
-        const baseMessage = { off: this._uploadOffset };
-        if (this._uploadOffset === 0) {
-            baseMessage.len = this._uploadImage.byteLength;
-            baseMessage.sha = new Uint8Array(await this._hash(this._uploadImage));
-        }
-        this._imageUploadProgressCallback({ percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100) });
-
-        const remaining = this._uploadImage.byteLength - this._uploadOffset;
+        const total = this._uploadImage.byteLength;
+        const remaining = total - off;
         const budget = this._mtu;
+        const build = (len) => {
+            const message = { off };
+            if (off === 0) {
+                message.len = total;
+                message.sha = this._imageSha;
+            }
+            message.data = new Uint8Array(this._uploadImage.slice(off, off + len));
+            return message;
+        };
         let dataLen = Math.min(remaining, budget);
-        let message = null;
-        let encoded = null;
-        let packetSize = 0;
-
-        while (dataLen >= 0) {
-            message = { ...baseMessage };
-            message.data = new Uint8Array(this._uploadImage.slice(this._uploadOffset, this._uploadOffset + dataLen));
-            encoded = CBOR.encode(message);
-            packetSize = nmpOverhead + encoded.byteLength;
-            if (packetSize <= budget) {
-                break;
-            }
-            if (dataLen === 0) {
-                break;
-            }
+        let message = build(dataLen);
+        let packetSize = nmpOverhead + CBOR.encode(message).byteLength;
+        while (packetSize > budget && dataLen > 0) {
             dataLen = Math.max(0, dataLen - 16);
+            message = build(dataLen);
+            packetSize = nmpOverhead + CBOR.encode(message).byteLength;
         }
-
         if (packetSize > budget) {
             throw new Error(`Upload packet cannot fit within MTU budget (${budget} bytes) even with empty data. Increase the MTU budget or reduce overhead.`);
         }
-
-        this._debug(`[MCUManager DEBUG] Upload chunk: off=${this._uploadOffset}, dataLen=${dataLen}, packetSize=${packetSize}, budget=${budget}`);
-        this._logger.info(`DFU: Sending chunk off=${this._uploadOffset} len=${dataLen} mtu=${budget}`);
-        if (this._lastAckOffset === null) {
-            this._lastAckOffset = this._uploadOffset;
+        if (dataLen < remaining && dataLen % 4 !== 0) {
+            dataLen -= dataLen % 4;
+            message = build(dataLen);
         }
-
-        // Keep offset for retry
-        // this._uploadOffset += dataLen;
-
-        this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message)
-            .catch(error => this._handleChunkWriteError(error));
+        if (dataLen === 0 && remaining > 0) {
+            throw new Error(`Upload packet cannot carry data within MTU budget (${budget} bytes).`);
+        }
+        return { message, dataLen };
+    }
+    // Send packets until the window is full.
+    async _fill() {
+        if (!this._uploadIsInProgress) return;
+        const total = this._uploadImage.byteLength;
+        if (this._uploadOffset >= total) {
+            this._finishUpload();
+            return;
+        }
+        while (this._uploadIsInProgress && this._inFlight.length < this._window && this._nextOffset < total) {
+            const off = this._nextOffset;
+            const { message, dataLen } = this._buildChunk(off);
+            this._inFlight.push({ off, len: dataLen, dupAcks: 0 });
+            this._nextOffset = off + dataLen;
+            this._debug(`[MCUManager DEBUG] Upload chunk: off=${off}, dataLen=${dataLen}, mtu=${this._mtu}, inFlight=${this._inFlight.length}`);
+            this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message)
+                .catch(error => this._handleChunkWriteError(error, off));
+        }
+        if (this._inFlight.length && !this._uploadTimeout) {
+            this._armChunkTimeout();
+        }
+    }
+    _resync(off) {
+        this._inFlight = [];
+        this._nextOffset = off;
+        this._uploadOffset = off;
+        this._clearChunkTimeout();
+    }
+    _finishUpload() {
+        if (!this._uploadIsInProgress) return;
+        this._clearChunkTimeout();
+        this._uploadIsInProgress = false;
+        this._inFlight = [];
+        this._logger.info(`DFU: Upload complete (resyncs=${this._resyncs}, timeouts=${this._totalTimeouts}).`);
+        if (this._imageUploadProgressCallback) {
+            this._imageUploadProgressCallback({ percentage: 100 });
+        }
+        if (this._imageUploadFinishedCallback) {
+            this._imageUploadFinishedCallback();
+        }
+    }
+    _onChunkAck(off) {
+        if (!this._uploadIsInProgress) return;
+        this._consecutiveTimeouts = 0;
+        this._writeRetries = 0;
+        const total = this._uploadImage.byteLength;
+        const duplicate = off === this._lastAckOffset;
+        this._lastAckOffset = off;
+        this._uploadOffset = off;
+        this._debug(`[MCUManager DEBUG] Upload progress: device offset ${off}`);
+        if (this._imageUploadChunkAckCallback) {
+            this._imageUploadChunkAckCallback({ off });
+        }
+        if (this._imageUploadProgressCallback) {
+            this._imageUploadProgressCallback({ percentage: this._percentage() });
+        }
+        if (off >= total) {
+            this._finishUpload();
+            return;
+        }
+        this._inFlight = this._inFlight.filter(entry => entry.off + entry.len > off);
+        const pending = this._inFlight.find(entry => entry.off === off);
+        if (pending) {
+            if (duplicate) {
+                pending.dupAcks += 1;
+                if (pending.dupAcks >= 2) {
+                    // Two later packets were answered with this offset, so the packet
+                    // at this offset was lost. Resend without waiting for the timeout.
+                    this._resyncs += 1;
+                    this._logger.info(`DFU: Packet at offset ${off} was lost; resending.`);
+                    this._window = 1;
+                    this._resync(off);
+                }
+            }
+        } else if (off !== this._nextOffset) {
+            // The device expects an offset we are not sending: restart from there.
+            this._resyncs += 1;
+            this._logger.info(`DFU: Device expects offset ${off}; resending from there.`);
+            this._window = 1;
+            this._resync(off);
+        }
+        if (this._inFlight.length) {
+            this._armChunkTimeout();
+        } else {
+            this._clearChunkTimeout();
+        }
+        this._fill().catch(error => this._handleUploadNextError(error));
     }
     async cmdUpload(image, slot = 0) {
         if (this._uploadIsInProgress) {
@@ -579,44 +658,48 @@ class MCUManager {
             return;
         }
         this._uploadIsInProgress = true;
-
-        this._uploadOffset = 0;
         this._uploadImage = image;
         this._uploadSlot = slot;
+        this._uploadOffset = 0;
+        this._nextOffset = 0;
+        this._inFlight = [];
+        this._window = this._pipelineDepth;
         this._mtuFallbackIndex = 0;
         this._lastAckOffset = null;
+        this._offsetAtLastTimeout = -1;
         this._writeRetries = 0;
-
-        // Reset timeout tracking
+        this._resyncs = 0;
         this._consecutiveTimeouts = 0;
         this._totalTimeouts = 0;
-        this._chunkTimeout = this._initialChunkTimeout; // Reset to initial value
+        this._chunkTimeout = this._initialChunkTimeout;
+        this._imageSha = new Uint8Array(await this._hash(image));
 
-        this._debug(`[MCUManager DEBUG] Upload config: mtu=${this._mtu} bytes, timeout=${this._chunkTimeout}ms`);
-        this._logger.info(`DFU: Upload begin len=${image.byteLength} mtu=${this._mtu} timeout=${this._chunkTimeout}ms`);
-
-        this._uploadNext().catch(error => this._handleUploadNextError(error));
+        this._debug(`[MCUManager DEBUG] Upload config: mtu=${this._mtu} bytes, timeout=${this._chunkTimeout}ms, pipeline=${this._window}`);
+        this._logger.info(`DFU: Upload begin len=${image.byteLength} mtu=${this._mtu} timeout=${this._chunkTimeout}ms pipeline=${this._window}`);
+        if (this._imageUploadProgressCallback) {
+            this._imageUploadProgressCallback({ percentage: 0 });
+        }
+        this._fill().catch(error => this._handleUploadNextError(error));
     }
     cancelUpload() {
         if (!this._uploadIsInProgress) {
             return;
         }
-
-        // Clear timeout
-        if (this._uploadTimeout) {
-            clearTimeout(this._uploadTimeout);
+        this._clearChunkTimeout();
+        if (this._writeRetryTimer) {
+            clearTimeout(this._writeRetryTimer);
+            this._writeRetryTimer = null;
         }
-
-        // Reset upload state
         this._uploadIsInProgress = false;
         this._uploadOffset = 0;
+        this._nextOffset = 0;
+        this._inFlight = [];
         this._uploadImage = null;
         this._consecutiveTimeouts = 0;
         this._totalTimeouts = 0;
 
         this._debug('[MCUManager DEBUG] Upload cancelled by user');
 
-        // Notify callback
         if (this._imageUploadCancelledCallback) {
             this._imageUploadCancelledCallback();
         }
