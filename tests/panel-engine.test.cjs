@@ -73,7 +73,8 @@ test('nested group conditions gate every field inside the group', () => {
     assert.ok(rules.get('gps_skipped_triggered_interval').gates.has('enable_motion_trig_gps'));
     assert.ok(rules.get('outdoor_detection_tau').gates.has('outdoor_detection_enabled'));
     assert.ok(rules.get('gps_triggered_interval').gates.has('gps_motion_triggered_min_num_of_triggers_per_interval'));
-    assert.equal(rules.get('ublox_send_interval').gates.size, 0);
+    assert.deepEqual([...rules.get('ublox_send_interval').gates], ['ublox_multiple_intervals'], 'the fix interval is gated by the schedule switch');
+    assert.equal(rules.get('ublox_active_tracking').gates.size, 0);
 });
 
 test('draft tracks entries, validity and listeners', () => {
@@ -167,28 +168,47 @@ test('settings-meta categories cover every category and every setting in the v8.
     assert.equal(new Set(orders).size, orders.length, 'category orders are unique');
 });
 
-test('mode options resolve from effective values and write set plus missing ensure values', () => {
-    const mode = definitions.panels[0].fields.find(field => field.control === 'mode');
-    const values = { ublox_send_interval: '0', ublox_multiple_intervals: 'false', ublox_send_interval_2: '0' };
+test('schedule type options resolve from effective values and write set plus missing ensure values', () => {
+    const choice = definitions.panels[0].fields.find(field => field.control === 'choice' && field.label === 'Schedule type');
+    const values = { ublox_send_interval: '900', ublox_multiple_intervals: 'false', ublox_send_interval_2: '0' };
     const get = key => values[key];
-    assert.equal(engine.resolveOption(mode, get).id, 'off');
-    values.ublox_send_interval = '900';
-    assert.equal(engine.resolveOption(mode, get).id, 'fixed');
+    assert.equal(engine.resolveOption(choice, get).id, 'fixed');
     values.ublox_multiple_intervals = 'true';
-    assert.equal(engine.resolveOption(mode, get).id, 'day-night');
+    assert.equal(engine.resolveOption(choice, get).id, 'day-night');
 
-    const dayNight = mode.options.find(option => option.id === 'day-night');
-    const writes = engine.optionWrites(dayNight, get);
-    assert.deepEqual(writes, [
+    const dayNight = choice.options.find(option => option.id === 'day-night');
+    assert.deepEqual(engine.optionWrites(dayNight, get), [
         { key: 'ublox_multiple_intervals', value: true },
         { key: 'ublox_send_interval_2', value: 3600 },
     ], 'interval 1 is already set, so only the night interval is ensured');
-    const fixed = mode.options.find(option => option.id === 'fixed');
+    const fixed = choice.options.find(option => option.id === 'fixed');
     values.ublox_send_interval = '0';
     assert.deepEqual(engine.optionWrites(fixed, get), [
         { key: 'ublox_multiple_intervals', value: false },
         { key: 'ublox_send_interval', value: 300 },
     ]);
+});
+
+test('the scheduled-fixes switch turns off to zero and turns on by restoring remembered values', () => {
+    const field = definitions.panels[0].fields.find(f => f.control === 'switch');
+    const values = { ublox_send_interval: '900', ublox_multiple_intervals: 'true' };
+    const get = key => values[key];
+    assert.equal(engine.isSwitchOn(field, get), true);
+    assert.deepEqual(engine.switchWrites(field, false, get, null), [
+        { key: 'ublox_send_interval', value: 0 },
+        { key: 'ublox_multiple_intervals', value: false },
+    ]);
+    const remembered = { ublox_send_interval: '900', ublox_multiple_intervals: 'true' };
+    values.ublox_send_interval = '0';
+    values.ublox_multiple_intervals = 'false';
+    assert.equal(engine.isSwitchOn(field, get), false);
+    assert.deepEqual(engine.switchWrites(field, true, get, remembered), [
+        { key: 'ublox_send_interval', value: '900' },
+        { key: 'ublox_multiple_intervals', value: 'true' },
+    ], 'restores both remembered values');
+    assert.deepEqual(engine.switchWrites(field, true, get, null), [
+        { key: 'ublox_send_interval', value: 300 },
+    ], 'with nothing remembered, a sensible interval is used and the schedule type is left alone');
 });
 
 test('durations, UTC hours and day segments format for people', () => {
@@ -221,9 +241,9 @@ test('the positioning summary reads as sentences for each mode', () => {
     };
     const describe = (overrides = {}) => engine.describePositioning(key => ({ ...base, ...overrides })[key], { localTime: hour => `${Number(hour) + 2}:00` });
     assert.equal(describe(), 'Fix every 15 minutes, all day.');
-    assert.equal(describe({ ublox_send_interval: '0' }), 'No scheduled fixes.');
+    assert.equal(describe({ ublox_send_interval: '0' }), 'Scheduled fixes are off.');
     assert.equal(describe({ ublox_send_interval: '0', enable_motion_trig_gps: 'true', ublox_active_tracking: 'true' }),
-        'No scheduled fixes. Motion-triggered and outdoor detection have no effect while the schedule is off.');
+        'Scheduled fixes are off. Motion-triggered and outdoor detection have no effect while scheduled fixes are off.');
     assert.equal(describe({ ublox_multiple_intervals: 'true' }),
         'Fix every 15 minutes from 07:00 UTC (9:00 local) to 18:00 UTC (20:00 local), and every 1 hour the rest of the day.');
     assert.equal(describe({ enable_motion_trig_gps: 'true' }),

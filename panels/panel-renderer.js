@@ -32,7 +32,7 @@
 
   function fieldHelp(field, host) {
     if (field.help !== undefined) return field.help;
-    if (field.control === 'mode' || field.control === 'choice') return '';
+    if (field.control === 'mode' || field.control === 'choice' || field.control === 'switch') return '';
     const key = engine.fieldKeys(field)[0];
     return key ? host.getDescription(key) : '';
   }
@@ -82,11 +82,24 @@
     return units[0].value;
   }
 
+  function makeToggleSwitch(onChange) {
+    const label = el('label', 'panel-toggle');
+    const input = el('input');
+    input.type = 'checkbox';
+    input.addEventListener('change', () => onChange(input.checked));
+    const knob = el('span', 'panel-toggle-knob');
+    const text = el('span', 'panel-toggle-text', '');
+    label.appendChild(input);
+    label.appendChild(knob);
+    label.appendChild(text);
+    return { label, input, text };
+  }
+
   function makeDurationControl(field, setting, host) {
     const units = DURATION_UNITS[field.unit] || DURATION_UNITS.s;
     const input = el('input', 'panel-input');
     input.type = 'number';
-    input.min = '0';
+    input.min = field.zeroMeansOff ? '1' : '0';
     input.step = '1';
     const select = el('select', 'panel-select');
     units.forEach(unit => {
@@ -95,6 +108,8 @@
       select.appendChild(option);
     });
     let unitValue = units[0].value;
+    let remembered = null;
+    let externallyDisabled = false;
     const commit = () => {
       const count = Math.max(0, Number(input.value) || 0);
       host.setValue(field.key, String(Math.round(count * unitValue)));
@@ -105,22 +120,73 @@
       commit();
     });
     const wrap = el('div', 'panel-control panel-control-duration');
-    wrap.appendChild(input);
-    wrap.appendChild(select);
-    const hint = field.zeroMeansOff ? el('span', 'panel-hint', '0 = off') : null;
-    if (hint) wrap.appendChild(hint);
+    let toggle = null;
+    if (field.zeroMeansOff) {
+      // Off writes 0 and remembers the value; on restores it or uses the field's default.
+      toggle = makeToggleSwitch(on => {
+        if (on) {
+          const fallback = field.onDefault !== undefined ? field.onDefault : (field.unit === 'h' ? 24 : 300);
+          const value = engine.toNumber(remembered) > 0 ? remembered : fallback;
+          host.setValue(field.key, String(value));
+        } else {
+          const current = host.getValue(field.key);
+          if (engine.toNumber(current) > 0) remembered = current;
+          host.setValue(field.key, '0');
+        }
+      });
+      wrap.appendChild(toggle.label);
+    }
+    const inputs = el('span', 'panel-duration-inputs');
+    inputs.appendChild(input);
+    inputs.appendChild(select);
+    wrap.appendChild(inputs);
+    const applyDisabled = () => {
+      const off = toggle ? !toggle.input.checked : false;
+      input.disabled = externallyDisabled || off;
+      select.disabled = externallyDisabled || off;
+      inputs.classList.toggle('hidden', off);
+      if (toggle) toggle.input.disabled = externallyDisabled;
+    };
     return {
       node: wrap,
-      focusable: input,
+      focusable: toggle ? toggle.input : input,
       update(value) {
-        if (isFocused(input) || isFocused(select)) return;
         const raw = engine.toNumber(value);
-        unitValue = guessUnit(units, raw);
-        select.value = String(unitValue);
-        input.value = Number.isFinite(raw) ? String(raw / unitValue) : '';
-        if (hint) hint.classList.toggle('panel-hint-active', raw === 0);
+        if (toggle) {
+          const on = raw > 0;
+          toggle.input.checked = on;
+          toggle.text.textContent = on ? 'On' : (field.offLabel || 'Off');
+          if (on) remembered = value;
+        }
+        if (!isFocused(input) && !isFocused(select)) {
+          unitValue = guessUnit(units, raw);
+          select.value = String(unitValue);
+          input.value = Number.isFinite(raw) ? String(raw / unitValue) : '';
+        }
+        applyDisabled();
       },
-      setDisabled(disabled) { input.disabled = disabled; select.disabled = disabled; },
+      setDisabled(disabled) { externallyDisabled = disabled; applyDisabled(); },
+    };
+  }
+
+  function makeSwitchControl(field, host) {
+    let remembered = null;
+    const toggle = makeToggleSwitch(on => {
+      if (!on) {
+        remembered = {};
+        Object.keys(field.turnOff || {}).forEach(key => { remembered[key] = host.getValue(key); });
+      }
+      engine.switchWrites(field, on, host.getValue, remembered).forEach(write => host.setValue(write.key, String(write.value)));
+    });
+    return {
+      node: toggle.label,
+      focusable: toggle.input,
+      update() {
+        const on = engine.isSwitchOn(field, host.getValue);
+        toggle.input.checked = on;
+        toggle.text.textContent = on ? 'On' : 'Off';
+      },
+      setDisabled(disabled) { toggle.input.disabled = disabled; },
     };
   }
 
@@ -152,24 +218,16 @@
   }
 
   function makeToggleControl(field, setting, host) {
-    const label = el('label', 'panel-toggle');
-    const input = el('input');
-    input.type = 'checkbox';
-    input.addEventListener('change', () => host.setValue(field.key, input.checked ? 'true' : 'false'));
-    const knob = el('span', 'panel-toggle-knob');
-    const text = el('span', 'panel-toggle-text', '');
-    label.appendChild(input);
-    label.appendChild(knob);
-    label.appendChild(text);
+    const toggle = makeToggleSwitch(on => host.setValue(field.key, on ? 'true' : 'false'));
     return {
-      node: label,
-      focusable: input,
+      node: toggle.label,
+      focusable: toggle.input,
       update(value) {
         const on = engine.toBool(value);
-        input.checked = on;
-        text.textContent = on ? 'On' : 'Off';
+        toggle.input.checked = on;
+        toggle.text.textContent = on ? 'On' : 'Off';
       },
-      setDisabled(disabled) { input.disabled = disabled; },
+      setDisabled(disabled) { toggle.input.disabled = disabled; },
     };
   }
 
@@ -253,6 +311,8 @@
       case 'mode':
       case 'choice':
         return makeOptionsControl(field, host, name);
+      case 'switch':
+        return makeSwitchControl(field, host);
       case 'duration':
         return makeDurationControl(field, setting, host);
       case 'utc-hour':

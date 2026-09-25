@@ -238,6 +238,41 @@
     return writes;
   }
 
+  // A "switch" field turns a feature on or off by writing several settings.
+  //   { control: 'switch', keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: { key: value } } }
+  // Turning off writes turnOff. Turning on restores the values remembered when it was
+  // turned off (for the turnOff keys), then applies turnOn.ensure where a value is still
+  // empty or zero.
+  function isSwitchOn(field, getValue) {
+    return evaluateCondition(field.on, getValue);
+  }
+
+  function switchWrites(field, turnOn, getValue, remembered) {
+    if (!turnOn) {
+      return Object.entries(field.turnOff || {}).map(([key, value]) => ({ key, value }));
+    }
+    const writes = [];
+    const restored = {};
+    Object.keys(field.turnOff || {}).forEach(key => {
+      const previous = remembered ? remembered[key] : undefined;
+      if (previous !== undefined && previous !== null && String(previous) !== '') {
+        writes.push({ key, value: previous });
+        restored[key] = previous;
+      }
+    });
+    const ensure = (field.turnOn && field.turnOn.ensure) || {};
+    Object.entries(ensure).forEach(([key, value]) => {
+      const current = key in restored ? restored[key] : getValue(key);
+      const number = toNumber(current);
+      if (current === null || current === undefined || String(current).trim() === '' || number === 0 || current === false || current === 'false') {
+        if (!(key in restored) || number === 0) {
+          writes.push({ key, value });
+        }
+      }
+    });
+    return writes;
+  }
+
   function formatDurationWords(totalSeconds) {
     const seconds = Math.round(toNumber(totalSeconds));
     if (!Number.isFinite(seconds) || seconds <= 0) return 'off';
@@ -301,9 +336,9 @@
     } else if (interval1 > 0) {
       sentences.push(`Fix every ${duration(interval1)}, all day.`);
     } else {
-      sentences.push('No scheduled fixes.');
+      sentences.push('Scheduled fixes are off.');
       if (outdoorOn || motionOn) {
-        sentences.push('Motion-triggered and outdoor detection have no effect while the schedule is off.');
+        sentences.push('Motion-triggered and outdoor detection have no effect while scheduled fixes are off.');
       }
       if (has('gps_resend_interval') && num('gps_resend_interval') > 0) {
         sentences.push(`The last position is resent every ${duration(num('gps_resend_interval'))}.`);
@@ -347,6 +382,8 @@
     runApply,
     resolveOption,
     optionWrites,
+    isSwitchOn,
+    switchWrites,
     formatDurationWords,
     formatUtcHour,
     daySegments,
