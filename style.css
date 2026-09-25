@@ -3720,13 +3720,6 @@ textarea {
 }
 
 @media (max-width: 900px) {
-    .map-section {
-        margin-bottom: 12px;
-        padding-bottom: calc(var(--body-bottom-padding) + 8px);
-    }
-}
-
-@media (max-width: 900px) {
     :root {
         --body-bottom-padding: 24px;
     }
@@ -4334,13 +4327,32 @@ body.has-pending-changes {
 .panels-search {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
+    flex-wrap: wrap;
     margin-bottom: 12px;
 }
 
+.panels-search .section-card-title {
+    cursor: default;
+    flex: 0 0 auto;
+}
+
+.panels-search .section-card-title::before,
+.panels-search .section-card-title::after {
+    display: none;
+}
+
+.panels-search-note {
+    flex: 1 1 100%;
+    margin: 0;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.75);
+}
+
 .panels-search input[type="search"] {
-    flex: 1 1 auto;
-    padding: 10px 12px;
+    flex: 1 1 220px;
+    min-width: 0;
+    padding: 9px 12px;
     border: 1px solid var(--sp-border);
     border-radius: var(--radius-lg);
     background: rgba(255, 255, 255, 0.9);
