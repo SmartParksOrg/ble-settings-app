@@ -80,6 +80,7 @@ const customInputRenderers = {
 
 // Static list of settings files
 const SETTINGS_FILES = [
+    "settings-v8.0.1.json",
     "settings-v8.0.0.json",
     "settings-v7.2.0.json",
     "settings-v7.1.0.json",

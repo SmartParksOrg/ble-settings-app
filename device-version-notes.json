@@ -116,6 +116,28 @@
         "Removed: remaining RF Open Sky detection user settings not removed in v7.1.0.",
         "DFU files: see open-collar-v7.2.0."
       ]
+    },
+    {
+      "id": "open-collar-8-0-1-release-notes",
+      "title": "Open Collar 8.0.1 release notes",
+      "appliesTo": {
+        "fwVersions": [
+          "8.0.1"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "Fixed: GPS time is validated from a single fresh NAV-PVT epoch, and large corrections are confirmed with consecutive readings.",
+        "Fixed: the application clock can recover from future timestamps; clock reference updates and reads are serialized.",
+        "Settings: the v8.0.1 settings schema is identical to v8.0.0.",
+        "DFU files: see open-collar-v8.0.1.",
+        "AirQ DFU files: see air-quality-v8.0.1."
+      ]
     }
   ]
 }

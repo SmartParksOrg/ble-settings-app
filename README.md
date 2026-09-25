@@ -31,7 +31,12 @@ Adding a new settings.json version:
 
 The app and HEX composer support both the legacy settings protocol and the family-based
 protocol released in OpenCollar v8.0.0. The bundled `settings/settings-v8.0.0.json` is the
-unmodified [v8.0.0 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.0).
+unmodified [v8.0.0 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.0),
+and `settings/settings-v8.0.1.json` is the unmodified
+[v8.0.1 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.1).
+The v8.0.1 schema is identical in content to v8.0.0; it is bundled so the app selects the
+latest patch release and shows its firmware notes. Bundled DFU releases for v8.0.1 live in
+`assets/dfu/releases/open-collar-v8.0.1/` and `assets/dfu/releases/air-quality-v8.0.1/`.
 
 - Legacy settings use `id length data`; v8 settings use `family id length data`.
 - Runtime value responses also include a family byte in v8 (currently `0xA0`).
