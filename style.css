@@ -4211,3 +4211,101 @@ body.has-pending-changes {
         grid-template-columns: 1fr;
     }
 }
+
+/* Phase 2 panel controls */
+.panel-select-wide {
+    flex: 1 1 220px;
+}
+
+.panel-input-pin {
+    flex: 0 0 110px;
+    font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+    letter-spacing: 0.3em;
+    text-align: center;
+}
+
+.panel-inline-button {
+    margin: 0;
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.panel-ports {
+    display: grid;
+    gap: 6px 16px;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.panel-port {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.panel-field-matrix {
+    grid-column: 1 / -1;
+}
+
+.panel-matrix-wrap {
+    overflow-x: auto;
+    border: 1px solid rgba(82, 115, 94, 0.2);
+    border-radius: var(--radius-lg);
+}
+
+.panel-matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.panel-matrix th,
+.panel-matrix td {
+    padding: 8px 10px;
+    text-align: center;
+    border-bottom: 1px solid rgba(82, 115, 94, 0.14);
+}
+
+.panel-matrix th {
+    position: sticky;
+    top: 0;
+    background: rgba(82, 115, 94, 0.1);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.panel-matrix th.panel-matrix-name,
+.panel-matrix td.panel-matrix-name {
+    text-align: left;
+    white-space: nowrap;
+}
+
+.panel-matrix tbody tr:nth-child(even) {
+    background: rgba(82, 115, 94, 0.04);
+}
+
+.panel-matrix tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.panel-matrix input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+}
+
+@media (max-width: 600px) {
+    .panel-matrix th:not(.panel-matrix-name) {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        white-space: nowrap;
+        padding: 10px 4px;
+        vertical-align: bottom;
+    }
+
+    .panel-matrix th,
+    .panel-matrix td {
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+}

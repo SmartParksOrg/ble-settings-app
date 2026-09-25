@@ -485,13 +485,13 @@
     "device_name": {
       "category": "device",
       "label": "name",
-      "description": "Device name setting.",
+      "description": "Device name shown in Bluetooth scans (up to 8 characters).",
       "display_name": "name"
     },
     "device_pin": {
       "category": "device",
       "label": "pin",
-      "description": "The PIN used to access the device.",
+      "description": "Four-digit PIN required to connect over Bluetooth. 0000 means no PIN is checked.",
       "display_name": "pin"
     },
     "enable_motion_trig_gps": {
@@ -719,7 +719,7 @@
     "led_enabled": {
       "category": "device",
       "label": "enabled",
-      "description": "Led enabled setting.",
+      "description": "Enable the status LED.",
       "display_name": "enabled"
     },
     "lp0_app_key": {
@@ -773,14 +773,32 @@
     "lr_adr": {
       "category": "lorawan",
       "label": "adr",
-      "description": "LoRaWAN-related setting.",
+      "description": "Data rate (DR0-DR15) used when the adaptive data rate profile is Custom. EU 868 allows DR0-DR7; US 915 allows DR0-DR4 and DR8-DR13.",
       "display_name": "adr"
     },
     "lr_adr_profile": {
       "category": "lorawan",
       "label": "adr profile",
-      "description": "LoRaWAN-related setting.",
-      "display_name": "adr profile"
+      "description": "Adaptive data rate profile: network controlled (static devices), mobile long range, mobile low power, or custom (uses the data rate setting).",
+      "display_name": "adr profile",
+      "options": [
+        {
+          "value": 0,
+          "label": "Network controlled (static devices)"
+        },
+        {
+          "value": 1,
+          "label": "Mobile, long range"
+        },
+        {
+          "value": 2,
+          "label": "Mobile, low power"
+        },
+        {
+          "value": 3,
+          "label": "Custom data rate"
+        }
+      ]
     },
     "lr_confirm_flag": {
       "category": "lorawan",
@@ -821,8 +839,62 @@
     "lr_region": {
       "category": "lorawan",
       "label": "region",
-      "description": "LoRaWAN-related setting.",
-      "display_name": "region"
+      "description": "LoRaWAN frequency region.",
+      "display_name": "region",
+      "options": [
+        {
+          "value": 1,
+          "label": "EU 868"
+        },
+        {
+          "value": 3,
+          "label": "US 915"
+        },
+        {
+          "value": 4,
+          "label": "AU 915"
+        },
+        {
+          "value": 6,
+          "label": "WW 2.4 GHz"
+        },
+        {
+          "value": 2,
+          "label": "AS 923 group 1"
+        },
+        {
+          "value": 7,
+          "label": "AS 923 group 2"
+        },
+        {
+          "value": 8,
+          "label": "AS 923 group 3"
+        },
+        {
+          "value": 13,
+          "label": "AS 923 group 4"
+        },
+        {
+          "value": 9,
+          "label": "IN 865"
+        },
+        {
+          "value": 10,
+          "label": "KR 920"
+        },
+        {
+          "value": 11,
+          "label": "RU 864"
+        },
+        {
+          "value": 5,
+          "label": "CN 470"
+        },
+        {
+          "value": 12,
+          "label": "CN 470 RP 1.0"
+        }
+      ]
     },
     "lr_sat_data": {
       "category": "lr_gps",
