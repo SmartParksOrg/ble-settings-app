@@ -24,6 +24,27 @@
     return node && document.activeElement === node;
   }
 
+  // Typing passes through empty and partial states: "" after a backspace, "5." on a
+  // number input (the browser reports "" for that), "-" on a coordinate. Committing those
+  // as 0 flips on/off switches and gate conditions, which disables the field under the
+  // person's finger. Such entries are ignored; null means "nothing to commit yet".
+  function entryNumber(input) {
+    const text = String(input.value || '').trim();
+    if (text === '') return null;
+    const number = Number(text.replace(',', '.'));
+    return Number.isFinite(number) ? number : null;
+  }
+
+  // While a field has focus its display is left alone, so after focus leaves it is
+  // brought back in line with the draft (a cleared or clamped entry shows the value
+  // that will actually be written). Deferred so a focus move to a sibling control,
+  // such as the unit select of a duration, is seen by the update.
+  function resyncOnBlur(input, control, field, host) {
+    input.addEventListener('blur', () => {
+      setTimeout(() => control.update(host.getValue(field.key)), 0);
+    });
+  }
+
   function fieldLabel(field, host) {
     if (field.label) return field.label;
     const key = engine.fieldKeys(field)[0];
@@ -88,7 +109,12 @@
     input.step = setting.conversion === 'float' ? '0.01' : '1';
     if (setting.min !== undefined) input.min = field.zeroMeansOff ? Math.max(1, Number(setting.min) || 1) : setting.min;
     if (setting.max !== undefined) input.max = setting.max;
-    input.addEventListener('input', () => host.setValue(field.key, input.value.trim()));
+    input.addEventListener('input', () => {
+      const number = entryNumber(input);
+      if (number === null) return;
+      if (field.zeroMeansOff && number <= 0) return; // off is the toggle's job
+      host.setValue(field.key, input.value.trim());
+    });
     const wrap = el('div', 'panel-control panel-control-number');
     const inputs = el('span', 'panel-duration-inputs');
     inputs.appendChild(input);
@@ -101,7 +127,7 @@
       input.disabled = externallyDisabled || off;
       if (toggle) toggle.input.disabled = externallyDisabled;
     };
-    return {
+    const control = {
       node: wrap,
       focusable: toggle ? toggle.input : input,
       update(value) {
@@ -111,6 +137,8 @@
       },
       setDisabled(disabled) { externallyDisabled = disabled; applyDisabled(); },
     };
+    resyncOnBlur(input, control, field, host);
+    return control;
   }
 
   const DURATION_UNITS = {
@@ -156,7 +184,10 @@
     let remembered = null;
     let externallyDisabled = false;
     const commit = () => {
-      const count = Math.max(0, Number(input.value) || 0);
+      const number = entryNumber(input);
+      if (number === null) return;
+      const count = Math.max(0, number);
+      if (field.zeroMeansOff && count <= 0) return; // off is the toggle's job
       host.setValue(field.key, String(Math.round(count * unitValue)));
     };
     input.addEventListener('input', commit);
@@ -192,7 +223,7 @@
       inputs.classList.toggle('hidden', off);
       if (toggle) toggle.input.disabled = externallyDisabled;
     };
-    return {
+    const control = {
       node: wrap,
       focusable: toggle ? toggle.input : input,
       update(value) {
@@ -212,6 +243,9 @@
       },
       setDisabled(disabled) { externallyDisabled = disabled; applyDisabled(); },
     };
+    resyncOnBlur(input, control, field, host);
+    resyncOnBlur(select, control, field, host);
+    return control;
   }
 
   function makeSwitchControl(field, host) {
@@ -242,7 +276,9 @@
     input.max = '23';
     input.step = '1';
     input.addEventListener('input', () => {
-      const hour = Math.max(0, Math.min(23, Math.trunc(Number(input.value) || 0)));
+      const number = entryNumber(input);
+      if (number === null) return;
+      const hour = Math.max(0, Math.min(23, Math.trunc(number)));
       host.setValue(field.key, String(hour));
     });
     const local = el('span', 'panel-hint', '');
@@ -250,7 +286,7 @@
     wrap.appendChild(input);
     wrap.appendChild(el('span', 'panel-unit', 'h UTC'));
     wrap.appendChild(local);
-    return {
+    const control = {
       node: wrap,
       focusable: input,
       update(value) {
@@ -260,6 +296,8 @@
       },
       setDisabled(disabled) { input.disabled = disabled; },
     };
+    resyncOnBlur(input, control, field, host);
+    return control;
   }
 
   function makeToggleControl(field, setting, host) {
@@ -282,15 +320,13 @@
     input.inputMode = 'decimal';
     input.placeholder = 'decimal degrees';
     input.addEventListener('input', () => {
-      const degrees = Number(input.value.replace(',', '.'));
-      if (Number.isFinite(degrees)) {
-        host.setValue(field.key, String(Math.round(degrees * 1e7)));
-      }
+      const degrees = entryNumber(input);
+      if (degrees !== null) host.setValue(field.key, String(Math.round(degrees * 1e7)));
     });
     const wrap = el('div', 'panel-control');
     wrap.appendChild(input);
     wrap.appendChild(el('span', 'panel-unit', 'degrees'));
-    return {
+    const control = {
       node: wrap,
       focusable: input,
       update(value) {
@@ -300,6 +336,8 @@
       },
       setDisabled(disabled) { input.disabled = disabled; },
     };
+    resyncOnBlur(input, control, field, host);
+    return control;
   }
 
   function makeTextControl(field, setting, host) {
@@ -404,12 +442,14 @@
       });
       wrap.appendChild(reveal);
     }
-    return {
+    const control = {
       node: wrap,
       focusable: input,
       update(value) { if (!isFocused(input)) input.value = value ?? ''; },
       setDisabled(disabled) { input.disabled = disabled; },
     };
+    resyncOnBlur(input, control, field, host);
+    return control;
   }
 
   function makeMacControl(field, setting, host) {

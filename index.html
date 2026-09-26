@@ -533,7 +533,8 @@
     <span id="pending-changes-text" class="pending-changes-text">No pending changes</span>
     <div class="pending-changes-actions">
       <button id="pending-changes-discard" type="button" class="secondary">Discard</button>
-      <button id="pending-changes-apply" type="button">Review and apply</button>
+      <button id="pending-changes-review" type="button" class="secondary">Review</button>
+      <button id="pending-changes-apply" type="button">Apply</button>
     </div>
   </div>
 
@@ -6173,10 +6174,14 @@
     }
 
     let pendingRowKeys = new Set();
+    let applyingPendingChanges = null; // { done, total, label } while a direct apply runs
     function renderPendingChangesBar() {
       const bar = document.getElementById('pending-changes-bar');
       const text = document.getElementById('pending-changes-text');
       const applyButton = document.getElementById('pending-changes-apply');
+      const reviewButton = document.getElementById('pending-changes-review');
+      const discardButton = document.getElementById('pending-changes-discard');
+      const applying = applyingPendingChanges;
       const entries = settingsDraft.entries();
       const invalid = settingsDraft.invalidCount();
       const nextKeys = new Set(entries.map(entry => entry.key));
@@ -6188,18 +6193,31 @@
         }
       });
       pendingRowKeys = nextKeys;
-      document.body.classList.toggle('has-pending-changes', entries.length > 0);
+      document.body.classList.toggle('has-pending-changes', entries.length > 0 || Boolean(applying));
       stickyStatus.setPending(entries.length, invalid);
       if (!bar || !text) {
         return;
       }
-      bar.classList.toggle('hidden', entries.length === 0);
+      bar.classList.toggle('hidden', entries.length === 0 && !applying);
+      bar.classList.toggle('applying', Boolean(applying));
       const count = entries.length;
-      text.textContent = invalid > 0
-        ? `${count} pending change${count === 1 ? '' : 's'}, ${invalid} invalid`
-        : `${count} pending change${count === 1 ? '' : 's'}`;
+      if (applying) {
+        text.textContent = applying.done < applying.total
+          ? `Applying ${applying.done + 1} of ${applying.total}: ${applying.label}`
+          : `Confirming ${applying.total} change${applying.total === 1 ? '' : 's'}...`;
+      } else {
+        text.textContent = invalid > 0
+          ? `${count} pending change${count === 1 ? '' : 's'}, ${invalid} invalid`
+          : `${count} pending change${count === 1 ? '' : 's'}`;
+      }
       if (applyButton) {
-        applyButton.disabled = invalid > 0;
+        applyButton.disabled = invalid > 0 || Boolean(applying);
+      }
+      if (reviewButton) {
+        reviewButton.disabled = invalid > 0 || Boolean(applying);
+      }
+      if (discardButton) {
+        discardButton.disabled = Boolean(applying);
       }
     }
     settingsDraft.subscribe(renderPendingChangesBar);
@@ -6244,22 +6262,24 @@
       }
     }
 
-    async function reviewAndApplyPendingChanges() {
+    // The pending edits in write order with their before/after rows, or null (with a toast) when
+    // they cannot be applied right now.
+    function planPendingChanges() {
       const entries = settingsDraft.entries();
       if (!entries.length) {
-        return;
+        return null;
       }
       if (settingsDraft.invalidCount() > 0) {
         showToast('Fix the highlighted invalid values first.');
-        return;
+        return null;
       }
       if (!document.body.classList.contains('connected') || !rxCharacteristic) {
         showToast('Connect to a device first.');
-        return;
+        return null;
       }
       if (isDfuMainBleLocked()) {
         showToast('Finish DFU before applying settings.');
-        return;
+        return null;
       }
       const ordered = PanelEngine.planWriteOrder(
         entries.map(entry => ({ key: entry.key, value: entry.value })),
@@ -6278,6 +6298,38 @@
           unchanged: false
         };
       });
+      return { ordered, rows };
+    }
+
+    // Direct edits apply with one tap: progress shows in the pending bar, success is a toast,
+    // and only a mismatch, a failed write or an unconfirmed value opens the outcome dialog.
+    async function applyPendingChanges() {
+      if (applyingPendingChanges) {
+        return;
+      }
+      const plan = planPendingChanges();
+      if (!plan) {
+        return;
+      }
+      const { ordered, rows } = plan;
+      const plural = rows.length === 1 ? '' : 's';
+      applyingPendingChanges = { done: 0, total: rows.length, label: rows[0].name };
+      renderPendingChangesBar();
+      try {
+        await applyOrderedSettingChanges(ordered, rows, { title: `Applying ${rows.length} change${plural}`, noun: 'change', inline: true });
+      } finally {
+        applyingPendingChanges = null;
+        renderPendingChangesBar();
+      }
+    }
+
+    // The before/after review, kept for people who want to check a larger edit first.
+    async function reviewAndApplyPendingChanges() {
+      const plan = planPendingChanges();
+      if (!plan) {
+        return;
+      }
+      const { ordered, rows } = plan;
       const plural = rows.length === 1 ? '' : 's';
       const ok = await showImportPreviewModal({
         title: `Apply ${rows.length} change${plural}`,
@@ -6293,10 +6345,15 @@
       renderPendingChangesBar();
     }
 
-    // Write each item in order, read it back, and report; shared by Review-and-apply and Import.
-    async function applyOrderedSettingChanges(ordered, rows, { title, noun = 'change', subtitle = 'Writing and confirming...' }) {
+    // Write each item in order, read it back, and report; shared by Apply, Review-and-apply and
+    // Import. With `inline`, progress goes to the pending bar instead of the dialog, and the
+    // dialog only opens when the outcome needs attention.
+    async function applyOrderedSettingChanges(ordered, rows, { title, noun = 'change', subtitle = 'Writing and confirming...', inline = false }) {
       const plural = rows.length === 1 ? '' : 's';
-      showImportProgress({ total: rows.length, title, subtitle, items: rows });
+      const reported = [];
+      if (!inline) {
+        showImportProgress({ total: rows.length, title, subtitle, items: rows });
+      }
       log(`Applying ${rows.length} setting ${noun}${plural}: ${ordered.map(item => item.key).join(', ')}`);
       const summary = await PanelEngine.runApply({
         items: ordered,
@@ -6318,7 +6375,15 @@
           const setting = getByKey(item.key);
           const statusMap = { verified: 'success', mismatch: 'error', failed: 'error', unverified: 'warning' };
           const labelMap = { verified: 'confirmed', mismatch: 'device kept old value', failed: 'write failed', unverified: 'not confirmed' };
-          updateImportProgress({ index: index + 1, total: rows.length, status: statusMap[status], label: labelMap[status], settingId: setting.id });
+          const report = { index: index + 1, total: rows.length, status: statusMap[status], label: labelMap[status], settingId: setting.id };
+          reported.push(report);
+          if (inline) {
+            const nextRow = rows[index + 1];
+            applyingPendingChanges = { done: index + 1, total: rows.length, label: nextRow ? nextRow.name : '' };
+            renderPendingChangesBar();
+          } else {
+            updateImportProgress(report);
+          }
           if (error) {
             log(`Apply ${item.key} failed: ${error.message || error}`, true);
           }
@@ -6329,7 +6394,15 @@
       const message = problems === 0 && summary.unverified === 0
         ? `All ${rows.length} ${noun}${plural} confirmed by the device.`
         : `${summary.verified} confirmed, ${problems} not applied, ${summary.unverified} not confirmed.`;
-      finishImportProgress({ total: rows.length, success: problems === 0, message });
+      if (!inline) {
+        finishImportProgress({ total: rows.length, success: problems === 0, message });
+      } else if (problems === 0 && summary.unverified === 0) {
+        showToast(message);
+      } else {
+        showImportProgress({ total: rows.length, title, subtitle: 'What the device reported for each setting.', items: rows });
+        reported.forEach(updateImportProgress);
+        finishImportProgress({ total: rows.length, success: problems === 0, message });
+      }
       log(message, problems > 0);
       if (summary.unverified > 0) {
         // Unconfirmed writes may still have landed; refresh so the list shows device truth.
@@ -6441,7 +6514,8 @@
       }
     }
 
-    document.getElementById('pending-changes-apply')?.addEventListener('click', reviewAndApplyPendingChanges);
+    document.getElementById('pending-changes-apply')?.addEventListener('click', applyPendingChanges);
+    document.getElementById('pending-changes-review')?.addEventListener('click', reviewAndApplyPendingChanges);
     document.getElementById('pending-changes-discard')?.addEventListener('click', discardPendingChanges);
     window.addEventListener('beforeunload', event => {
       if (flashLogState.active && flashLogState.lines.length) {

@@ -14,7 +14,7 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v43`.
+- Service worker cache is currently `app-cache-v44`.
 
 Firmware v8 support completed:
 - Bundled the official v8.0.0 settings schema.
@@ -38,6 +38,15 @@ settings-UI change must be checked against them. Open items:
    both schema generations survives an encode/decode round trip (tests/settings-protocol.test.cjs).
 6. (Done) Node tests exist; extend them when export/import code changes.
 7. After the guided panels land, re-run the full checklist on hardware: SP051307.
+8. One-tap Apply (2026-09-26): on hardware, apply a single panel edit and confirm the bar shows
+   progress, a toast confirms, and no dialog opens; then apply an edit the device rejects and
+   confirm the outcome dialog opens and its Close button is reachable on a phone.
+
+## Firmware v8.0.2 (bundled 2026-09-26, hardware test pending)
+
+Schema identical to v8.0.0/v8.0.1; DFU bundles for open-collar (15 variants) and air-quality
+(4 variants) added. Verify on SP051307: the app auto-selects settings-v8.0.2.json on a v8.0.2
+device, the built-in DFU list offers 8.0.2 for the device's hardware, and the 8.0.2 notes show.
 
 
 ## Partial raw logs (hardware test pending)

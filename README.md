@@ -24,19 +24,22 @@ Notes:
 
 Adding a new settings.json version:
 - upload settings.json file to settings folder
-- add settings.json version to functions.js
-- add settings.json version to service-worker.js
+- add settings.json version to functions.js (`SETTINGS_FILES`, newest first)
+- add settings.json version to service-worker.js and bump `CACHE_NAME`
+- update the expected file in `tests/settings-protocol.test.cjs` ("schema selection")
+- add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
 
 ## Firmware v8 settings support
 
 The app and HEX composer support both the legacy settings protocol and the family-based
 protocol released in OpenCollar v8.0.0. The bundled `settings/settings-v8.0.0.json` is the
 unmodified [v8.0.0 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.0),
-and `settings/settings-v8.0.1.json` is the unmodified
-[v8.0.1 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.1).
-The v8.0.1 schema is identical in content to v8.0.0; it is bundled so the app selects the
-latest patch release and shows its firmware notes. Bundled DFU releases for v8.0.1 live in
-`assets/dfu/releases/open-collar-v8.0.1/` and `assets/dfu/releases/air-quality-v8.0.1/`.
+`settings/settings-v8.0.1.json` and `settings/settings-v8.0.2.json` are the unmodified
+[v8.0.1](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.1) and
+[v8.0.2](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.2) release assets.
+The v8.0.1 and v8.0.2 schemas are identical in content to v8.0.0; they are bundled so the app
+selects the latest patch release and shows its firmware notes. Bundled DFU releases live in
+`assets/dfu/releases/open-collar-v8.0.<patch>/` and `assets/dfu/releases/air-quality-v8.0.<patch>/`.
 
 - Legacy settings use `id length data`; v8 settings use `family id length data`.
 - Runtime value responses also include a family byte in v8 (currently `0xA0`).
@@ -71,6 +74,12 @@ Run the dependency-free regression tests with Node.js:
 node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-engine.test.cjs
 ```
 
+`tests/browser-input-check.mjs` drives both pages in headless Chromium with real key, mouse and
+touch events (desktop viewport and an emulated phone) and checks that every kind of panel input
+stays editable while a value is retyped, that the settings-list interval never turns an empty field
+into 0, and that the one-tap Apply flow writes, reads back and reports correctly against a fake
+device. It needs a local server and a Chromium binary (`CHROME=...`), see the header of the file.
+
 ## Guided settings (in progress)
 
 The settings list is being reworked into guided, task-oriented panels. Eleven panels sit
@@ -99,11 +108,18 @@ settings blocks are hidden because the panels edit those settings now.
 - `settings-meta.json` carries `categories` with a title, display order, and the order of
   settings inside each category; the settings list and the composer follow it instead of
   alphabetical order.
-- Edits in the settings list collect in a draft. A bar offers "Review and apply", which shows
-  a before/after list, writes in dependency order, reads each value back, and reports what
-  the device confirmed. The per-setting Update buttons still work and clear their draft entry.
-- Import uses the same ordered, verified apply path. Export and import refuse to run while
-  edits are pending, so a profile always matches what the device reported.
+- Edits in the panels and the settings list collect in a draft. A bar offers "Apply", which
+  writes in dependency order, reads each value back, shows progress in the bar and ends with a
+  toast when the device confirmed everything; a mismatch, a failed write or an unconfirmed value
+  opens a dialog with the outcome per setting. "Review" opens the before/after list first for
+  people who want to check a larger edit. The per-setting Update buttons still work and clear
+  their draft entry.
+- Import uses the same ordered, verified apply path, always with the preview first. Export and
+  import refuse to run while edits are pending, so a profile always matches what the device
+  reported.
+- Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
+  input) as 0: doing so flipped switches and gate conditions and disabled the field under the
+  person's finger. The field is brought back in line with the draft when focus leaves it.
 - Once the header scrolls out of view, a slim bar pins to the top with the device name,
   a connection dot, firmware version, battery voltage, a pending-changes chip that jumps to
   the first edited field, and a small Disconnect button. Tapping the name scrolls back to
