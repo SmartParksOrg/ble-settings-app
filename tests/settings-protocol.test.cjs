@@ -123,7 +123,7 @@ test('schema selection compares numeric major/minor versions', () => {
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 0 }, files), 'settings-v8.0.0.json');
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 1 }, files), null);
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 9, ver_fw_minor: 0 }, files), null);
-    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 0 }), 'settings-v8.0.1.json');
+    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 0 }), 'settings-v8.0.2.json');
 });
 
 test('incompatible manually selected schemas fail before registering data', async () => {
