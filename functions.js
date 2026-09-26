@@ -80,6 +80,7 @@ const customInputRenderers = {
 
 // Static list of settings files
 const SETTINGS_FILES = [
+    "settings-v8.0.2.json",
     "settings-v8.0.1.json",
     "settings-v8.0.0.json",
     "settings-v7.2.0.json",
@@ -1694,6 +1695,12 @@ function updateIntervalValue(settingId) {
     const unitSelect = document.getElementById(`interval-unit-${settingId}`);
     const hiddenField = document.getElementById(`new-value-${settingId}`);
 
+    // An empty field is not 0 (0 usually means "off"): leave it invalid until a number is typed.
+    if (numericInput.value.trim() === '') {
+        hiddenField.value = '';
+        __onInputChanged(settingId);
+        return;
+    }
     let displayVal = parseFloat(numericInput.value) || 0;
     if (displayVal < 0) displayVal = 0; // clamp if needed
 
