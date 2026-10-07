@@ -239,11 +239,58 @@ function setUserStatus(message, status = '') {
   }
 }
 
-function buildBundledLabel(entry) {
-  const release = entry.releaseId || entry.firmwareVersion || 'unknown';
+// Air quality (AirQ) builds are a separate product for rangeredge collars that carry the air
+// quality sensor; the device cannot tell the app which build it needs (the firmware type
+// field has no AirQ value), so the list keeps them apart and labels the standard release
+// most people need.
+function isAirQualityEntry(entry) {
+  return /airq/i.test(entry.hwType || '') || /^air-quality/i.test(entry.releaseId || '') || entry.product === 'air-quality';
+}
+
+function compareEntriesNewestFirst(a, b) {
+  const byVersion = versionCompare(b.firmwareVersion || '0', a.firmwareVersion || '0');
+  if (byVersion !== 0) return byVersion;
+  const byHwType = String(a.hwType || '').localeCompare(String(b.hwType || ''));
+  if (byHwType !== 0) return byHwType;
+  return versionCompare(b.hwVersion || '0', a.hwVersion || '0');
+}
+
+function latestFirmwareVersion(entries) {
+  return entries.reduce((latest, entry) => (
+    !latest || versionCompare(entry.firmwareVersion || '0', latest) > 0 ? (entry.firmwareVersion || '0') : latest
+  ), '');
+}
+
+function buildBundledLabel(entry, { latest = false } = {}) {
+  const airq = isAirQualityEntry(entry);
+  const tags = [];
+  if (latest) tags.push(airq ? 'latest AirQ' : 'latest');
+  if (/migration/i.test(entry.releaseId || '')) tags.push('migration');
+  const version = entry.firmwareVersion ? `v${entry.firmwareVersion}` : (entry.releaseId || 'unknown');
   const hwTypeLabel = entry.hwType ? formatHwTypeLabel(entry.hwType) : 'unknown hardware';
   const hw = entry.hwType ? `${hwTypeLabel}@${entry.hwVersion || '?'}` : 'unknown hardware';
-  return `${release} • ${hw}`;
+  return `${version}${tags.length ? ` (${tags.join(', ')})` : ''} • ${hw}`;
+}
+
+function appendBundledGroup(select, label, entries, latestVersion) {
+  if (!entries.length) return;
+  const group = document.createElement('optgroup');
+  group.label = label;
+  entries.forEach(entry => {
+    const option = document.createElement('option');
+    option.value = entry.path;
+    option.textContent = buildBundledLabel(entry, { latest: entry.firmwareVersion === latestVersion });
+    option.title = entry.releaseId || '';
+    group.appendChild(option);
+  });
+  select.appendChild(group);
+}
+
+function setBundledHint(message) {
+  const hint = document.getElementById('dfu-bundled-hint');
+  if (!hint) return;
+  hint.textContent = message || '';
+  hint.classList.toggle('hidden', !message);
 }
 
 function renderBundledOptions(entries, selectedPath = '') {
@@ -262,23 +309,40 @@ function renderBundledOptions(entries, selectedPath = '') {
     option.textContent = 'No updates available';
     elements.bundledSelect.appendChild(option);
     elements.bundledSelect.disabled = true;
+    setBundledHint('');
     return;
   }
 
   if (elements.bundledPicker) {
     elements.bundledPicker.classList.remove('hidden');
   }
+  // Newest first, standard builds before AirQ builds, and the latest standard release in a
+  // group of its own at the top so it is the obvious pick.
+  const standard = entries.filter(entry => !isAirQualityEntry(entry)).sort(compareEntriesNewestFirst);
+  const airq = entries.filter(isAirQualityEntry).sort(compareEntriesNewestFirst);
+  const latestStandard = latestFirmwareVersion(standard);
+  const latestAirq = latestFirmwareVersion(airq);
+  const recommended = standard.filter(entry => entry.firmwareVersion === latestStandard);
+  const older = standard.filter(entry => entry.firmwareVersion !== latestStandard);
+
   const placeholder = document.createElement('option');
   placeholder.value = '';
-  placeholder.textContent = 'Select firmware version';
+  placeholder.textContent = latestStandard
+    ? `Select firmware version (most collars need v${latestStandard})`
+    : 'Select firmware version';
   elements.bundledSelect.appendChild(placeholder);
 
-  entries.forEach(entry => {
-    const option = document.createElement('option');
-    option.value = entry.path;
-    option.textContent = buildBundledLabel(entry);
-    elements.bundledSelect.appendChild(option);
-  });
+  appendBundledGroup(elements.bundledSelect, latestStandard ? `Recommended: latest standard firmware v${latestStandard}` : 'Standard firmware', recommended, latestStandard);
+  appendBundledGroup(elements.bundledSelect, 'Older standard firmware', older, latestStandard);
+  appendBundledGroup(elements.bundledSelect, 'Air quality (AirQ) builds: only for collars with the air quality sensor', airq, latestAirq);
+
+  if (airq.length && standard.length) {
+    setBundledHint(`Most collars need the latest standard firmware (v${latestStandard}). AirQ builds only run on rangeredge collars fitted with the air quality sensor; do not pick one for other collars.`);
+  } else if (older.length) {
+    setBundledHint(`Most collars need the latest firmware (v${latestStandard}). Older versions are listed for downgrades and migrations.`);
+  } else {
+    setBundledHint('');
+  }
   if (selectedPath && dfuState.bundledEntriesByPath.has(selectedPath)) {
     elements.bundledSelect.value = selectedPath;
   }

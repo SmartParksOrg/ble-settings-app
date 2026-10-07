@@ -236,6 +236,16 @@ device screen. The firmware confirms its own image on boot, so the SMP confirm s
 safety net rather than a requirement. A screen wake lock is held during upload and
 reboot. If automatic reconnect fails, the overlay offers a retry and a manual scan.
 
+The built-in version list is grouped so the right pick is the obvious one: a "Recommended"
+group at the top holds the latest standard release (tagged "latest"), "Older standard firmware"
+follows newest first (the v5.0.1 migration build is tagged "migration"), and air quality builds
+sit in their own last group, "Air quality (AirQ) builds: only for collars with the air quality
+sensor". The device cannot report whether it carries that sensor (the firmware type field has
+no AirQ value), so a hint under the list says that most collars need the latest standard
+firmware and that AirQ builds only run on rangeredge collars fitted with the sensor. The list
+is filtered to the connected device's hardware type and version as before; AirQ entries are
+only offered to rangeredge collars.
+
 Adding a new bundled DFU firmware release:
 - upload `.bin` files to `assets/dfu/releases/<release-id>/...`
 - add release entries to `assets/dfu/manifest.json` (release id, firmware version, and file paths)

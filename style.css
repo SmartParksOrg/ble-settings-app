@@ -2095,6 +2095,16 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     color: rgba(31, 42, 35, 0.8);
 }
 
+.dfu-bundled-hint {
+    flex: 1 1 100%;
+    font-size: 13px;
+    line-height: 1.45;
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 209, 102, 0.22);
+    color: #6f4600;
+}
+
 .dfu-user-status {
     font-size: 14px;
     margin-bottom: 12px;

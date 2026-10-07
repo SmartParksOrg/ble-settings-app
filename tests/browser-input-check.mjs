@@ -380,6 +380,34 @@ async function featuresCard(tag) {
   check(`${tag} features: schedule starts are shown in local time`, row(local, 'Ublox GPS').detail.some(d => d.startsWith(expectedLocal + '-')) && row(local, 'Ublox GPS').detail.some(d => /local time/.test(d)) && !row(local, 'Ublox GPS').detail.some(d => /UTC/.test(d)), { expectedLocal, detail: row(local, 'Ublox GPS').detail });
   check(`${tag} features: with the schedule off the motion row says it has no effect`, row(scheduleOff, 'Motion-triggered GPS').enabled && row(scheduleOff, 'Motion-triggered GPS').detail.some(d => /No effect while scheduled/.test(d)) && !row(scheduleOff, 'Ublox GPS').enabled, row(scheduleOff, 'Motion-triggered GPS'));
 }
+// The built-in DFU list: newest first, the latest standard release in a "Recommended" group at
+// the top, AirQ builds in their own group at the bottom, and a hint when both are present.
+async function dfuList(tag) {
+  const read = () => evaluate(`(() => { const sel = document.getElementById('dfu-bundled-select');
+    return { placeholder: sel.options[0].textContent, groups: Array.from(sel.querySelectorAll('optgroup')).map(g => ({ label: g.label, options: Array.from(g.querySelectorAll('option')).map(o => o.textContent) })),
+      hint: document.getElementById('dfu-bundled-hint').textContent, hintHidden: document.getElementById('dfu-bundled-hint').classList.contains('hidden') }; })()`);
+  const initWith = async info => {
+    await evaluate(`(() => { ${info ? `sessionStorage.setItem('dfuDeviceInfo', JSON.stringify(${J(info)}))` : `sessionStorage.removeItem('dfuDeviceInfo')`}; return true; })()`);
+    await evaluate(`loadDfuScriptsIfNeeded().then(() => { DfuApp.init(); return true; })`);
+    await waitFor(`document.querySelector('#dfu-bundled-select optgroup')`);
+    await sleep(100);
+    return read();
+  };
+  const versionOf = label => label.match(/v(\d+\.\d+\.\d+)/)[1];
+  const descending = labels => labels.every((l, i) => i === 0 || versionOf(labels[i - 1]).localeCompare(versionOf(l), undefined, { numeric: true }) >= 0);
+
+  const all = await initWith(null);
+  const first = all.groups[0], last = all.groups[all.groups.length - 1];
+  check(`${tag} DFU list without a device: Recommended group first, with the latest standard release tagged`, /^Recommended: latest standard firmware v8\.0\.3/.test(first.label) && first.options.length === 15 && first.options.every(o => /^v8\.0\.3 \(latest\) •/.test(o)) && /most collars need v8\.0\.3/.test(all.placeholder), { first, placeholder: all.placeholder });
+  check(`${tag} DFU list without a device: older standard releases follow, newest first, migration tagged`, all.groups[1].label === 'Older standard firmware' && descending(all.groups[1].options) && all.groups[1].options.some(o => /^v5\.0\.1 \(migration\) •/.test(o)) && !all.groups[1].options.some(o => /latest/.test(o)), all.groups[1]);
+  check(`${tag} DFU list without a device: AirQ builds in their own last group, newest first, with a hint`, /^Air quality \(AirQ\) builds/.test(last.label) && descending(last.options) && last.options.every(o => /AirQ/.test(o)) && last.options.filter(o => /\(latest AirQ\)/.test(o)).length === 4 && !all.hintHidden && /AirQ builds only run on rangeredge collars/.test(all.hint), { last, hint: all.hint });
+
+  const ranger = await initWith({ deviceName: 'SP051307', fwVersion: '8.0', hwVersion: '1.8', fwType: 0, hwType: 5, updatedAt: Date.now() });
+  check(`${tag} DFU list for a rangeredge 1.8 on 8.0: one recommended v8.0.3, older 8.0.1/7.x/6.x, one AirQ per release`, ranger.groups[0].options.length === 1 && /^v8\.0\.3 \(latest\) • rangeredge_nrf52840@1\.8\.0$/.test(ranger.groups[0].options[0]) && ranger.groups[1].options.every(o => /rangeredge_nrf52840@1\.8\.0$/.test(o)) && ranger.groups[2].options.every(o => /\(AirQ\)@1\.8\.0$/.test(o)) && /AirQ/.test(ranger.hint), ranger);
+
+  const collar = await initWith({ deviceName: 'CE0001', fwVersion: '8.0', hwVersion: '1.5', fwType: 0, hwType: 8, updatedAt: Date.now() });
+  check(`${tag} DFU list for a collaredge: no AirQ group, hint says most collars need the latest`, collar.groups.length === 2 && !collar.groups.some(g => /AirQ/.test(g.label)) && collar.groups[0].options.length === 1 && /^v8\.0\.3 \(latest\) • collaredge_nrf52840@1\.5\.0$/.test(collar.groups[0].options[0]) && /Most collars need the latest firmware \(v8\.0\.3\)/.test(collar.hint) && !/AirQ/.test(collar.hint), collar);
+}
 async function noBluetoothNote(tag) {
   await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
   const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
@@ -397,7 +425,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard, dfuList);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }
