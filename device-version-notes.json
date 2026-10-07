@@ -162,6 +162,28 @@
         "DFU files: see open-collar-v8.0.2.",
         "AirQ DFU files: see air-quality-v8.0.2."
       ]
+    },
+    {
+      "id": "open-collar-8-0-3-release-notes",
+      "title": "Open Collar 8.0.3 release notes",
+      "appliesTo": {
+        "fwVersions": [
+          "8.0.3"
+        ],
+        "fwVersionMin": null,
+        "fwVersionMax": null,
+        "hwVersions": [],
+        "hwVersionMin": null,
+        "hwVersionMax": null,
+        "hwTypes": []
+      },
+      "body": [
+        "Fixed: error_ublox is reported in status messages again when the automatic GPS fix retries are exhausted.",
+        "Fixed: error_ublox is cleared when the retries are restarted on an enabled receiver or a later fix succeeds.",
+        "Settings: the v8.0.3 settings schema is identical to v8.0.0, v8.0.1 and v8.0.2.",
+        "DFU files: see open-collar-v8.0.3.",
+        "AirQ DFU files: see air-quality-v8.0.3."
+      ]
     }
   ]
 }

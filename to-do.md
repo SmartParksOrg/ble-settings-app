@@ -42,11 +42,14 @@ settings-UI change must be checked against them. Open items:
    progress, a toast confirms, and no dialog opens; then apply an edit the device rejects and
    confirm the outcome dialog opens and its Close button is reachable on a phone.
 
-## Firmware v8.0.2 (bundled 2026-09-26, hardware test pending)
+## Firmware v8.0.3 (bundled 2026-10-07, hardware test pending)
 
-Schema identical to v8.0.0/v8.0.1; DFU bundles for open-collar (15 variants) and air-quality
-(4 variants) added. Verify on SP051307: the app auto-selects settings-v8.0.2.json on a v8.0.2
-device, the built-in DFU list offers 8.0.2 for the device's hardware, and the 8.0.2 notes show.
+Schema identical to v8.0.0/v8.0.1/v8.0.2; DFU bundles for open-collar (15 variants) and
+air-quality (4 variants) added. v8.0.3 restores error_ublox in status messages when the GPS
+fix retries are exhausted. Verify on SP051307: the app auto-selects settings-v8.0.3.json on a
+v8.0.3 device, the built-in DFU list offers 8.0.3 for the device's hardware, the 8.0.3 notes
+show, and a DFU from 8.0.2 to 8.0.3 completes with automatic reconnect. The v8.0.2 bundle
+(2026-09-26) was never verified on hardware; the same checks on 8.0.3 cover it.
 
 
 ## Partial raw logs (hardware test pending)

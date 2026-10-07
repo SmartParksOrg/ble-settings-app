@@ -34,10 +34,12 @@ Adding a new settings.json version:
 The app and HEX composer support both the legacy settings protocol and the family-based
 protocol released in OpenCollar v8.0.0. The bundled `settings/settings-v8.0.0.json` is the
 unmodified [v8.0.0 release asset](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.0),
-`settings/settings-v8.0.1.json` and `settings/settings-v8.0.2.json` are the unmodified
-[v8.0.1](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.1) and
-[v8.0.2](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.2) release assets.
-The v8.0.1 and v8.0.2 schemas are identical in content to v8.0.0; they are bundled so the app
+`settings/settings-v8.0.1.json`, `settings/settings-v8.0.2.json` and `settings/settings-v8.0.3.json`
+are the unmodified
+[v8.0.1](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.1),
+[v8.0.2](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.2) and
+[v8.0.3](https://github.com/SmartParksOrg/smartparks-opencollar-edge-fw-public/releases/tag/v8.0.3) release assets.
+The v8.0.1, v8.0.2 and v8.0.3 schemas are identical in content to v8.0.0; they are bundled so the app
 selects the latest patch release and shows its firmware notes. Bundled DFU releases live in
 `assets/dfu/releases/open-collar-v8.0.<patch>/` and `assets/dfu/releases/air-quality-v8.0.<patch>/`.
 
