@@ -48,8 +48,8 @@ Schema identical to v8.0.0/v8.0.1/v8.0.2; DFU bundles for open-collar (15 varian
 air-quality (4 variants) added. v8.0.3 restores error_ublox in status messages when the GPS
 fix retries are exhausted. Verify on SP051307: the app auto-selects settings-v8.0.3.json on a
 v8.0.3 device, the built-in DFU list offers 8.0.3 for the device's hardware, the 8.0.3 notes
-show, and a DFU from 8.0.2 to 8.0.3 completes with automatic reconnect. The v8.0.2 bundle
-(2026-09-26) was never verified on hardware; the same checks on 8.0.3 cover it.
+show, and a DFU from 8.0.2 to 8.0.3 completes with automatic reconnect. The v8.0.2 DFU bundles
+were removed on 2026-10-07 (never verified on hardware); the built-in list now goes 8.0.1 -> 8.0.3.
 
 
 ## Partial raw logs (hardware test pending)

@@ -106,6 +106,9 @@ are the unmodified
 The v8.0.1, v8.0.2 and v8.0.3 schemas are identical in content to v8.0.0; they are bundled so the app
 selects the latest patch release and shows its firmware notes. Bundled DFU releases live in
 `assets/dfu/releases/open-collar-v8.0.<patch>/` and `assets/dfu/releases/air-quality-v8.0.<patch>/`.
+The v8.0.2 DFU bundles were removed on 2026-10-07 so the built-in list offers v8.0.3, which
+fixes the missing `error_ublox` status flag; the v8.0.2 settings schema stays so devices still
+on 8.0.2 can be read and updated.
 
 - Legacy settings use `id length data`; v8 settings use `family id length data`.
 - Runtime value responses also include a family byte in v8 (currently `0xA0`).
