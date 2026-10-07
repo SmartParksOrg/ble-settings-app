@@ -356,6 +356,30 @@ async function scanPicker(tag) {
     check(`${tag} Scan card shows no browser note with Web Bluetooth present`, note.hidden, note);
   }
 }
+// The Features card: motion-triggered GPS has its own row that follows the panel switch, and
+// schedule starts are shown in local time rather than UTC.
+async function featuresCard(tag) {
+  const card = () => evaluate(`(() => { renderFeatures(); return Array.from(document.querySelectorAll('#features-list .feature-item')).map(el => ({
+    name: el.querySelector('.feature-name').textContent, status: el.querySelector('.feature-status').textContent, enabled: el.classList.contains('enabled'),
+    detail: Array.from(el.querySelectorAll('.feature-detail span')).map(sp => sp.textContent) })); })()`);
+  const row = (rows, name) => rows.find(r => r.name === name);
+  const before = await card();
+  await clickIfNot(panelToggle('enable_motion_trig_gps'));
+  await sleep(60);
+  const motionOn = await card();
+  await dayNight();
+  const sel = panelInput('ublox_interval1_start');
+  await focus(sel); await evaluate(`${q(sel)}.select()`); await keys.backspace(); await keys.type('6'); await blur(sel);
+  const local = await card();
+  const expectedLocal = await evaluate(`formatLocalTimeValueFromUtcHour(6)`);
+  await evaluate(`(() => { const sw = document.querySelector('.panel-field-switch[data-keys~="ublox_send_interval"] input'); if (sw.checked) sw.click(); return true; })()`);
+  await sleep(60);
+  const scheduleOff = await card();
+  check(`${tag} features: motion-triggered GPS row exists and starts disabled`, row(before, 'Motion-triggered GPS') && !row(before, 'Motion-triggered GPS').enabled && row(before, 'Motion-triggered GPS').status === 'Disabled', before);
+  check(`${tag} features: the row follows the panel switch and explains the behaviour`, row(motionOn, 'Motion-triggered GPS').enabled && /still|movement/.test(row(motionOn, 'Motion-triggered GPS').detail.join(' ')), row(motionOn, 'Motion-triggered GPS'));
+  check(`${tag} features: schedule starts are shown in local time`, row(local, 'Ublox GPS').detail.some(d => d.startsWith(expectedLocal + '-')) && row(local, 'Ublox GPS').detail.some(d => /local time/.test(d)) && !row(local, 'Ublox GPS').detail.some(d => /UTC/.test(d)), { expectedLocal, detail: row(local, 'Ublox GPS').detail });
+  check(`${tag} features: with the schedule off the motion row says it has no effect`, row(scheduleOff, 'Motion-triggered GPS').enabled && row(scheduleOff, 'Motion-triggered GPS').detail.some(d => /No effect while scheduled/.test(d)) && !row(scheduleOff, 'Ublox GPS').enabled, row(scheduleOff, 'Motion-triggered GPS'));
+}
 async function noBluetoothNote(tag) {
   await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
   const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
@@ -373,7 +397,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

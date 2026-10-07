@@ -195,6 +195,11 @@ settings blocks are hidden because the panels edit those settings now.
   the first edited field, and a small Disconnect button. Tapping the name scrolls back to
   the top. The bar hides on the DFU page and while disconnected; on narrow screens the
   firmware version and then the battery are dropped.
+- The Features card (the at-a-glance list above the panels) has a "Motion-triggered GPS" row
+  of its own, since that switch is easy to leave on by accident and the GPS row only reflects
+  the schedule. Its detail follows the Positioning panel's wording and says when the switch has
+  no effect because scheduled fixes are off. Schedule starts in the card are shown in the
+  browser's local time, not UTC, like the panels and the settings list.
 - The HEX composer mounts the same panels above its settings list. Editing a value in a
   panel ticks that setting for inclusion in the payload; unticking it in the list leaves it
   out again. Panel values that are not included show the firmware default.

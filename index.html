@@ -7088,6 +7088,38 @@
       };
     }
 
+    // Motion-triggered GPS is a switch of its own, easy to leave on by accident, so it gets its
+    // own row. The detail follows the Positioning panel's wording, including the firmware rule
+    // that it has no effect while scheduled fixes are off.
+    function getMotionTriggerState() {
+      const state = getBooleanFeatureState(['enable_motion_trig_gps']);
+      if (!state) {
+        return null;
+      }
+      const num = key => {
+        const settingKey = getFirstAvailableSettingKey([key]);
+        return settingKey ? parseNumberSettingValue(getSettingValueByKey(settingKey)) : 0;
+      };
+      const ublox = getUbloxGpsState();
+      const windowSeconds = num('gps_triggered_interval');
+      const needed = num('gps_motion_triggered_min_num_of_triggers_per_interval');
+      const skips = num('gps_skipped_triggered_interval');
+      const lines = [];
+      if (!state.enabled) {
+        lines.push('Scheduled fixes are taken whether the tracker moves or not');
+      } else if (windowSeconds > 0 && needed > 0) {
+        lines.push(`Extra fix after ${needed} movement${needed === 1 ? '' : 's'} within ${formatUbloxInterval(windowSeconds)}`);
+      } else if (skips > 0) {
+        lines.push(`Skips up to ${skips} scheduled fix${skips === 1 ? '' : 'es'} while still`);
+      } else {
+        lines.push('Scheduled fixes are still taken while the tracker is still');
+      }
+      if (state.enabled && ublox && !ublox.enabled) {
+        lines.push('No effect while scheduled GPS fixes are off');
+      }
+      return { ...state, detail: lines.map(line => `<span>${escapeHtml(line)}</span>`).join('') };
+    }
+
     function getVhfFeatureState() {
       const state = getBooleanFeatureState(['vhf_enable', 'vhf_enabled']);
       if (!state) {
@@ -7105,9 +7137,11 @@
       };
     }
 
-    function formatUtcHourLabel(hourRaw) {
+    // Schedule starts are stored as whole UTC hours; the Features card shows them in the
+    // browser's local time, like the panels and the settings list do.
+    function formatFeatureTimeLabel(hourRaw) {
       const hour = Math.max(0, Math.min(23, Math.round(parseNumberSettingValue(hourRaw))));
-      return `${String(hour).padStart(2, '0')}:00`;
+      return formatLocalTimeValueFromUtcHour(hour);
     }
 
     function formatScheduleInterval(secondsRaw) {
@@ -7122,7 +7156,7 @@
       if (!schedule) {
         return '';
       }
-      const multipleLabel = schedule.multipleIntervals ? 'Multiple intervals enabled' : 'Multiple intervals disabled';
+      const multipleLabel = schedule.multipleIntervals ? 'Multiple intervals enabled (local time)' : 'Multiple intervals disabled';
       if (!schedule.multipleIntervals) {
         const intervalLabel = schedule.interval1 > 0
           ? `Every ${formatScheduleInterval(schedule.interval1)}`
@@ -7132,8 +7166,8 @@
           `<span>${escapeHtml(multipleLabel)}</span>`
         ].join('');
       }
-      const firstStart = formatUtcHourLabel(schedule.interval1Start);
-      const secondStart = formatUtcHourLabel(schedule.interval2Start);
+      const firstStart = formatFeatureTimeLabel(schedule.interval1Start);
+      const secondStart = formatFeatureTimeLabel(schedule.interval2Start);
       return [
         `<span>${escapeHtml(`${firstStart}-${secondStart} every ${formatScheduleInterval(schedule.interval1)}`)}</span>`,
         `<span>${escapeHtml(`${secondStart}-${firstStart} every ${formatScheduleInterval(schedule.interval2)}`)}</span>`,
@@ -7145,6 +7179,8 @@
       return [
         'ublox_send_interval', 'ublox_multiple_intervals', 'ublox_send_interval_2',
         'ublox_interval1_start', 'ublox_interval2_start',
+        'enable_motion_trig_gps', 'gps_triggered_interval',
+        'gps_motion_triggered_min_num_of_triggers_per_interval', 'gps_skipped_triggered_interval',
         'satellite_enabled', 'satellite_send_interval', 'satellite_multiple_intervals',
         'satellite_send_interval2', 'satellite_interval1_start', 'satellite_send_interval2_start',
         'vhf_enable', 'vhf_enabled', 'vhf_interval1', 'vhf_interval2',
@@ -7169,6 +7205,10 @@
           settingKey: ubloxSettingKey,
           detail: formatMultipleIntervalDetail(ublox.schedule)
         },
+        (() => {
+          const state = getMotionTriggerState();
+          return state && { name: 'Motion-triggered GPS', state, settingKey: state.settingKey, detail: state.detail };
+        })(),
         satellite && satelliteSettingKey && {
           name: 'Satellite',
           state: satellite,
