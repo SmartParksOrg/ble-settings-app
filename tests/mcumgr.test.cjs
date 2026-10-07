@@ -109,6 +109,30 @@ test('a rejected GATT write does not poison later writes', async () => {
     assert.equal(characteristic.writes.length, 1);
 });
 
+test('writes fall back to writeValueWithResponse and then writeValue when writeValueWithoutResponse is missing (Bluefy on iOS)', async () => {
+    const MCUManager = loadMcuManager();
+    const writesVia = async (characteristic) => {
+        const manager = new MCUManager({ logger: silent });
+        manager._characteristic = characteristic;
+        await manager.cmdImageState();
+        return characteristic.calls;
+    };
+    const withResponseOnly = { calls: [], async writeValueWithResponse(value) { this.calls.push(['withResponse', value.length]); } };
+    const legacyOnly = { calls: [], async writeValue(value) { this.calls.push(['writeValue', value.length]); } };
+    const both = {
+        calls: [],
+        async writeValueWithoutResponse(value) { this.calls.push(['withoutResponse', value.length]); },
+        async writeValueWithResponse(value) { this.calls.push(['withResponse', value.length]); },
+        async writeValue(value) { this.calls.push(['writeValue', value.length]); },
+    };
+    assert.deepEqual(await writesVia(withResponseOnly), [['withResponse', 8]]);
+    assert.deepEqual(await writesVia(legacyOnly), [['writeValue', 8]]);
+    assert.deepEqual(await writesVia(both), [['withoutResponse', 8]]);
+    const manager = new MCUManager({ logger: silent });
+    manager._characteristic = { calls: [] };
+    await assert.rejects(manager.cmdImageState(), /no write method/);
+});
+
 test('rejected chunk writes are retried, the MTU steps down, and acks advance the upload', async () => {
     const MCUManager = loadMcuManager();
     const manager = new MCUManager({ mtu: 240, chunkTimeout: 60000, pipelineDepth: 1, logger: silent });

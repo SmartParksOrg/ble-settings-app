@@ -2319,6 +2319,136 @@ function validateInput(key, setting, value) {
     }
 }
 
+// iOS WebKit (Safari, and third-party browsers such as Bluefy, which is the only way to use
+// Web Bluetooth on an iPhone or iPad) cannot save a Blob through an anchor download and has
+// no Wake Lock API, and Bluefy ignores manufacturerData scan filters. These helpers keep the
+// Chrome/Edge paths on Windows, Android, macOS and Linux exactly as they were and only
+// change behaviour on iOS WebKit. iPadOS reports itself as a Mac with touch points.
+function isIosWebKit() {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    if (/iPhone|iPad|iPod/.test(ua)) return true;
+    return navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1;
+}
+
+function isBluefyBrowser() {
+    return typeof navigator !== 'undefined' && /Bluefy/i.test(navigator.userAgent || '');
+}
+
+function downloadViaAnchor(filename, contents, mimeType) {
+    const blob = new Blob([contents], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function canShareFile(file) {
+    try {
+        return typeof navigator.share === 'function'
+            && typeof navigator.canShare === 'function'
+            && navigator.canShare({ files: [file] });
+    } catch (error) {
+        return false;
+    }
+}
+
+async function shareFile(filename, contents, mimeType) {
+    const file = new File([contents], filename, { type: mimeType });
+    if (!canShareFile(file)) return false;
+    try {
+        await navigator.share({ files: [file], title: filename });
+        return true;
+    } catch (error) {
+        // AbortError: the person closed the share sheet; nothing else to do.
+        if (error && error.name === 'AbortError') return true;
+        return false;
+    }
+}
+
+// On iOS a file cannot be downloaded, so the contents are shown in a dialog with a Share
+// button (the iOS share sheet lets the person save to Files, Notes or mail) and a Copy
+// button as the fallback that always works.
+function showSaveFileDialog(filename, contents, mimeType) {
+    let overlay = document.getElementById('save-file-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'save-file-overlay';
+        overlay.className = 'dfu-waiting-overlay save-file-overlay hidden';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.innerHTML = `
+          <div class="dfu-waiting-card save-file-card">
+            <div class="dfu-waiting-text" id="save-file-title">Save file</div>
+            <div class="flash-log-overlay-message" id="save-file-text"></div>
+            <textarea id="save-file-contents" class="save-file-contents" readonly spellcheck="false"></textarea>
+            <div class="ublox-fix-actions">
+              <button id="save-file-share" type="button" class="primary">Share</button>
+              <button id="save-file-copy" type="button" class="secondary">Copy</button>
+              <button id="save-file-close" type="button" class="secondary">Close</button>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#save-file-close').addEventListener('click', () => overlay.classList.add('hidden'));
+    }
+    const file = new File([contents], filename, { type: mimeType });
+    const shareButton = overlay.querySelector('#save-file-share');
+    const copyButton = overlay.querySelector('#save-file-copy');
+    const textarea = overlay.querySelector('#save-file-contents');
+    const shareable = canShareFile(file);
+    overlay.querySelector('#save-file-title').textContent = filename;
+    overlay.querySelector('#save-file-text').textContent = shareable
+        ? 'This browser cannot download files. Share it to Files, Notes or mail, or copy the contents.'
+        : 'This browser cannot download or share files. Copy the contents and paste them into Notes or a message.';
+    textarea.value = contents;
+    shareButton.classList.toggle('hidden', !shareable);
+    shareButton.onclick = async () => {
+        const shared = await shareFile(filename, contents, mimeType);
+        if (!shared) showToast('Sharing failed. Copy the contents instead.');
+    };
+    copyButton.onclick = async () => {
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(contents);
+            } else {
+                textarea.focus();
+                textarea.select();
+                document.execCommand('copy');
+            }
+            showToast('Copied to clipboard');
+        } catch (error) {
+            textarea.focus();
+            textarea.select();
+            showToast('Copy failed. Select the text and copy it by hand.');
+        }
+    };
+    overlay.classList.remove('hidden');
+}
+
+// Save a text file the way the platform allows. Chrome/Edge: a normal download, unchanged.
+// iOS WebKit: the share sheet when called from a tap (gesture: true), else the dialog.
+async function saveTextFileCompat(filename, contents, mimeType = 'text/plain', options = {}) {
+    if (!isIosWebKit()) {
+        downloadViaAnchor(filename, contents, mimeType);
+        return 'download';
+    }
+    if (options.gesture && await shareFile(filename, contents, mimeType)) {
+        return 'share';
+    }
+    showSaveFileDialog(filename, contents, mimeType);
+    return 'dialog';
+}
+
+if (typeof window !== 'undefined') {
+    window.isIosWebKit = isIosWebKit;
+    window.isBluefyBrowser = isBluefyBrowser;
+    window.saveTextFileCompat = saveTextFileCompat;
+}
+
 let toastTimeout;
 
 function showToast(message) {

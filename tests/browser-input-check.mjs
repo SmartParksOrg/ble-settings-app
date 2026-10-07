@@ -9,6 +9,13 @@
 //   python3 -m http.server 8765 --bind 127.0.0.1 &
 //   CHROME=/path/to/chrome node tests/browser-input-check.mjs http://127.0.0.1:8765
 //   CHROME=/path/to/chrome node tests/browser-input-check.mjs http://127.0.0.1:8765 mobile
+//   CHROME=/path/to/chrome node tests/browser-input-check.mjs http://127.0.0.1:8765 ios
+//
+// "ios" emulates an iPhone running Bluefy (user agent, touch, no manufacturerData filter
+// support, no file downloads) and adds checks for the iOS-only paths: the device picker is
+// opened without manufacturer data, exports open the share/copy dialog instead of a download,
+// and the Scan card explains the picker. Desktop and mobile also check that exports still
+// download through an anchor there.
 //
 // CHROME defaults to the Playwright Chromium under ~/.cache/ms-playwright. ONLY=index or
 // ONLY=composer limits the run to one page; VERBOSE=1 prints where a failed tap landed.
@@ -20,7 +27,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const base = process.argv[2];
-const mobile = process.argv[3] === 'mobile';
+const ios = process.argv[3] === 'ios';
+const mobile = process.argv[3] === 'mobile' || ios;
 const chrome = process.env.CHROME || join(process.env.HOME, '.cache/ms-playwright/chromium-1234/chrome-linux64/chrome');
 const profile = mkdtempSync(join(tmpdir(), 'cdp-'));
 const port = 9333 + Math.floor(Math.random() * 500);
@@ -66,7 +74,9 @@ await cmd('Runtime.enable');
 if (mobile) {
   await cmd('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 3, mobile: true });
   await cmd('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await cmd('Emulation.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36' });
+  await cmd('Emulation.setUserAgentOverride', { userAgent: ios
+    ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Bluefy/3.9.3'
+    : 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Mobile Safari/537.36' });
 } else {
   await cmd('Emulation.setDeviceMetricsOverride', { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
 }
@@ -295,11 +305,75 @@ async function listInterval(tag, page) {
   check(`${tag} settings list interval: typing 7 commits 420 s`, typed.hidden === '420' && typed.scheduleSwitch === true, typed);
 }
 
+// Records how a file would leave the page: anchor downloads are stubbed so nothing is written,
+// the device picker is stubbed so Scan can be exercised without Bluetooth.
+const SAVE_PROBE = `(() => { window.__downloads = []; window.__pickers = [];
+  HTMLAnchorElement.prototype.click = function () { window.__downloads.push({ name: this.download, href: String(this.href).slice(0, 5) }); };
+  navigator.bluetooth = { requestDevice: async options => { window.__pickers.push(JSON.parse(JSON.stringify(options)));
+    const error = new Error('User cancelled the requestDevice() chooser.'); error.name = 'NotFoundError'; throw error; } };
+  return true; })()`;
+const dialogState = () => evaluate(`(() => { const o = document.getElementById('save-file-overlay'); if (!o) return { present: false };
+  return { present: true, hidden: o.classList.contains('hidden'), title: o.querySelector('#save-file-title').textContent, text: o.querySelector('#save-file-text').textContent,
+    contents: o.querySelector('#save-file-contents').value.slice(0, 40), shareHidden: o.querySelector('#save-file-share').classList.contains('hidden') }; })()`);
+async function exportPath(tag, page) {
+  await evaluate(SAVE_PROBE);
+  if (page === '/index.html') {
+    await evaluate(`(() => { discardPendingChanges(); return true; })()`); // export refuses while edits are pending
+    await evaluate(`exportToJson()`);
+  } else {
+    await evaluate(`(() => { const s = settingsData.settings.ublox_send_interval; includeSetting(s); setInputValue(s.id, '300'); __onInputChanged(s.id); exportToJson('probe.json'); return true; })()`);
+  }
+  await sleep(100);
+  const downloads = await evaluate(`window.__downloads`);
+  const dialog = await dialogState();
+  if (ios) {
+    check(`${tag} export on iOS opens the save dialog with the JSON, no download`, downloads.length === 0 && dialog.present && !dialog.hidden && /\.json$/.test(dialog.title) && dialog.contents.startsWith('{') && /copy/i.test(dialog.text), { downloads, dialog });
+    await focus('#save-file-close');
+    const closed = await dialogState();
+    check(`${tag} export on iOS: Close hides the dialog`, closed.hidden, closed);
+  } else {
+    check(`${tag} export downloads a .json through an anchor`, downloads.length === 1 && /\.json$/.test(downloads[0].name) && downloads[0].href === 'blob:' && !(dialog.present && !dialog.hidden), { downloads, dialog });
+  }
+}
+async function scanPicker(tag) {
+  await evaluate(SAVE_PROBE);
+  // Headless Chromium on Linux has no navigator.bluetooth at load; recompute the note with the stub in place.
+  await evaluate(`(() => { initBrowserSupportNote(); document.body.classList.remove('connected'); document.getElementById('device-name-filter').value = ''; return true; })()`);
+  await focus('#connect-button');
+  await sleep(150);
+  await evaluate(`(() => { document.getElementById('device-name-filter').value = 'SP05, SP06'; return true; })()`);
+  await focus('#connect-button');
+  await sleep(150);
+  const pickers = await evaluate(`window.__pickers`);
+  const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), info: n.classList.contains('info'), text: n.textContent }; })()`);
+  const hasManufacturer = p => Array.isArray(p.filters) && p.filters.some(f => f.manufacturerData);
+  if (ios) {
+    check(`${tag} Scan on iOS: no name filter opens the picker for all devices, without manufacturer data`, pickers.length === 2 && pickers[0].acceptAllDevices === true && !pickers[0].filters && Array.isArray(pickers[0].optionalServices), pickers);
+    check(`${tag} Scan on iOS: name prefixes become plain namePrefix filters`, pickers.length === 2 && !hasManufacturer(pickers[1]) && JSON.stringify(pickers[1].filters) === JSON.stringify([{ namePrefix: 'SP05' }, { namePrefix: 'SP06' }]), pickers);
+    check(`${tag} Scan card on iOS explains the picker`, !note.hidden && note.info && /nearby Bluetooth device/.test(note.text), note);
+  } else {
+    check(`${tag} Scan keeps the manufacturer-data filter`, pickers.length === 2 && hasManufacturer(pickers[0]) && hasManufacturer(pickers[1]) && pickers[1].filters.length === 2 && pickers[1].filters[0].namePrefix === 'SP05', pickers);
+    check(`${tag} Scan card shows no browser note with Web Bluetooth present`, note.hidden, note);
+  }
+}
+async function noBluetoothNote(tag) {
+  await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
+  const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
+  const toastBefore = await evaluate(`document.getElementById('toast').innerText`);
+  await evaluate(`(() => { document.body.classList.remove('connected'); return true; })()`);
+  await focus('#connect-button');
+  await sleep(100);
+  const toast = await evaluate(`document.getElementById('toast').innerText`);
+  if (ios) check(`${tag} without Web Bluetooth on iOS the note links to Bluefy`, !note.hidden && /Bluefy/.test(note.text) && /apps\.apple\.com/.test(note.link || ''), note);
+  else check(`${tag} without Web Bluetooth the note names Chrome, Edge and Bluefy`, !note.hidden && /Chrome or Edge/.test(note.text) && /Bluefy/.test(note.text), note);
+  check(`${tag} Scan without Web Bluetooth shows a toast instead of throwing`, /not available/.test(toast) && toast !== toastBefore, { toast });
+}
+
 try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
-    const tag = `[${page.slice(1, -5)} ${mobile ? 'mobile' : 'desktop'}]`;
-    const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch);
+    const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
+    const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }
@@ -307,5 +381,5 @@ try {
   }
 } catch (error) { console.error('ERROR', error.message); die(3); }
 const failed = results.filter(r => !r.ok).length;
-console.log(`${results.length - failed}/${results.length} checks passed`);
+console.log(`${results.length - failed}/${results.length} checks passed (${ios ? 'ios' : mobile ? 'mobile' : 'desktop'})`);
 die(failed ? 1 : 0);

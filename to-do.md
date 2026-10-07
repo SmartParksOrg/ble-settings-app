@@ -63,3 +63,23 @@ capture to IndexedDB, and offer recovery on the next visit. To verify on SP05130
    found" with the message count; "Save partial log" must produce the file.
 3. Feed a PARTIAL file to the raw logs decoder; only the last record may be truncated.
 4. Retry after reconnecting must download the full set again (device keeps logs until erased).
+
+## iPhone and iPad through Bluefy (added 2026-10-07, hardware test pending)
+
+The app now adapts to iOS WebKit: name-only or accept-all device picker (Bluefy ignores
+manufacturerData filters), with-response GATT writes in the DFU client, share sheet or copy
+dialog instead of file downloads, a Scan-card notice, Bluefy's setScreenDimEnabled as the DFU
+wake lock, and safe-area padding on the bottom bars. Headless checks pass under an iPhone user
+agent, but nothing has run on a real iPhone yet. Verify in Bluefy on an iPhone against SP051307:
+
+1. Open the app, tap Scan: the picker opens (all devices, or only SP05* with that prefix typed),
+   the collar connects, status and settings load, Apply writes and reads back.
+2. Export settings: the share sheet opens; saving to Files produces the JSON. Import the file
+   back: zero changes.
+3. Download all logs: at the end the save dialog opens; Share saves the file, and the "Save
+   file" button in the result overlay reopens it. If sharing files is unavailable, Copy works.
+4. DFU to the next release: the upload runs (expect it to be slower than on Android), the
+   device reboots and reconnects automatically, and the screen stays awake during the upload.
+   If the screen still dims, flip the polarity of setScreenDimEnabled in dfu/dfu.js.
+5. Lose the connection on purpose: the Reconnect overlay's picker opens without manufacturer
+   data and finds the collar.

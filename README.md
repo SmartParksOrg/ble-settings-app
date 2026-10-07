@@ -29,6 +29,70 @@ Adding a new settings.json version:
 - update the expected file in `tests/settings-protocol.test.cjs` ("schema selection")
 - add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
 
+## Using the app on an iPhone or iPad
+
+Safari, Chrome and every other browser on iOS cannot talk to Bluetooth devices, so the app
+does not work in them. Use the free Bluefy app instead; it is a web browser with Bluetooth
+support.
+
+1. Install **Bluefy – Web BLE Browser** from the App Store:
+   https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055
+2. Open Bluefy and enter the app address in its address bar:
+   https://smartparksorg.github.io/ble-settings-app/
+   (opening the address in Safari shows a notice with a link to Bluefy instead of a Scan that works).
+3. Turn on Bluetooth on the phone and allow Bluefy to use it when iOS asks.
+4. Tap **Scan**. The list shows every Bluetooth device nearby, not only collars. To shorten it,
+   open **Scan settings** first and type the start of the collar name, for example `SP05`.
+5. Pick the collar. From here the app works as on Android: settings, panels, logs and DFU.
+
+Things that work differently on an iPhone:
+
+- **Export settings** and **Save partial log** open the iOS share sheet instead of downloading a
+  file. Choose **Save to Files** (or Notes, Mail, AirDrop). If the share sheet does not appear,
+  a dialog shows the file contents with a **Copy** button; paste them into Notes.
+- A finished **Download all logs** shows the same dialog, and the result box keeps a
+  **Save file** button to reopen it.
+- **Import settings** uses the iOS file picker; pick the JSON you saved to Files earlier.
+- **DFU** is slower than on Android (each packet waits for a reply). Keep Bluefy in the
+  foreground until the collar has rebooted and reconnected.
+- Bluefy does not install the app on the home screen or keep an offline copy; it needs an
+  internet connection to load the page.
+
+If something does not work, open the app menu, turn on **Debug** and send the log along with
+the iPhone model, iOS version and Bluefy version (Bluefy settings show it).
+
+## Browser support details
+
+The app needs Web Bluetooth: Chrome or Edge on Windows, Android, macOS and Linux, and
+[Bluefy](https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055) on iOS, a WebKit
+browser with its own Web Bluetooth stack. The app detects iOS WebKit (and a missing
+`navigator.bluetooth`) and adapts; nothing changes for Chrome and Edge:
+
+- The Scan card shows a notice: a link to Bluefy when Web Bluetooth is missing on iOS, a hint
+  to use Chrome or Edge elsewhere, and on Bluefy an explanation that the picker lists every
+  nearby device. Scan without Web Bluetooth shows a toast instead of throwing.
+- Bluefy ignores `manufacturerData` scan filters (a filter carrying one matches nothing), so on
+  iOS the picker is opened with the typed name prefixes only, or with `acceptAllDevices`. Other
+  browsers keep the manufacturer filter; a `TypeError` from an unsupported filter shape retries
+  the same relaxed way, and a cancelled picker is never reopened (`requestUartDevice`).
+- Bluefy has no `writeValueWithoutResponse`. The main page already preferred with-response
+  writes; `dfu/mcumgr.js` now falls back to `writeValueWithResponse` and then `writeValue`, so
+  DFU works there too (slower, one round trip per SMP packet; the usual MTU step-down applies).
+- iOS cannot download a Blob through an anchor. `saveTextFileCompat` in `functions.js` keeps the
+  download on other platforms; on iOS it opens the share sheet when called from a tap (export,
+  save partial log) and otherwise a dialog with the file contents, a Share button (when the
+  browser can share files) and a Copy button. A finished log download shows a "Save file"
+  button in the result overlay so the share sheet can be opened from a tap.
+- The DFU wake lock falls back to Bluefy's `bluetooth.setScreenDimEnabled(false)` where the
+  Wake Lock API is missing.
+- `viewport-fit=cover` plus `env(safe-area-inset-bottom)` padding keep the pending-changes bar
+  and the bottom bars above the iPhone home indicator.
+
+`tests/browser-input-check.mjs ... ios` emulates an iPhone running Bluefy (user agent, touch,
+stubbed device picker, stubbed downloads) and checks these paths; the desktop and mobile runs
+check that exports still download through an anchor and that the manufacturer filter stays.
+Verification on a real iPhone with Bluefy is still open (see to-do.md).
+
 ## Firmware v8 settings support
 
 The app and HEX composer support both the legacy settings protocol and the family-based
@@ -77,7 +141,8 @@ node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-e
 ```
 
 `tests/browser-input-check.mjs` drives both pages in headless Chromium with real key, mouse and
-touch events (desktop viewport and an emulated phone) and checks that every kind of panel input
+touch events (desktop viewport, an emulated Android phone, and an emulated iPhone running Bluefy
+with the third argument `ios`) and checks that every kind of panel input
 stays editable while a value is retyped, that the settings-list interval never turns an empty field
 into 0, and that the one-tap Apply flow writes, reads back and reports correctly against a fake
 device. It needs a local server and a Chromium binary (`CHROME=...`), see the header of the file.

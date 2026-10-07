@@ -357,7 +357,7 @@ class MCUManager {
         // console.log('>'  + message.map(x => x.toString(16).padStart(2, '0')).join(' '));
         this._writeQueue = this._writeQueue.catch(() => {}).then(async () => {
             try {
-                await this._characteristic.writeValueWithoutResponse(Uint8Array.from(message));
+                await this._writeCharacteristic(Uint8Array.from(message));
             } catch (error) {
                 this._logger.error(`GATT write failed: ${error && error.message ? error.message : error}`);
                 throw error;
@@ -365,6 +365,22 @@ class MCUManager {
         });
         await this._writeQueue;
         this._seq = (this._seq + 1) % 256;
+    }
+    // SMP prefers write-without-response (no round trip per packet). Not every Web
+    // Bluetooth implementation has it: Bluefy on iOS only offers writeValue(), so fall
+    // back through the with-response variants rather than failing the whole DFU.
+    _writeCharacteristic(bytes) {
+        const characteristic = this._characteristic;
+        if (typeof characteristic.writeValueWithoutResponse === 'function') {
+            return characteristic.writeValueWithoutResponse(bytes);
+        }
+        if (typeof characteristic.writeValueWithResponse === 'function') {
+            return characteristic.writeValueWithResponse(bytes);
+        }
+        if (typeof characteristic.writeValue === 'function') {
+            return characteristic.writeValue(bytes);
+        }
+        return Promise.reject(new Error('GATT characteristic has no write method'));
     }
     _notification(event) {
         const value = event.target.value;

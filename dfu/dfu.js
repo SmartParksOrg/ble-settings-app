@@ -986,8 +986,31 @@ function stopReconnectCountdown(options = {}) {
   }
 }
 
+// iOS WebKit has no Wake Lock API. Bluefy offers bluetooth.setScreenDimEnabled(enabled)
+// instead ("allows web apps to prevent the device from sleep"); passing false asks it not
+// to dim. If the polarity turns out to be the other way round the call is harmless: the
+// screen then behaves as it does today.
+function setBluefyScreenDim(enabled) {
+  const bluetooth = typeof navigator !== 'undefined' ? navigator.bluetooth : null;
+  if (!bluetooth || typeof bluetooth.setScreenDimEnabled !== 'function') return false;
+  try {
+    bluetooth.setScreenDimEnabled(enabled);
+    return true;
+  } catch (error) {
+    logDfu(`Bluefy screen dim control failed: ${error.message || error}`);
+    return false;
+  }
+}
+
 async function acquireWakeLock() {
-  if (typeof navigator === 'undefined' || !navigator.wakeLock || dfuState.wakeLock) return;
+  if (typeof navigator === 'undefined' || dfuState.wakeLock) return;
+  if (!navigator.wakeLock) {
+    if (setBluefyScreenDim(false)) {
+      dfuState.wakeLock = { bluefy: true, release: async () => { setBluefyScreenDim(true); } };
+      logDfu('Screen kept awake through Bluefy.');
+    }
+    return;
+  }
   try {
     const lock = await navigator.wakeLock.request('screen');
     dfuState.wakeLock = lock;

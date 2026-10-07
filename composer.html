@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Settings HEX Composer</title>
   <script>
     if ('serviceWorker' in navigator) {
@@ -531,14 +531,8 @@
 
     function downloadSettingsJson(settings, filename) {
       const json = JSON.stringify(settings, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      // A plain download on Chrome/Edge; the share sheet or a copy dialog on iOS.
+      saveTextFileCompat(filename, json, 'application/json', { gesture: true });
     }
 
     function exportToJson(filename = 'settings.json') {

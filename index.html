@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>OpenCollar Edge BLE Web Connect</title>
   <script>
     (function () {
@@ -171,6 +171,7 @@
         <section class="section section-card scan-card">
           <div class="section-card-title"><span class="icon bluetooth" aria-hidden="true"></span>Scan</div>
           <div class="section-card-body">
+            <div id="browser-support-note" class="browser-support-note hidden"></div>
             <div class="primary-actions">
               <button id="connect-button" class="scan-button">Scan</button>
             </div>
@@ -2298,16 +2299,9 @@
       return flashLogDbRequest('readonly', store => store.get(FLASH_LOG_RECORD_KEY)).catch(() => null);
     }
 
-    function saveTextFile(filename, contents) {
-      const blob = new Blob([contents], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    // A download on Chrome/Edge; on iOS the share sheet (from a tap) or a copy dialog.
+    function saveTextFile(filename, contents, options = {}) {
+      return saveTextFileCompat(filename, contents, 'text/plain', options);
     }
 
     function buildPartialFlashLogFilename(snapshot) {
@@ -2319,13 +2313,13 @@
       return `raw_logs-${logType}-${deviceName}_${timestamp}_PARTIAL-${count}msgs.txt`;
     }
 
-    function savePartialFlashLog(snapshot) {
+    function savePartialFlashLog(snapshot, options = {}) {
       if (!snapshot || !Array.isArray(snapshot.lines) || !snapshot.lines.length) {
         showToast('No log data was received yet.');
         return null;
       }
       const filename = buildPartialFlashLogFilename(snapshot);
-      saveTextFile(filename, snapshot.lines.join('\n'));
+      saveTextFile(filename, snapshot.lines.join('\n'), options);
       const count = snapshot.decodedMessages > 0 ? snapshot.decodedMessages : snapshot.lines.length;
       log(`Partial flash log saved (${count} messages, ${snapshot.lines.length} packets). File: ${filename}`);
       return filename;
@@ -2336,7 +2330,7 @@
         flashLogState.lines.push(flashLogState.buffer);
         flashLogState.buffer = '';
       }
-      const filename = savePartialFlashLog(flashLogSnapshot(false));
+      const filename = savePartialFlashLog(flashLogSnapshot(false), { gesture: true });
       if (filename) {
         flashLogState.lastFilename = filename;
         const detailEl = document.getElementById('flash-log-overlay-message');
@@ -2366,7 +2360,7 @@
       text.textContent = `A log download from ${snapshot.deviceName || 'a device'} (${snapshot.logTypeLabel || 'all'}) was interrupted on ${when}. ${count} messages were received and are still stored in this browser.`;
       const close = () => overlay.classList.add('hidden');
       saveBtn.onclick = () => {
-        savePartialFlashLog(snapshot);
+        savePartialFlashLog(snapshot, { gesture: true });
         clearPersistedFlashLogCapture();
         close();
       };
@@ -2416,7 +2410,16 @@
       cancelBtn.classList.add('hidden');
       eraseBtn.classList.remove('hidden');
       okBtn.classList.remove('hidden');
-      document.getElementById('flash-log-save-partial')?.classList.add('hidden');
+      const saveBtn = document.getElementById('flash-log-save-partial');
+      if (saveBtn) {
+        // On iOS the file was not downloaded; keep a button that reopens the share/copy dialog.
+        const canReshare = isIosWebKit() && Boolean(flashLogState.lastContents);
+        saveBtn.textContent = canReshare ? 'Save file' : 'Save partial log';
+        saveBtn.classList.toggle('hidden', !canReshare);
+        if (canReshare) {
+          detailEl.textContent = `File: ${filename}`;
+        }
+      }
       setFlashLogOverlayVisible(true);
     }
 
@@ -2489,7 +2492,10 @@
           ? `${received} messages were received before the download stopped and were saved as ${filename}. The device still holds all logs; Retry downloads them again from the start.`
           : `${received} messages were received before the download stopped. Use "Save partial log" to keep them.`;
         messageEl.classList.remove('warning');
-        if (savePartialBtn) savePartialBtn.classList.remove('hidden');
+        if (savePartialBtn) {
+          savePartialBtn.textContent = 'Save partial log';
+          savePartialBtn.classList.remove('hidden');
+        }
       } else {
         messageEl.textContent = 'No log data was received. You can retry the download or cancel.';
         messageEl.classList.add('warning');
@@ -2505,6 +2511,7 @@
     }
 
     function startFlashLogCapture({ logTypeLabel = 'all', requestMode = 'all', requestedPort = 0, expectedTotal = null } = {}) {
+      flashLogState.lastContents = '';
       clearFlashLogInactivityTimeout();
       flashLogState = {
         active: true,
@@ -2988,13 +2995,9 @@
       flashLogState.lastFilename = filename;
 
       const contents = lines.join('\n');
-      const blob = new Blob([contents], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
-      URL.revokeObjectURL(url);
+      flashLogState.lastContents = contents;
+      // Not called from a tap, so on iOS this opens the copy/share dialog instead of a download.
+      saveTextFile(filename, contents, { gesture: false });
 
       log(`Flash log download complete (${lines.length} lines). File: ${filename}${reason ? ` (${reason})` : ''}`);
       flashLogState.active = false;
@@ -3329,11 +3332,6 @@
       }
 
       const json = JSON.stringify(settings, null, 2);
-      const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
       const deviceName = (getInputValue(settingsData.settings?.device_name?.id) || 'device')
         .toString()
         .trim()
@@ -3342,9 +3340,7 @@
       const now = new Date();
       const pad = (value) => String(value).padStart(2, '0');
       const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-      a.download = `${deviceName}_${timestamp}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      saveTextFileCompat(`${deviceName}_${timestamp}.json`, json, 'application/json', { gesture: true });
     }
 
     function showImportPreviewModal({ title, subtitle, rows, note, confirmLabel = 'Import' }) {
@@ -7512,13 +7508,7 @@
     async function requestReconnectScan() {
       const filters = buildReconnectFilters();
       try {
-        const selectedDevice = await navigator.bluetooth.requestDevice({
-          filters,
-          optionalServices: [
-            '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-            '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
-          ]
-        });
+        const selectedDevice = await requestUartDevice(filters);
         setBleReconnectOverlayVisible(false);
         await connectToDevice(selectedDevice);
       } catch (error) {
@@ -7578,7 +7568,42 @@
     }
     window.connectToDevice = connectToDevice;
 
+    const UART_OPTIONAL_SERVICES = [
+      '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+      '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
+    ];
+
+    // Opens the browser's device picker. Chrome and Edge get the filters as given. Bluefy on
+    // iOS ignores manufacturerData filters (a filter that carries one matches nothing), so
+    // there the manufacturer part is dropped: name filters alone when the person typed any,
+    // otherwise every nearby device. A TypeError from an unsupported filter shape retries the
+    // same way; a cancelled picker (NotFoundError) is never reopened.
+    async function requestUartDevice(filters) {
+      const nameOnly = filters
+        .map(({ manufacturerData, ...rest }) => rest)
+        .filter(filter => Object.keys(filter).length > 0);
+      const relaxed = nameOnly.length
+        ? { filters: nameOnly, optionalServices: UART_OPTIONAL_SERVICES }
+        : { acceptAllDevices: true, optionalServices: UART_OPTIONAL_SERVICES };
+      if (isIosWebKit()) {
+        return navigator.bluetooth.requestDevice(relaxed);
+      }
+      try {
+        return await navigator.bluetooth.requestDevice({ filters, optionalServices: UART_OPTIONAL_SERVICES });
+      } catch (error) {
+        if (error && error.name === 'TypeError') {
+          log('Device filter not supported by this browser; retrying without manufacturer data.');
+          return navigator.bluetooth.requestDevice(relaxed);
+        }
+        throw error;
+      }
+    }
+
     connectButton.addEventListener('click', async function () {
+      if (!navigator.bluetooth) {
+        showToast('Web Bluetooth is not available in this browser.');
+        return;
+      }
       const manufacturerFilter = {
         manufacturerData: [{ companyIdentifier: 0x0A61 }]
       };
@@ -7595,13 +7620,7 @@
       }
 
       try {
-        const selectedDevice = await navigator.bluetooth.requestDevice({
-          filters,
-          optionalServices: [
-            '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-            '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
-          ]
-        });
+        const selectedDevice = await requestUartDevice(filters);
         await connectToDevice(selectedDevice);
       } catch (error) {
         log(`Error: ${error.message}`, true);
@@ -7609,6 +7628,30 @@
     });
 
     stickyStatus.init();
+
+    // Tell people on a browser without Web Bluetooth where to go, and tell Bluefy users on
+    // iOS what to expect from the device picker.
+    function initBrowserSupportNote() {
+      const note = document.getElementById('browser-support-note');
+      if (!note) return;
+      const bluefyLink = '<a href="https://apps.apple.com/app/bluefy-web-ble-browser/id1492822055" target="_blank" rel="noopener noreferrer">Bluefy</a>';
+      if (!navigator.bluetooth) {
+        note.classList.remove('info');
+        note.innerHTML = isIosWebKit()
+          ? `This browser cannot talk to Bluetooth devices. On iPhone and iPad, open this page in the ${bluefyLink} app from the App Store.`
+          : 'This browser cannot talk to Bluetooth devices. Use Chrome or Edge on Windows, Android, macOS or Linux. On iPhone and iPad, use the Bluefy app.';
+        note.classList.remove('hidden');
+        return;
+      }
+      if (isIosWebKit()) {
+        note.classList.add('info');
+        note.textContent = 'On iPhone and iPad the device list shows every nearby Bluetooth device. Type the start of the device name in Scan settings to narrow it down.';
+        note.classList.remove('hidden');
+        return;
+      }
+      note.classList.add('hidden');
+    }
+    initBrowserSupportNote();
 
     document.getElementById('disconnect-button').addEventListener('click', function () {
       const inDfuMode = document.body.classList.contains('dfu-active');
@@ -8712,6 +8755,10 @@
     const flashLogSavePartialButton = document.getElementById('flash-log-save-partial');
     if (flashLogSavePartialButton) {
       flashLogSavePartialButton.addEventListener('click', () => {
+        if (!flashLogState.active && flashLogState.lastContents) {
+          saveTextFile(flashLogState.lastFilename || buildFlashLogFilename(), flashLogState.lastContents, { gesture: true });
+          return;
+        }
         saveCurrentPartialFlashLog();
       });
     }
