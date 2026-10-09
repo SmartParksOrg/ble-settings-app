@@ -98,6 +98,7 @@ const dfuState = {
   file: null,
   fileData: null,
   fileImageInfo: null,
+  fileVersion: null,
   checkResult: DfuFileCheckResult.emptyFileName,
   bundledEntries: [],
   bundledEntriesAll: [],
@@ -670,6 +671,26 @@ function versionCompare(versionA, versionB) {
     if (diff < 0) return -1;
   }
   return 0;
+}
+
+// The MCUboot header of every OpenCollar build carries version 0.0.0, so the header is no
+// source for the version people see. The release version is in the file name
+// (open-collar-<hw>-hv<x.y.z>-v<major.minor.patch>.bin); a header version only counts when
+// it holds a real number.
+function firmwareVersionFromFileName(fileName) {
+  const match = String(fileName || '').match(/-v(\d+\.\d+\.\d+)(?:[-_.][a-z0-9_.-]*?)?\.(?:bin|zip)$/i);
+  return match ? match[1] : null;
+}
+
+function meaningfulVersion(version) {
+  const text = version == null ? '' : String(version).trim();
+  if (!text || /^0+(\.0+)*$/.test(text)) return null;
+  return text;
+}
+
+// The version of the selected firmware file: from its name, else from a non-zero header.
+function selectedFirmwareVersion() {
+  return dfuState.fileVersion || meaningfulVersion(dfuState.fileImageInfo && dfuState.fileImageInfo.version);
 }
 
 function checkDfuFileName(fileName, deviceType, deviceFwVersion, deviceHwType, deviceHwVersion) {
@@ -1526,6 +1547,7 @@ function resetDfuSession() {
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
+  dfuState.fileVersion = null;
   dfuState.checkResult = DfuFileCheckResult.emptyFileName;
   dfuState.selectionInProgress = false;
   dfuState.selectionRequestId += 1;
@@ -1548,6 +1570,7 @@ function cancelDfuSelection() {
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
+  dfuState.fileVersion = null;
   dfuState.checkResult = DfuFileCheckResult.emptyFileName;
   dfuState.userConfirmed = false;
   resetFirmwarePresenceState();
@@ -1689,6 +1712,7 @@ async function handleFileSelection(event) {
     dfuState.file = null;
     dfuState.fileData = null;
     dfuState.fileImageInfo = null;
+    dfuState.fileVersion = null;
     dfuState.selectionInProgress = false;
     clearPendingDfu();
     elements.fileStatus.textContent = 'No file selected.';
@@ -1703,6 +1727,7 @@ async function handleFileSelection(event) {
   }
 
   dfuState.file = file;
+  dfuState.fileVersion = firmwareVersionFromFileName(file.name);
   resetFirmwarePresenceState();
   resetConfirmationState();
   elements.fileStatus.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
@@ -2155,7 +2180,7 @@ function renderImageState(state) {
           <span>${image.active ? 'Active' : 'Standby'}</span>
         </div>
         <div class="dfu-image-slot-grid">
-          <div>Version: <span>${image.version || 'unknown'}</span></div>
+          <div>Version: <span>${meaningfulVersion(image.version) || 'not set in header'}</span></div>
           <div>Bootable: <span>${image.bootable ? 'Yes' : 'No'}</span></div>
           <div>Confirmed: <span>${image.confirmed ? 'Yes' : 'No'}</span></div>
           <div>Pending: <span>${image.pending ? 'Yes' : 'No'}</span></div>
@@ -2235,9 +2260,8 @@ async function refreshImageState() {
 }
 
 function showAlreadyInstalled(presence) {
-  const version = (presence && presence.image && presence.image.version)
-    || (dfuState.fileImageInfo && dfuState.fileImageInfo.version)
-    || null;
+  const version = selectedFirmwareVersion()
+    || meaningfulVersion(presence && presence.image && presence.image.version);
   const fileName = dfuState.file ? dfuState.file.name : '';
   if (presence && presence.state) {
     renderImageState(presence.state);
@@ -2245,6 +2269,7 @@ function showAlreadyInstalled(presence) {
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
+  dfuState.fileVersion = null;
   dfuState.checkResult = DfuFileCheckResult.emptyFileName;
   dfuState.userConfirmed = false;
   dfuState.selectionInProgress = false;
@@ -2324,7 +2349,7 @@ async function testUploadedImage(stateOverride = null) {
     updateUploadStatus('reboot', 'active', 'Rebooting');
     dfuState.expectedImageHash = targetHash;
     dfuState.expectedImageHashBytes = targetBytes;
-    dfuState.expectedImageVersion = (slot1 && slot1.version) || (dfuState.fileImageInfo && dfuState.fileImageInfo.version) || null;
+    dfuState.expectedImageVersion = selectedFirmwareVersion() || meaningfulVersion(slot1 && slot1.version);
     dfuState.awaitingReboot = true;
     dfuState.reconnectStart = Date.now();
     updateUploadButtons();
@@ -2334,7 +2359,7 @@ async function testUploadedImage(stateOverride = null) {
     savePendingDfu({
       deviceName: dfuState.deviceInfo ? dfuState.deviceInfo.deviceName : null,
       expectedHash: targetBytes,
-      expectedVersion: dfuState.fileImageInfo ? dfuState.fileImageInfo.version : null,
+      expectedVersion: dfuState.expectedImageVersion,
       startedAt: dfuState.reconnectStart,
     });
     await acquireWakeLock();
@@ -2429,7 +2454,7 @@ async function handlePostUploadFlowInner(existingState = null) {
   const expectedHashBytes = hashToBytes(dfuState.fileImageInfo && dfuState.fileImageInfo.hash);
   dfuState.expectedImageHash = expectedHash;
   dfuState.expectedImageHashBytes = expectedHashBytes;
-  dfuState.expectedImageVersion = dfuState.fileImageInfo && dfuState.fileImageInfo.version ? dfuState.fileImageInfo.version : null;
+  dfuState.expectedImageVersion = selectedFirmwareVersion();
 
   if (!expectedHash) {
     updateUploadStatus('state', 'completed', 'Done (no hash)');
@@ -2524,7 +2549,8 @@ async function verifyRebootedFirmware() {
     logDfu('No expected image hash recorded; accepting the active image after reboot.', true);
   }
   if (image && image.active) {
-    const version = image.version || dfuState.expectedImageVersion || null;
+    // The file name's version is what was flashed (the hash matched); the header says 0.0.0.
+    const version = dfuState.expectedImageVersion || meaningfulVersion(image.version);
     updateUploadStatus('verify', 'completed', version ? `Active (v${version})` : 'Active');
     if (image.confirmed) {
       updateUploadStatus('confirm', 'completed', 'Confirmed by device');
@@ -2551,7 +2577,8 @@ async function verifyRebootedFirmware() {
     return;
   }
   const active = pickActiveImage(response.images);
-  const activeLabel = active && active.version ? `v${active.version}` : 'the previous firmware';
+  const activeVersion = meaningfulVersion(active && active.version);
+  const activeLabel = activeVersion ? `v${activeVersion}` : 'the previous firmware';
   updateUploadStatus('verify', 'error', 'Not active');
   logDfu(`Uploaded image is not active after reboot: ${summarizeImageState(response)}`, true);
   clearPendingDfu();
@@ -2596,7 +2623,8 @@ async function checkFirmwareAlreadyInstalled() {
       return true;
     }
 
-  if (active.version && info.version && active.version === info.version) {
+  const activeVersion = meaningfulVersion(active.version);
+  if (activeVersion && activeVersion === meaningfulVersion(info.version)) {
     return true;
   }
 
@@ -2785,10 +2813,11 @@ async function startUpload() {
   const fallbacks = dfuState.mcumgr.getMtuFallbacks ? dfuState.mcumgr.getMtuFallbacks() : [];
   const pipeline = dfuState.mcumgr.getPipelineDepth ? dfuState.mcumgr.getPipelineDepth() : 'unknown';
   const sizeKb = (dfuState.fileData.byteLength / 1024).toFixed(1);
-  const imageVersion = dfuState.fileImageInfo && dfuState.fileImageInfo.version ? dfuState.fileImageInfo.version : 'unknown';
+  const imageVersion = selectedFirmwareVersion() || 'unknown';
+  const headerVersion = dfuState.fileImageInfo && dfuState.fileImageInfo.version ? dfuState.fileImageInfo.version : 'unknown';
   const imageHash = normalizeHash(dfuState.fileImageInfo && dfuState.fileImageInfo.hash);
   logDfu(`Upload config: size=${sizeKb}KB, mtu=${mtu}, timeout=${timeout}ms, pipeline=${pipeline}, fallbacks=${fallbacks.join(', ') || 'none'}`);
-  logDfu(`Image info: version=${imageVersion}, hash=${imageHash || 'unknown'}`);
+  logDfu(`Image info: version=${imageVersion} (header ${headerVersion}), hash=${imageHash || 'unknown'}`);
   dfuState.uploadInProgress = true;
   dfuState.uploadStartedAt = Date.now();
   dfuState.uploadTotalBytes = dfuState.fileData.byteLength;
@@ -2973,6 +3002,7 @@ function resetUi() {
   dfuState.file = null;
   dfuState.fileData = null;
   dfuState.fileImageInfo = null;
+  dfuState.fileVersion = null;
   dfuState.checkResult = DfuFileCheckResult.emptyFileName;
   dfuState.userConfirmed = false;
   dfuState.selectionInProgress = false;
@@ -3022,5 +3052,8 @@ window.DfuApp = {
   resetUi,
   connect: connectIfAvailable,
   isAwaitingReboot: () => dfuState.awaitingReboot,
+  // Pure helpers, exposed for tests/browser-input-check.mjs.
+  firmwareVersionFromFileName,
+  meaningfulVersion,
 };
 }());

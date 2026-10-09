@@ -240,6 +240,11 @@ image state over SMP, checks that slot 0 carries the uploaded hash, and returns 
 device screen. The firmware confirms its own image on boot, so the SMP confirm step is a
 safety net rather than a requirement. A screen wake lock is held during upload and
 reboot. If automatic reconnect fails, the overlay offers a retry and a manual scan.
+The firmware version named in the completion toast, the overlay and the "already installed"
+notice comes from the selected file's name (`...-v8.0.3.bin`), not from the MCUboot image
+header: OpenCollar builds leave the header version at 0.0.0, and the hash check already
+proves that the active image is the uploaded file. A header version is only used when it is
+not all zeros; the slot cards show "not set in header" otherwise.
 
 The built-in version list is grouped so the right pick is the obvious one: a "Recommended"
 group at the top holds the latest standard release (tagged "latest"), "Older standard firmware"

@@ -408,6 +408,28 @@ async function dfuList(tag) {
   const collar = await initWith({ deviceName: 'CE0001', fwVersion: '8.0', hwVersion: '1.5', fwType: 0, hwType: 8, updatedAt: Date.now() });
   check(`${tag} DFU list for a collaredge: no AirQ group, hint says most collars need the latest`, collar.groups.length === 2 && !collar.groups.some(g => /AirQ/.test(g.label)) && collar.groups[0].options.length === 1 && /^v8\.0\.3 \(latest\) • collaredge_nrf52840@1\.5\.0$/.test(collar.groups[0].options[0]) && /Most collars need the latest firmware \(v8\.0\.3\)/.test(collar.hint) && !/AirQ/.test(collar.hint), collar);
 }
+// The MCUboot header of OpenCollar builds says 0.0.0, so the version people see after a DFU
+// must come from the file name; a zero header version must never be shown.
+async function dfuVersion(tag) {
+  await evaluate(`loadDfuScriptsIfNeeded().then(() => true)`);
+  const got = await evaluate(`({
+    standard: DfuApp.firmwareVersionFromFileName('open-collar-rangeredge_nrf52840-hv1.8.0-v8.0.3.bin'),
+    airq: DfuApp.firmwareVersionFromFileName('open-collar-rangeredge_airq_nrf52840-hv1.4.0-v8.0.1.bin'),
+    migration: DfuApp.firmwareVersionFromFileName('open-collar-rangeredge_nrf52840-hv1.4.0-v5.0.1.bin'),
+    upper: DfuApp.firmwareVersionFromFileName('OPEN-COLLAR-COLLAREDGE_NRF52840-HV1.5.0-V8.0.3.BIN'),
+    suffixed: DfuApp.firmwareVersionFromFileName('open-collar-rangeredge_nrf52840-hv1.8.0-v8.0.1-debug.bin'),
+    plain: DfuApp.firmwareVersionFromFileName('firmware.bin'),
+    empty: DfuApp.firmwareVersionFromFileName(''),
+    zero: DfuApp.meaningfulVersion('0.0.0'),
+    zeroShort: DfuApp.meaningfulVersion('0.0'),
+    real: DfuApp.meaningfulVersion('8.0.3'),
+    missing: DfuApp.meaningfulVersion(null),
+  })`);
+  check(`${tag} DFU version: the file name yields the release version for every bundled naming shape`,
+    got.standard === '8.0.3' && got.airq === '8.0.1' && got.migration === '5.0.1' && got.upper === '8.0.3' && got.suffixed === '8.0.1' && got.plain === null && got.empty === null, got);
+  check(`${tag} DFU version: a 0.0.0 header version counts as unknown, a real one is kept`,
+    got.zero === null && got.zeroShort === null && got.real === '8.0.3' && got.missing === null, got);
+}
 async function noBluetoothNote(tag) {
   await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
   const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
@@ -425,7 +447,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard, dfuList);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }
