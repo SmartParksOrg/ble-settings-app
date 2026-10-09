@@ -200,6 +200,11 @@ settings blocks are hidden because the panels edit those settings now.
   the schedule. Its detail follows the Positioning panel's wording and says when the switch has
   no effect because scheduled fixes are off. Schedule starts in the card are shown in the
   browser's local time, not UTC, like the panels and the settings list.
+- Message types are shown with their LoRaWAN port number wherever a send or store flag is
+  edited or previewed: the Data sending and storing matrix, the confirmed and join port lists
+  in the Network panel, the flag checkbox lists in the settings list and the composer, and the
+  import and review previews. Backends and the firmware documentation identify messages by
+  port, so a muted "port N" tag follows each name.
 - The HEX composer mounts the same panels above its settings list. Editing a value in a
   panel ticks that setting for inclusion in the payload; unticking it in the list leaves it
   out again. Panel values that are not included show the firmware default.

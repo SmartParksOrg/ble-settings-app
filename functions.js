@@ -491,6 +491,12 @@ function formatMacAddressForDisplay(value, expectedLength = 6) {
     return hex.match(/.{2}/g).join(':');
 }
 
+// A message type name followed by its LoRaWAN port number, so people can tell the
+// types apart by port as well as by name (the port is what the backend shows).
+function formatPortLabelHtml(name, portNum) {
+    return `${escapeHtml(name)} <span class="port-number">port ${escapeHtml(String(portNum))}</span>`;
+}
+
 function renderPortCheckboxes(setting, value) {
     const defaultVal = parseInt(value || 0, 10);
     let html = `
@@ -512,7 +518,7 @@ function renderPortCheckboxes(setting, value) {
                 onchange="updateBitmaskForSetting('${setting.id}')"
                 ${bitIsSet ? 'checked' : ''}
               />
-              <label for="${checkboxId}">${portName.replace(/^port_/, "")}</label>
+              <label for="${checkboxId}">${formatPortLabelHtml(portName.replace(/^port_/, ""), portNum)}</label>
             </div>
           `;
     }
@@ -1892,6 +1898,7 @@ function formatBitmaskPreview(key, value, compareValue = null, mode = null) {
         ports.push({
             id: `import-preview-${safeKey}-${mode || 'value'}-${portNum}`,
             name: portName.replace(/^port_/, ''),
+            number: portNum,
             checked: isSet,
             className: tagClass
         });
@@ -1906,7 +1913,7 @@ function formatBitmaskPreview(key, value, compareValue = null, mode = null) {
           ${ports.map(port => `
             <div class="import-preview-checkbox ${port.className}">
               <input type="checkbox" id="${port.id}" ${port.checked ? 'checked' : ''} disabled />
-              <label for="${port.id}">${escapeHtml(port.name)}</label>
+              <label for="${port.id}">${formatPortLabelHtml(port.name, port.number)}</label>
             </div>
           `).join('')}
         </div>

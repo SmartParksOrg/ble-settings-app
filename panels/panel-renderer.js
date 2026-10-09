@@ -500,6 +500,15 @@
     return host.getPorts ? host.getPorts() : [];
   }
 
+  // Name plus a muted "port N" tag, so a message type is recognisable by its port too.
+  function portLabel(port) {
+    const node = el('span', 'panel-port-label');
+    node.appendChild(el('span', null, port.label));
+    node.appendChild(document.createTextNode(' ')); // keeps the words apart in copied or spoken text
+    node.appendChild(el('span', 'port-number', `port ${port.number}`));
+    return node;
+  }
+
   function makePortsControl(field, setting, host) {
     const wrap = el('div', 'panel-ports');
     const boxes = [];
@@ -512,7 +521,7 @@
         host.setValue(field.key, String(mask));
       });
       label.appendChild(input);
-      label.appendChild(el('span', null, port.label));
+      label.appendChild(portLabel(port));
       wrap.appendChild(label);
       boxes.push({ input, port });
     });
@@ -538,12 +547,14 @@
     const cells = [];
     portRows(host).forEach(port => {
       const row = el('tr');
-      row.appendChild(el('td', 'panel-matrix-name', port.label));
+      const name = el('td', 'panel-matrix-name');
+      name.appendChild(portLabel(port));
+      row.appendChild(name);
       columns.forEach(column => {
         const cell = el('td');
         const input = el('input');
         input.type = 'checkbox';
-        input.setAttribute('aria-label', `${port.label} ${column.label}`);
+        input.setAttribute('aria-label', `${port.label} (port ${port.number}) ${column.label}`);
         input.addEventListener('change', () => {
           const mask = engine.setPort(host.getValue(column.key), port.number, input.checked);
           host.setValue(column.key, String(mask));
