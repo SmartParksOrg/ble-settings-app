@@ -213,6 +213,18 @@ settings blocks are hidden because the panels edit those settings now.
   timing, air quality duty cycle, report-empty options). Settings the firmware does not
   document keep a plain label without claims about behaviour.
 
+## Device time and location
+
+Every connection sets the collar's clock and start position from the phone: as soon as the
+first status message arrives, the app asks the browser for its position and sends it with the
+current time (command `0xAF`), the same thing the "Set location & time" button in the Actions
+card does. The button stays for a manual repeat. The device's confirmation shows a toast and
+refreshes the status card, so the shown time and location are the new ones. If the browser
+denies or cannot get a position, the app falls back to the collar's last known position so the
+time is still set, and says so in a toast. Driver-update firmware (LR update, v5) is skipped,
+as the button is hidden there as well. The update runs again after the automatic reconnect
+that follows a DFU, since that is a new connection with a freshly booted collar.
+
 ## Raw log downloads
 
 Flash log downloads stream one packet per line (base64) into memory. If the connection drops,

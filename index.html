@@ -6884,9 +6884,21 @@
       executeBleCommand([0x20, CMD_SET_LOCATION_AND_TIME, 12, ...bytesArray]);
     }
 
-    function setLocationAndTime() {
+    // A cached position up to a minute old is good enough for a collar; the timeout keeps a
+    // phone without a fix from leaving the request hanging forever.
+    const GEOLOCATION_OPTIONS = { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 };
+
+    // Sends this device's position and the current time to the collar. Runs from the
+    // "Set location & time" button and automatically once per connection, right after the
+    // first status message (handleNotifications). The automatic run never alerts: a missing
+    // Geolocation API is only logged, and a failed lookup shows a toast saying what happened.
+    function setLocationAndTime({ automatic = false } = {}) {
       if (!navigator.geolocation) {
-        alert("Geolocation is not supported by this browser.");
+        if (automatic) {
+          log('Geolocation is not supported by this browser; device time and location were not updated automatically.', true);
+        } else {
+          alert("Geolocation is not supported by this browser.");
+        }
         return;
       }
 
@@ -6911,10 +6923,21 @@
             showToast(`${errorMessage}. Using last known location.`);
             sendLocationAndTimeCommand(lastPositionMessage.latitude, lastPositionMessage.longitude);
           } else {
-            showToast(errorMessage);
+            showToast(automatic ? `${errorMessage}. Device time and location were not updated.` : errorMessage);
           }
-        }
+        },
+        GEOLOCATION_OPTIONS
       );
+    }
+
+    // Called once per connection when the first status message arrives. Driver-update
+    // firmware (LR update, v5) does not take the command, and the button is hidden there too.
+    function autoSetLocationAndTime() {
+      if (lrUpdateMode || firmwareV5Mode) {
+        return;
+      }
+      log('Updating device time and location automatically.');
+      setLocationAndTime({ automatic: true });
     }
 
     function displayMainCommands() {
@@ -7788,6 +7811,17 @@
           } else if (flashLogState.active) {
             showFlashLogFailure(`Device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
           }
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_SET_LOCATION_AND_TIME) {
+          // Handled here rather than in decodeMessage: the automatic update right after
+          // connecting can be confirmed before the settings schema has loaded.
+          if (data[4] === 0x01) {
+            log('Device confirmed the time and location update.');
+            showToast('Device time and location updated.');
+            await requestStatusMessage();
+          } else {
+            log(`Device rejected the time and location update (status 0x${data[4].toString(16).padStart(2, '0')}).`, true);
+            showToast('The device did not accept the time and location update.');
+          }
         } else if (port === 3 || (port === 30 && settingsData)) {
           decodeBleValueResponse(data.slice(1), port === 3 ? 'setting' : 'value');
         } else if (port === 30 && data[1] == VAL_UBLOX_TIME && lastStatusInfo && !firmwareUsesFamilies(lastStatusInfo)) {
@@ -7827,6 +7861,7 @@
           if (!autoLoaded && !firmwareV5Mode) {
             autoLoaded = true;
             autoSelectAndLoadSettings(statusMessage);
+            autoSetLocationAndTime();
           }
         } else {
           await decodeMessage(data);
@@ -8502,10 +8537,7 @@
             return;
           }
 
-          if (key === 'msg_cmd_confirm' && valueBytes[0] === CMD_SET_LOCATION_AND_TIME) {
-            // Updated time and position, refresh time and position
-            await requestStatusMessage();
-          } else if (key === 'msg_ublox_location') {
+          if (key === 'msg_ublox_location') {
             if (ubloxFixPending) {
               const rawBytes = data.slice(1);
               handleUbloxFixResponse(rawBytes, valueBytes);

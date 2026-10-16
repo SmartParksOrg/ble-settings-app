@@ -15,7 +15,8 @@
 // support, no file downloads) and adds checks for the iOS-only paths: the device picker is
 // opened without manufacturer data, exports open the share/copy dialog instead of a download,
 // and the Scan card explains the picker. Desktop and mobile also check that exports still
-// download through an anchor there.
+// download through an anchor there. Every run also replays a status frame through the
+// notification handler and checks that connecting sets the device time and location by itself.
 //
 // CHROME defaults to the Playwright Chromium under ~/.cache/ms-playwright. ONLY=index or
 // ONLY=composer limits the run to one page; VERBOSE=1 prints where a failed tap landed.
@@ -290,6 +291,31 @@ async function applyMismatch(tag) {
   check(`${tag} apply with a stubborn device: after Close the kept edit stays pending`, closed.dialogHidden && !closed.hidden && closed.draft === 1 && /1 pending change/.test(closed.text), closed);
 }
 
+// Connecting must set the collar's time and location without a button press: the first status
+// frame of a connection triggers a geolocation lookup and a 0xAF command, the confirmation
+// shows a toast and refreshes the status, and the manual button stays in the Actions card.
+async function autoLocationTime(tag) {
+  await evaluate(FAKE_DEVICE);
+  await evaluate(`(() => { window.__geoCalls = 0;
+    Object.defineProperty(navigator, 'geolocation', { configurable: true, value: { getCurrentPosition: (ok) => { window.__geoCalls += 1; setTimeout(() => ok({ coords: { latitude: 52.5, longitude: 4.25 } }), 20); } } });
+    device = { name: 'SP05TEST', gatt: { connected: true } }; autoLoaded = false; lrUpdateMode = false; firmwareV5Mode = false;
+    // port 4 status frame: reset, errors, battery, operation, temp, uptime, acc x/y/z, hw 1.8, fw 8.0, hw type 5 + fw type 5, charge, features
+    handleNotifications({ target: { value: new DataView(new Uint8Array([4, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 0, 0]).buffer) } }); return true; })()`);
+  await waitFor(`window.__writes.some(w => w[0] === 0x20 && w[1] === 0xAF)`);
+  const sent = await evaluate(`(() => { const w = window.__writes.find(w => w[0] === 0x20 && w[1] === 0xAF); const view = new DataView(new Uint8Array(w.slice(3)).buffer);
+    return { geoCalls: window.__geoCalls, length: w[2], lon: view.getInt32(0, true) / 1e7, lat: view.getInt32(4, true) / 1e7, ageSeconds: Math.abs(Date.now() / 1000 - view.getInt32(8, true)), statusRequests: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xA4).length }; })()`);
+  await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([31, 0xF3, 2, 0xAF, 0x01]).buffer) } }); return true; })()`);
+  await sleep(150);
+  const after = await evaluate(`({ toast: document.getElementById('toast').innerText, toastVisible: document.getElementById('toast').style.visibility === 'visible',
+    statusRequests: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xA4).length, button: Array.from(document.querySelectorAll('#main-commands button')).map(b => b.textContent).includes('Set location & time'), geoCalls: window.__geoCalls })`);
+  await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([4, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 0, 0]).buffer) } }); return true; })()`);
+  await sleep(150);
+  const again = await evaluate(`({ geoCalls: window.__geoCalls, sets: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xAF).length })`);
+  check(`${tag} connecting sends the phone position and the current time without a button press`, sent.geoCalls === 1 && sent.length === 12 && sent.lat === 52.5 && sent.lon === 4.25 && sent.ageSeconds < 60 && sent.statusRequests === 0, sent);
+  check(`${tag} the device's confirmation shows a toast, refreshes the status, and the button stays`, after.toastVisible && /time and location updated/.test(after.toast) && after.statusRequests === 1 && after.button, after);
+  check(`${tag} a later status refresh does not send the time and location again`, again.geoCalls === 1 && again.sets === 1, again);
+}
+
 async function listInterval(tag, page) {
   const id = await evaluate(`settingsData.settings.ublox_send_interval.id`);
   if (page !== '/index.html') await evaluate(`(() => { const s = settingsData.settings.ublox_send_interval; includeSetting(s); setInputValue(s.id, '300'); __onInputChanged(s.id); return true; })()`);
@@ -447,7 +473,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

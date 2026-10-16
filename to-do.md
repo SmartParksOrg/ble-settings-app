@@ -54,6 +54,16 @@ the MCUboot header version; the version now comes from the file name). The v8.0.
 were removed on 2026-10-07 (never verified on hardware); the built-in list now goes 8.0.1 -> 8.0.3.
 
 
+## Automatic time and location on connect (added 2026-10-16, hardware test pending)
+
+Connecting now sends the phone's position and the current time (command 0xAF) as soon as the
+first status message arrives; the "Set location & time" button stays for a manual repeat. The
+headless check replays a status frame and sees the command, the toast and the status refresh.
+Verify on SP051307: connect with location allowed, the toast "Device time and location updated."
+appears and the status card shows the current time and the phone's position; connect with
+location denied, the toast names the denial and the time is still updated from the last known
+position; after a DFU reconnect the update runs again; the button still works.
+
 ## Partial raw logs (hardware test pending)
 
 Interrupted log downloads now save what was received (`..._PARTIAL-<n>msgs.txt`), mirror the
