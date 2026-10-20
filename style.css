@@ -3277,6 +3277,17 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     margin: 0;
 }
 
+/* The device reports a LoRaWAN join error: the Join button stands out like Reboot does. */
+#main-commands button.join-needed-button {
+    background: linear-gradient(145deg, #d98b1f, #b46a0c);
+    border-color: transparent;
+    box-shadow: 0 6px 14px rgba(180, 106, 12, 0.25);
+}
+
+#main-commands button.join-needed-button:hover {
+    background: linear-gradient(145deg, #e39a33, #a05e08);
+}
+
 .icon {
     width: 16px;
     height: 16px;
@@ -4420,7 +4431,8 @@ body.has-pending-changes {
     }
 }
 
-/* Panel search and actions */
+/* Panel search and actions. The search row and the panels sit inside one collapsible
+   Settings card; the panels keep their border but drop the shadow, as nested cards. */
 .panels-search {
     display: flex;
     align-items: center;
@@ -4429,14 +4441,23 @@ body.has-pending-changes {
     margin-bottom: 12px;
 }
 
-.panels-search .section-card-title {
-    cursor: default;
-    flex: 0 0 auto;
+.panels-card > .section-card-body > .panels-search {
+    margin-bottom: 0;
 }
 
-.panels-search .section-card-title::before,
-.panels-search .section-card-title::after {
-    display: none;
+.panels-card > .section-card-body > #panels-list {
+    margin-top: 12px;
+}
+
+.panels-card .panel-card {
+    box-shadow: none;
+    background: rgba(255, 255, 255, 0.75);
+}
+
+@media (max-width: 600px) {
+    .panels-card {
+        padding: 12px 10px;
+    }
 }
 
 .panels-search-note {

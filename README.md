@@ -158,8 +158,10 @@ over the LoRaWAN, satellite, LP0 and flash-store flags), Network (LoRaWAN), Devi
 security, Iridium satellite, VHF beacon, WiFi and BLE scanning, Tracker search (CMDQ),
 Fence monitor, External switch, and Sensors and diagnostics. The three schedules (GPS,
 satellite, VHF) share one component: a switch, a schedule type (fixed or day/night),
-intervals, and a 24-hour bar. A search box above the panels finds settings by label, help
-or key, and each panel can load the firmware defaults into the pending changes. The older
+intervals, and a 24-hour bar. The panels sit inside one collapsible "Settings" card whose
+search box finds settings by label, help or key, and each panel can load the firmware
+defaults into the pending changes. The expert list below it is titled "All settings" so the
+two cards read differently when collapsed. The older
 feature cards (CMDQ, FenceEdge, WiFi scan, BLE scan) keep their actions and results; their
 settings blocks are hidden because the panels edit those settings now.
 
@@ -212,6 +214,15 @@ settings blocks are hidden because the panels edit those settings now.
   READMEs document (VHF beeps per burst, S-Band send modes, port bitmasks, satellite retry
   timing, air quality duty cycle, report-empty options). Settings the firmware does not
   document keep a plain label without claims about behaviour.
+
+## Actions card
+
+The Actions card always offers the LoRaWAN join command. While the status message reports a
+join error the button reads "Join LoRaWAN" and is highlighted in amber; otherwise the device
+is considered joined and the same command is offered as "Re-join LoRaWAN". "Export settings"
+in the Actions card saves the full profile, device credentials included, without opening the
+All settings card; the export in the All settings card still follows its credentials checkbox. Both
+refuse to export while edits are pending, so the file matches what the device reported.
 
 ## Device time and location
 

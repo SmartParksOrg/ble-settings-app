@@ -433,17 +433,21 @@
   </div>
 
   <div id="panels-area" class="commands-section panels-section page-section hidden-when-no-settings">
-    <div class="section section-card panels-search">
-      <div class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</div>
-      <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
-      <span id="panels-search-count" class="panels-search-count"></span>
-    </div>
-    <div id="panels-list"></div>
+    <details class="section section-card panels-card" open>
+      <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</summary>
+      <div class="section-card-body">
+        <div class="panels-search">
+          <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
+          <span id="panels-search-count" class="panels-search-count"></span>
+        </div>
+        <div id="panels-list"></div>
+      </div>
+    </details>
   </div>
 
   <div id="settings-area" class="settings-section page-section hidden-when-no-settings">
     <details class="section section-card">
-      <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>Settings</summary>
+      <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>All settings</summary>
       <div class="section-card-body">
         <div class="settings-options">
           <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
@@ -3297,9 +3301,13 @@
       });
     }
 
-    function exportToJson() {
+    // Without options the All settings card's "Include device credentials on export" checkbox
+    // decides; the Actions card passes includeCredentials: true for a complete profile.
+    function exportToJson({ includeCredentials = null } = {}) {
       const settings = {};
-      const includeCredentials = document.getElementById('export-credentials-toggle')?.checked ?? true;
+      if (includeCredentials === null) {
+        includeCredentials = document.getElementById('export-credentials-toggle')?.checked ?? true;
+      }
       if (settingsDraft.size > 0) {
         showToast('Apply or discard your pending changes before exporting, so the file matches the device.');
         return;
@@ -6949,26 +6957,35 @@
         ? { 'cmd_reset': 'Reboot device' }
         : mainCommands;
 
-      const filteredCommands = Object.entries(activeCommands).filter(([key]) => (
-        key !== 'cmd_join' || hasLrJoinError
-      ));
-
-      const rebootEntry = filteredCommands.find(([key]) => key === 'cmd_reset');
+      const commandEntries = Object.entries(activeCommands);
+      const rebootEntry = commandEntries.find(([key]) => key === 'cmd_reset');
       const orderedCommands = rebootEntry
-        ? [...filteredCommands.filter(([key]) => key !== 'cmd_reset'), rebootEntry]
-        : filteredCommands;
+        ? [...commandEntries.filter(([key]) => key !== 'cmd_reset'), rebootEntry]
+        : commandEntries;
 
-      mainCommandsElement.innerHTML = orderedCommands.map(([key, label]) => {
+      mainCommandsElement.innerHTML = orderedCommands.map(([key, baseLabel]) => {
         const command = settingsData.commands[key];
         if (!command) {
           return '';
         }
         const isUbloxFix = key === 'cmd_get_ublox_fix';
         const isReset = key === 'cmd_reset';
+        const isJoin = key === 'cmd_join';
         const isDisabled = isUbloxFix && ubloxBusyStatus;
         const disabledAttr = isDisabled ? ' disabled' : '';
-        const titleAttr = isDisabled ? ' title="UBLOX is busy. Please wait."' : '';
-        const classAttr = isReset ? ' class="reboot-button"' : '';
+        // The join command is the same either way; the label tells the person whether the
+        // device reports a join error (so a join is needed) or is joined (so this re-joins).
+        const label = isJoin ? (hasLrJoinError ? 'Join LoRaWAN' : 'Re-join LoRaWAN') : baseLabel;
+        let title = '';
+        if (isDisabled) {
+          title = 'UBLOX is busy. Please wait.';
+        } else if (isJoin) {
+          title = hasLrJoinError
+            ? 'The device reports a LoRaWAN join error. Starts a new join procedure.'
+            : 'The device reports no join error, so it is considered joined. Starts the join procedure again.';
+        }
+        const titleAttr = title ? ` title="${title}"` : '';
+        const classAttr = isReset ? ' class="reboot-button"' : (isJoin && hasLrJoinError ? ' class="join-needed-button"' : '');
         const onclickAttr = isReset ? ' onclick="requestRebootConfirm()"' : ` onclick="executeCommand('${command.id}')"`;
         return `<button id="command-button-${command.id}"${classAttr}${onclickAttr}${disabledAttr}${titleAttr}>${label}</button>`;
       }).join('');
@@ -6985,6 +7002,7 @@
         mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
+          <button class="hidden-when-no-status" onclick="exportToJson({ includeCredentials: true })" title="Saves every setting the device reported, including the LoRaWAN credentials, as a JSON file.">Export settings</button>
           ${disableUbloxButton}
           ${disableSatelliteButton}
         ` + mainCommandsElement.innerHTML;
@@ -7297,6 +7315,8 @@
       }
       const panelField = window.PanelRenderer ? PanelRenderer.locate(settingKey) : null;
       if (panelField) {
+        const wrapper = panelField.closest('details.panels-card');
+        if (wrapper) wrapper.open = true;
         const card = panelField.closest('details.panel-card');
         if (card) card.open = true;
         const group = panelField.closest('details.panel-group');

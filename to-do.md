@@ -95,3 +95,14 @@ agent, but nothing has run on a real iPhone yet. Verify in Bluefy on an iPhone a
    If the screen still dims, flip the polarity of setScreenDimEnabled in dfu/dfu.js.
 5. Lose the connection on purpose: the Reconnect overlay's picker opens without manufacturer
    data and finds the collar.
+
+## Join button, Actions export, Settings card (added 2026-10-19, hardware test pending)
+
+The join command is always offered: "Join LoRaWAN" (amber) while the status reports a join
+error, "Re-join LoRaWAN" otherwise. The Actions card has an "Export settings" button that
+always includes the credentials. The guided panels and their search box now sit inside one
+collapsible Settings card. Verify on SP051307: with a join error the amber Join button sends
+0xA0 and the status refresh clears the error after a successful join; without an error the
+Re-join button sends the same command; Export from Actions produces a JSON with app_key and
+device_eui and refuses while edits are pending; the pending chip and the Features card still
+jump to a panel field when the Settings card is collapsed.
