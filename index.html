@@ -429,20 +429,6 @@
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>All settings</summary>
       <div class="section-card-body">
-        <div class="settings-options">
-          <div class="settings-actions">
-            <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();" title="Import settings from a JSON file"><span class="icon file-arrow-up" aria-hidden="true"></span>Import</button>
-            <button id="export-button" class="section-action" onclick="exportToJson()" title="Export settings to a JSON file"><span class="icon file-arrow-down" aria-hidden="true"></span>Export</button>
-          </div>
-          <label class="settings-option">
-            <input type="checkbox" id="import-credentials-toggle">
-            Include device credentials on import
-          </label>
-          <label class="settings-option">
-            <input type="checkbox" id="export-credentials-toggle" checked>
-            Include device credentials on export
-          </label>
-        </div>
         <div id="search" class="search">
           <input type="text" id="settings-search" placeholder="Search settings..." oninput="filterSettings()">
           <label>
@@ -452,7 +438,31 @@
         <div id="settings-progress">
           <div></div>
         </div>
-        <div id="settings-section"></div>
+        <div class="settings-accordion">
+          <div class="settings-group" id="settings-transfer-group">
+            <button type="button" class="group-toggle" aria-expanded="true" onclick="toggleGroup(this.parentElement)">
+              <span class="group-title">Import / export</span>
+              <span class="group-caret" aria-hidden="true"></span>
+            </button>
+            <div class="settings-container settings-transfer">
+              <div class="settings-options">
+                <div class="settings-actions">
+                  <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();" title="Import settings from a JSON file"><span class="icon file-arrow-up" aria-hidden="true"></span>Import</button>
+                  <button id="export-button" class="section-action" onclick="exportToJson()" title="Export settings to a JSON file"><span class="icon file-arrow-down" aria-hidden="true"></span>Export</button>
+                </div>
+                <label class="settings-option">
+                  <input type="checkbox" id="import-credentials-toggle">
+                  Include device credentials on import
+                </label>
+                <label class="settings-option">
+                  <input type="checkbox" id="export-credentials-toggle" checked>
+                  Include device credentials on export
+                </label>
+              </div>
+            </div>
+          </div>
+          <div id="settings-section"></div>
+        </div>
       </div>
     </details>
   </div>

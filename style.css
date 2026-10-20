@@ -1297,6 +1297,19 @@ body.connected #commands-section {
     margin-bottom: 0;
 }
 
+/* The Import / export group holds buttons and checkboxes, not setting rows. */
+.settings-container.settings-transfer {
+    display: block;
+}
+
+.settings-transfer .settings-options {
+    margin-bottom: 0;
+}
+
+.search {
+    margin-top: 0;
+}
+
 .group-toggle {
     width: 100%;
     text-align: left;
@@ -4628,9 +4641,12 @@ body.has-pending-changes {
     background: rgba(255, 255, 255, 0.75);
 }
 
+/* On phones the nested panels get a little more width, but the card keeps the vertical
+   padding of every other card so its folded title has the same height. */
 @media (max-width: 600px) {
     .panels-card {
-        padding: 12px 10px;
+        padding-left: 10px;
+        padding-right: 10px;
     }
 }
 

@@ -326,11 +326,13 @@ function setSettingsGroupCollapsed(group, collapsed) {
     }
 }
 
-// Only one group of the settings list is open at a time: opening one folds the others.
+// Only one group of the settings list is open at a time: opening one folds the others. The
+// scope is the closest .settings-accordion (the static Import / export group and the rendered
+// categories share one), or the group's parent when there is none.
 function expandSettingsGroup(group) {
-    const parent = group.parentElement;
-    if (parent) {
-        parent.querySelectorAll(':scope > .settings-group').forEach(other => {
+    const scope = group.closest('.settings-accordion') || group.parentElement;
+    if (scope) {
+        scope.querySelectorAll('.settings-group').forEach(other => {
             if (other !== group) {
                 setSettingsGroupCollapsed(other, true);
             }

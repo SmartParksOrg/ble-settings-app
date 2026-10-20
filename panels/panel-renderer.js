@@ -973,6 +973,11 @@
       body.appendChild(actions);
     }
     card.appendChild(body);
+    // One panel open at a time: opening this one folds the others.
+    card.addEventListener('toggle', () => {
+      if (!card.open) return;
+      state.panelCards.forEach(other => { if (other.card !== card) other.card.open = false; });
+    });
     state.panelCards.push({ panel, card });
     return fields.children.length ? card : null;
   }
