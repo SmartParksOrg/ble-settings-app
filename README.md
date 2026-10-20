@@ -160,13 +160,12 @@ mixed up with the Iridium modem), VHF beacon, WiFi scanning, BLE scanning, CMDQ,
 Fence monitor, External switch, Air quality (its own panel), and Sensors (accelerometer; the
 Memfault diagnostics interval sits under Device and security). The three schedules (GPS,
 satellite, VHF) share one component: a switch, a schedule type (fixed or day/night),
-intervals, and a 24-hour bar. The panels sit inside one collapsible "Settings" card whose
-search box finds settings by label, help or key, and each panel can load the firmware
-defaults into the pending changes. Every panel is folded whenever the panels are mounted,
-on every connection and visit, so the Settings card reads as a short list of topics; a
-search or a jump from the Features card or the pending chip opens the panel it needs, and
-clearing the search folds them all again. The expert list below it is titled "All settings"
-so the two cards read differently when collapsed. The older
+intervals, and a 24-hour bar. The panels sit inside one collapsible "Settings" card, and
+each panel can load the firmware defaults into the pending changes. Every panel is folded
+whenever the panels are mounted, on every connection and visit, so the Settings card reads
+as a short list of topics; a jump from the Features card or the pending chip opens the panel
+it needs. The only search box is the one in the "All settings" card, which filters the
+expert list; the guided card has none. The older
 feature cards (CMDQ, FenceEdge, WiFi scan, BLE scan) keep their actions and results; their
 settings blocks are hidden because the panels edit those settings now.
 
@@ -197,8 +196,13 @@ settings blocks are hidden because the panels edit those settings now.
 - Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
   input) as 0: doing so flipped switches and gate conditions and disabled the field under the
   person's finger. The field is brought back in line with the draft when focus leaves it.
+- The header is the "Smart Parks Connect" title next to the logo tile, with the blue DFU button as
+  a tile of the logo's size and shape on the right (it becomes "Back" on the DFU page). Only the Status card is
+  open after connecting; every other card, including the guided Settings card, starts folded.
 - A device card sits above the Status card and stays pinned to the top of the screen while
-  scrolling (`position: sticky`, drawn compact once it is stuck). It shows the collar's
+  scrolling (`position: sticky`, drawn compact once it is stuck; the sticky wrapper keeps its
+  full height while compact so the page below never shifts and the state cannot flicker). It
+  shows the collar's
   animal icon and name, a connection dot, the type line ("Ranger · rangeredge v1.8"),
   firmware version, battery voltage, a pending-changes chip that jumps to the first edited
   field, and the Disconnect button. Tapping the name scrolls back to the top. The card

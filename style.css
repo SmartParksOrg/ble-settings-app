@@ -1517,7 +1517,7 @@ h2 {
 }
 
 .brand-name {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     letter-spacing: 0.4px;
     color: var(--sp-forest-dark);
@@ -1527,6 +1527,40 @@ h2 {
     font-size: 13px;
     letter-spacing: 0.3px;
     color: rgba(31, 42, 35, 0.7);
+}
+
+/* DFU (and Back on the DFU page) as a tile with the logo's size and shape. DFU keeps its
+   blue scan-button colours; Back is a plain white tile. */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    padding: 6px 0 14px; /* same vertical offset as the logo in .brand */
+}
+
+#dfu-button.header-tile,
+#dfu-back-top.header-tile {
+    width: 54px;
+    height: 54px;
+    padding: 0;
+    box-sizing: border-box;
+    border-radius: var(--radius-md);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.4px;
+}
+
+#dfu-back-top.header-tile {
+    background: #fff;
+    border: 1px solid rgba(82, 115, 94, 0.2);
+    box-shadow: 0 8px 16px rgba(31, 42, 35, 0.15);
+    color: var(--sp-forest-dark);
+}
+
+#dfu-back-top.header-tile:hover {
+    background: #f4f8f5;
+    transform: translateY(-1px);
 }
 
 .app-version {
@@ -3815,6 +3849,13 @@ textarea {
         gap: 10px;
     }
 
+    #dfu-button.header-tile,
+    #dfu-back-top.header-tile {
+        width: 46px;
+        height: 46px;
+        font-size: 14px;
+    }
+
     .brand-logo {
         width: 46px;
         height: 46px;
@@ -4475,22 +4516,12 @@ body.has-pending-changes {
     }
 }
 
-/* Panel search and actions. The search row and the panels sit inside one collapsible
-   Settings card; the panels keep their border but drop the shadow, as nested cards. */
-.panels-search {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 12px;
-}
-
-.panels-card > .section-card-body > .panels-search {
-    margin-bottom: 0;
-}
-
-.panels-card > .section-card-body > #panels-list {
-    margin-top: 12px;
+/* Panels sit inside one collapsible Settings card; they keep their border but drop the
+   shadow, as nested cards. */
+.panels-note {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.75);
 }
 
 .panels-card .panel-card {
@@ -4502,28 +4533,6 @@ body.has-pending-changes {
     .panels-card {
         padding: 12px 10px;
     }
-}
-
-.panels-search-note {
-    flex: 1 1 100%;
-    margin: 0;
-    font-size: 13px;
-    color: rgba(31, 42, 35, 0.75);
-}
-
-.panels-search input[type="search"] {
-    flex: 1 1 220px;
-    min-width: 0;
-    padding: 9px 12px;
-    border: 1px solid var(--sp-border);
-    border-radius: var(--radius-lg);
-    background: rgba(255, 255, 255, 0.9);
-}
-
-.panels-search-count {
-    font-size: 13px;
-    color: rgba(31, 42, 35, 0.7);
-    white-space: nowrap;
 }
 
 .panel-field.panel-search-miss {
@@ -4558,6 +4567,17 @@ html {
     z-index: 1100;
     padding: 0 16px;
     margin-top: 12px;
+    overflow-anchor: none;
+}
+
+/* While stuck the wrapper keeps its full height (set inline), so the page below does not
+   move when the card turns compact; the unused band lets taps through. */
+.device-section.is-stuck {
+    pointer-events: none;
+}
+
+.device-section.is-stuck .device-card {
+    pointer-events: auto;
 }
 
 .device-card {
@@ -4565,7 +4585,7 @@ html {
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    transition: padding 0.16s ease, border-radius 0.16s ease, box-shadow 0.16s ease;
+    transition: border-radius 0.16s ease, box-shadow 0.16s ease;
 }
 
 .device-section.is-stuck .device-card {
@@ -4609,7 +4629,6 @@ html {
     width: 52px;
     height: 52px;
     color: var(--sp-forest-dark);
-    transition: width 0.16s ease, height 0.16s ease;
 }
 
 .device-icon svg {

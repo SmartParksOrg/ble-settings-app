@@ -65,11 +65,7 @@
     <details class="section section-card panels-card" open>
       <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
-        <div class="panels-search">
-          <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
-          <span id="panels-search-count" class="panels-search-count"></span>
-          <p class="panels-search-note">Editing a value in a panel includes that setting in the payload; untick it in the All settings list below to leave it out.</p>
-        </div>
+        <p class="panels-note">Editing a value in a panel includes that setting in the payload; untick it in the All settings list below to leave it out.</p>
         <div id="panels-list"></div>
       </div>
     </details>
@@ -1083,17 +1079,6 @@
         getDefault: key => (settingsData.settings[key] ? composerDefault(settingsData.settings[key]) : null),
         notify: message => showToast(message),
       });
-      const search = document.getElementById('panels-search');
-      if (search) {
-        search.value = '';
-        search.oninput = event => {
-          const matches = PanelRenderer.filter(event.target.value);
-          const count = document.getElementById('panels-search-count');
-          if (count) {
-            count.textContent = event.target.value.trim() ? `${matches} match${matches === 1 ? '' : 'es'}` : '';
-          }
-        };
-      }
     }
 
     function updateCheckBox(element, id) {

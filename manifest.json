@@ -1,6 +1,6 @@
 {
-    "name": "OpenCollar Edge BLE Web Connect",
-    "short_name": "BLE Connect",
+    "name": "Smart Parks Connect",
+    "short_name": "SP Connect",
     "start_url": "./",
     "display": "standalone",
     "background_color": "#52735E",

@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>OpenCollar Edge BLE Web Connect</title>
+  <title>Smart Parks Connect</title>
   <script>
     (function () {
       let appRefreshPending = false;
@@ -135,12 +135,15 @@
       <div class="brand">
         <img src="assets/smart-parks-logo.png" alt="Smart Parks" class="brand-logo" />
         <div class="brand-title">
-          <span class="brand-name">Smart Parks</span>
-          <span class="brand-subtitle">OpenCollar Edge BLE Web Connect</span>
+          <span class="brand-name">Smart Parks Connect</span>
         </div>
       </div>
       <div id="sw-cache-indicator" class="sw-cache-indicator hidden" aria-live="polite" aria-label="Offline cache status">
         <div class="sw-spinner" aria-hidden="true"></div>
+      </div>
+      <div class="header-actions">
+        <button id="dfu-button" class="hidden-when-disconnected dfu-hide header-tile scan-button" onclick="openDfuPage()" title="Device firmware update">DFU</button>
+        <button id="dfu-back-top" class="dfu-only header-tile" title="Back to the device">Back</button>
       </div>
       <div class="app-menu hidden">
         <button id="app-menu-toggle" class="menu-toggle" aria-expanded="false" aria-controls="app-menu-panel" aria-label="Open menu">
@@ -164,8 +167,6 @@
           <div class="hidden-when-no-settings">
             <input type="file" id="import-file" onchange="importFromJson()" style="display: none;" />
           </div>
-          <button id="dfu-button" class="hidden-when-disconnected dfu-hide scan-button" onclick="openDfuPage()">DFU</button>
-          <button id="dfu-back-top" class="secondary dfu-only">Back</button>
         </div>
       </div>
       <div class="hidden-when-connected">
@@ -250,7 +251,7 @@
   </div>
 
   <div id="features-area" class="features-section page-section hidden-when-no-settings">
-    <details class="section section-card" open>
+    <details class="section section-card">
       <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Features</summary>
       <div class="section-card-body">
         <div id="features-list" class="features-list" aria-live="polite"></div>
@@ -269,7 +270,7 @@
   </div>
 
   <div id="actions-area" class="commands-section page-section hidden-when-no-settings">
-    <details class="section section-card" open>
+    <details class="section section-card">
       <summary class="section-card-title"><span class="icon power-off" aria-hidden="true"></span>Actions</summary>
       <div class="section-card-body">
         <div id="main-commands"></div>
@@ -295,13 +296,9 @@
   </div>
 
   <div id="panels-area" class="commands-section panels-section page-section hidden-when-no-settings">
-    <details class="section section-card panels-card" open>
+    <details class="section section-card panels-card">
       <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</summary>
       <div class="section-card-body">
-        <div class="panels-search">
-          <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
-          <span id="panels-search-count" class="panels-search-count"></span>
-        </div>
         <div id="panels-list"></div>
       </div>
     </details>
@@ -1558,7 +1555,13 @@
       let stuck = false;
       function render() {
         const area = byId('device-area');
-        if (area) area.classList.toggle('is-stuck', stuck);
+        if (!area) return;
+        if (stuck && !area.classList.contains('is-stuck')) {
+          area.style.minHeight = `${area.offsetHeight}px`; // reserve the full-size height
+        } else if (!stuck) {
+          area.style.minHeight = '';
+        }
+        area.classList.toggle('is-stuck', stuck);
       }
       function init() {
         const sentinel = byId('device-sentinel');
@@ -6648,22 +6651,7 @@
           element.classList.toggle('hidden', Boolean(PanelRenderer.locate(key)));
         }
       });
-      const search = document.getElementById('panels-search');
-      if (search) {
-        search.value = '';
-        applyPanelSearch('');
-      }
     }
-
-    function applyPanelSearch(query) {
-      const count = document.getElementById('panels-search-count');
-      const matches = window.PanelRenderer ? PanelRenderer.filter(query) : 0;
-      if (count) {
-        const text = String(query || '').trim();
-        count.textContent = text ? `${matches} match${matches === 1 ? '' : 'es'}` : '';
-      }
-    }
-    document.getElementById('panels-search')?.addEventListener('input', event => applyPanelSearch(event.target.value));
 
     function refreshSettingsPanels() {
       if (window.PanelRenderer) {
