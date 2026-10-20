@@ -181,6 +181,10 @@ settings blocks are hidden because the panels edit those settings now.
   tested in `tests/panel-engine.test.cjs`.
 - `panels/panel-definitions.js` is the declarative panel format; the Positioning (GPS) panel
   is the reference definition. Keys absent from the loaded schema are skipped by renderers.
+- Every setting's `display_name` in `settings-meta.json` names the setting on its own, without
+  relying on the category header above it ("LED enabled", "status send interval", "GPS fix
+  interval", "VHF night window start (UTC hour)"), since the All settings list, the import
+  preview and gate reasons all show that name.
 - `settings-meta.json` carries `categories` with a title, display order, and the order of
   settings inside each category; the settings list and the composer follow it instead of
   alphabetical order.
