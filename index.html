@@ -3468,6 +3468,10 @@
         return;
       }
 
+      // Export only what the device reported: a setting the device has not sent yet (the
+      // values are still arriving, or the firmware never sends it) is left out of the file
+      // rather than written with the input's default, and the toast says how many.
+      const missing = [];
       for (const [key, setting] of Object.entries(settingsData.settings)) {
         if (excludeFromImportExport.includes(key)) {
           continue;
@@ -3475,24 +3479,18 @@
         if (!includeCredentials && isCredentialSetting(setting)) {
           continue;
         }
-
-        // Export what the device reported, not what an input happens to hold.
-        const value = currentSettingValues.has(String(setting.id))
-          ? currentSettingValues.get(String(setting.id))
-          : getInputValue(setting.id);
-
-        if (key === 'device_pin') {
-          settings[key] = formatDevicePinForDisplay(value);
+        if (!currentSettingValues.has(String(setting.id))) {
+          missing.push(key);
           continue;
         }
-
-        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-          settings[key] = Number(value);
-        } else if (setting.conversion === 'bool') {
-          settings[key] = value === 'true';
-        } else {
-          settings[key] = value;
-        }
+        settings[key] = exportSettingValue(key, setting, currentSettingValues.get(String(setting.id)));
+      }
+      if (!Object.keys(settings).length) {
+        showToast('No settings received from the device yet; wait for the settings to load before exporting.');
+        return;
+      }
+      if (missing.length) {
+        showToast(`${missing.length} setting${missing.length === 1 ? '' : 's'} not yet received from the device ${missing.length === 1 ? 'was' : 'were'} left out of the export.`);
       }
 
       const json = JSON.stringify(settings, null, 2);
@@ -7608,6 +7606,7 @@
         showToast('Connection lost; pending setting changes were discarded.');
       }
       settingsDraft.reset();
+      currentSettingValues.clear(); // the next collar must not inherit this one's values
       setBleReconnectOverlayVisible(false);
       const wasUserRequestedDisconnect = userRequestedDisconnect;
       if (flashLogState.active) {

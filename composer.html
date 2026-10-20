@@ -497,20 +497,7 @@
           continue;
         }
 
-        const value = getInputValue(setting.id);
-
-        if (key === 'device_pin') {
-          settings[key] = formatDevicePinForDisplay(value);
-          continue;
-        }
-
-        if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
-          settings[key] = Number(value);
-        } else if (setting.conversion === 'bool') {
-          settings[key] = value === 'true';
-        } else {
-          settings[key] = value;
-        }
+        settings[key] = exportSettingValue(key, setting, getInputValue(setting.id));
       }
 
       return settings;

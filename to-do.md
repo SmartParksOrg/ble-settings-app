@@ -31,14 +31,20 @@ settings-UI change must be checked against them. Open items:
 1. (Done) Export refuses while changes are pending and exports the values the device reported.
 2. (Done) Import refuses while changes are pending and previews against device values.
 3. (Done) Import uses the same ordered, write-then-read-back apply path as "Review and apply".
-4. Round trip on hardware: export on a v8.0.1 device, import the same file on the same device ->
+4. (Bug fixed 2026-10-20) Exports from 2026-09-25 to 2026-10-20 wrote every enabled boolean as
+   false: the device reports booleans as real booleans and the export compared them with the
+   string "true". Reported by a user whose fresh export showed unexpected changes on import
+   while a months-old export was fine. Exports now use exportSettingValue (Node test), leave
+   out settings the device has not sent, and the device values are cleared on disconnect.
+   Verify on SP051307: export, import on the same collar -> zero changes, with LED enabled on.
+5. Round trip on hardware: export on a v8.0.1 device, import the same file on the same device ->
    zero changes; import a v7.2.0 profile on v8.0.1 -> only settings present in both schemas,
    keyed by name, credentials skipped unless the checkbox is set.
-5. (Done in Node) Byte-array, PIN, MAC and coordinate values re-import as equal; every setting in
+6. (Done in Node) Byte-array, PIN, MAC and coordinate values re-import as equal; every setting in
    both schema generations survives an encode/decode round trip (tests/settings-protocol.test.cjs).
-6. (Done) Node tests exist; extend them when export/import code changes.
-7. After the guided panels land, re-run the full checklist on hardware: SP051307.
-8. One-tap Apply (2026-09-26): on hardware, apply a single panel edit and confirm the bar shows
+7. (Done) Node tests exist; extend them when export/import code changes.
+8. After the guided panels land, re-run the full checklist on hardware: SP051307.
+9. One-tap Apply (2026-09-26): on hardware, apply a single panel edit and confirm the bar shows
    progress, a toast confirms, and no dialog opens; then apply an edit the device rejects and
    confirm the outcome dialog opens and its Close button is reachable on a phone.
 

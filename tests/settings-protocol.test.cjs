@@ -228,3 +228,25 @@ test('export-style values re-import as equal for PIN, MAC, coordinates and byte 
     const raw = 'CBEC6B122A13790F201C0000';
     assert.ok(ctx.isSettingValueEqual('outdoor_detection_parameters', weights, raw, raw.toLowerCase()), 'byte arrays compare case-insensitively');
 });
+
+test('exported values keep booleans the device reported as real booleans', async () => {
+    const ctx = app();
+    await ctx.loadSettingsMeta();
+    await ctx.loadSettings(v8);
+    const settings = ctx.evaluate('settingsData.settings');
+    const led = settings.led_enabled;
+    // Device values are typed (bytesToSetting), input values are strings: both must export alike.
+    assert.equal(ctx.bytesToSetting(led, [1]), true);
+    assert.equal(ctx.exportSettingValue('led_enabled', led, true), true, 'boolean true from the device');
+    assert.equal(ctx.exportSettingValue('led_enabled', led, 'true'), true, 'string true from an input');
+    assert.equal(ctx.exportSettingValue('led_enabled', led, 1), true);
+    assert.equal(ctx.exportSettingValue('led_enabled', led, false), false);
+    assert.equal(ctx.exportSettingValue('led_enabled', led, 'false'), false);
+    assert.equal(ctx.exportSettingValue('status_send_interval', settings.status_send_interval, 3600), 3600);
+    assert.equal(ctx.exportSettingValue('status_send_interval', settings.status_send_interval, '3600'), 3600);
+    assert.equal(ctx.exportSettingValue('device_pin', settings.device_pin, '01020304'), '1234');
+    assert.equal(ctx.exportSettingValue('app_key', settings.app_key, '{0x01, 0x02}'), '0102');
+    assert.equal(ctx.exportSettingValue('device_name', settings.device_name, 'SP051307'), 'SP051307');
+    // A value exported from a device boolean re-imports as unchanged on a device with the same value.
+    assert.ok(ctx.isSettingValueEqual('led_enabled', led, true, ctx.exportSettingValue('led_enabled', led, true)));
+});

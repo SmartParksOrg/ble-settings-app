@@ -2104,6 +2104,25 @@ function normalizeSettingValueForCompare(key, setting, value) {
     return String(value);
 }
 
+// The JSON form of a setting for an exported profile. Device values arrive typed (booleans
+// and numbers from bytesToSetting), input values arrive as strings; both must export the
+// same way, so a boolean is true for true, 'true', 1 and '1', never a string comparison.
+function exportSettingValue(key, setting, value) {
+    if (key === 'device_pin') {
+        return formatDevicePinForDisplay(value);
+    }
+    if (setting.conversion === 'bool') {
+        return value === true || value === 1 || ['true', '1'].includes(String(value).trim().toLowerCase());
+    }
+    if (['uint32', 'uint16', 'uint8', 'int32', 'int8', 'float'].includes(setting.conversion)) {
+        return Number(value);
+    }
+    if (setting.conversion === 'byte_array') {
+        return stripBytes(String(value ?? ''));
+    }
+    return value === undefined || value === null ? '' : String(value);
+}
+
 function isSettingValueEqual(key, setting, currentValue, nextValue) {
     const currentNorm = normalizeSettingValueForCompare(key, setting, currentValue);
     const nextNorm = normalizeSettingValueForCompare(key, setting, nextValue);

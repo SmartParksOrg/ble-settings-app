@@ -196,7 +196,11 @@ settings blocks are hidden because the panels edit those settings now.
   their draft entry.
 - Import uses the same ordered, verified apply path, always with the preview first. Export and
   import refuse to run while edits are pending, so a profile always matches what the device
-  reported.
+  reported. The export writes only settings the device has actually sent (a toast says how
+  many were left out when values are still arriving) and converts them with
+  `exportSettingValue`, which treats the device's typed booleans and the inputs' strings alike.
+  Exports made between 2026-09-25 and 2026-10-20 wrote every enabled on/off setting as `false`
+  (the device's boolean was compared with the string "true"); re-export such profiles.
 - Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
   input) as 0: doing so flipped switches and gate conditions and disabled the field under the
   person's finger. The field is brought back in line with the draft when focus leaves it.
