@@ -259,7 +259,10 @@ refuse to export while edits are pending, so the file matches what the device re
 
 ## Device time and location
 
-Every connection sets the collar's clock and start position from the phone: as soon as the
+The Status, Logs and Messenger cards have no refresh buttons: the status is requested on
+connection and after the time and location update, the flash message count on connection
+and after an erase, and the Messenger polls by itself. Every connection sets the collar's
+clock and start position from the phone: as soon as the
 first status message arrives, the app asks the browser for its position and sends it with the
 current time (command `0xAF`), the same thing the "Set location & time" button in the Actions
 card does. The button stays for a manual repeat. The device's confirmation shows a toast and

@@ -87,26 +87,6 @@ body.connected #header-section {
     margin-top: 0;
 }
 
-/* Icon-only refresh links keep their label for screen readers. */
-.visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-    border: 0;
-}
-
-.status-item-refresh {
-    position: relative;
-}
-
-.status-header.status-header-refresh-only {
-    justify-content: flex-end;
-}
 
 .status-section,
 .features-section,

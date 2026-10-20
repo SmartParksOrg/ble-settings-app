@@ -310,9 +310,6 @@
       <div class="section-card-body">
         <div class="status-header">
           <div class="status-item"><span class="icon messages"></span>Flash log</div>
-          <a href="#" onclick="requestFlashLogCount(); return false;">
-            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
-          </a>
         </div>
         <div class="data-item">
           <span>Flash messages</span>
@@ -323,9 +320,6 @@
         </div>
         <div class="status-header recent-log-header">
           <div class="status-item"><span class="icon messages"></span>Recent messages</div>
-          <a href="#" onclick="requestRecentLogs(); return false;">
-            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
-          </a>
         </div>
         <div class="log-actions">
           <select id="flash-log-type-select" class="log-type-select" aria-label="Flash log message type" onchange="onFlashLogTypeChanged()">
@@ -408,9 +402,6 @@
       <div class="section-card-body messenger-card">
         <div class="status-header messenger-header">
           <div class="status-item"><span class="icon messages"></span>Chat</div>
-          <a href="#" onclick="messengerCheckNow()">
-            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
-          </a>
         </div>
         <div class="messenger-meta">
           <span id="messenger-send-flag" class="messenger-pill">LoRa send: unknown</span>
@@ -4078,11 +4069,6 @@
         hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`
       });
       statusMessageElement.innerHTML = `
-        <div class="status-header status-header-refresh-only">
-          <a href="#" onclick="requestStatusMessage()">
-            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
-          </a>
-        </div>
         ${lrUpdateBanner}
         <div class="status-items">
           ${statusItems.join('')}
