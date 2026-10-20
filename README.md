@@ -236,6 +236,21 @@ time is still set, and says so in a toast. Driver-update firmware (LR update, v5
 as the button is hidden there as well. The update runs again after the automatic reconnect
 that follows a DFU, since that is a new connection with a freshly booted collar.
 
+## Recent stored messages
+
+The Logs card shows the newest stored messages of any type without downloading the whole
+flash log. The message type selector (status by default) feeds both "Show latest 10 stored
+messages" and "Download all messages of this type". The latest-10 request uses
+`CMD_FLASH_GET_FROM_HEAD` with start 0 for the selected port; records that arrive for other
+ports are ignored. Status messages render as the familiar status table; every other type is
+shown as a row with its age, message name, a decoded summary and the raw payload. The summary
+uses the decoders the app already has (GNSS fix, short and resent positions, last position,
+device timestamp, LR messaging text, CMDQ, FenceEdge, WiFi and BLE scans) and falls back to the
+schema conversion or a byte count. The separate "Recent Status Logs" card is gone.
+
+The cards below the map are ordered: Settings (guided panels), Logs, BLE scan, WiFi scan,
+CMDQ, FenceEdge, Messenger, All settings, Commands, Firmware notes.
+
 ## Raw log downloads
 
 Flash log downloads stream one packet per line (base64) into memory. If the connection drops,

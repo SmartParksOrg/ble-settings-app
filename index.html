@@ -284,6 +284,89 @@
     </details>
   </div>
 
+  <div id="panels-area" class="commands-section panels-section page-section hidden-when-no-settings">
+    <details class="section section-card panels-card" open>
+      <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</summary>
+      <div class="section-card-body">
+        <div class="panels-search">
+          <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
+          <span id="panels-search-count" class="panels-search-count"></span>
+        </div>
+        <div id="panels-list"></div>
+      </div>
+    </details>
+  </div>
+
+  <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
+      <div class="section-card-body">
+        <div class="status-header">
+          <div class="status-item"><span class="icon messages"></span>Flash log</div>
+          <a href="#" onclick="requestFlashLogCount(); return false;">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
+        </div>
+        <div class="data-item">
+          <span>Flash messages</span>
+          <span id="flash-log-count">Not loaded</span>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
+        </div>
+        <div class="status-header recent-log-header">
+          <div class="status-item"><span class="icon messages"></span>Recent messages</div>
+          <a href="#" onclick="requestRecentLogs(); return false;">
+            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+          </a>
+        </div>
+        <div class="log-actions">
+          <select id="flash-log-type-select" class="log-type-select" aria-label="Flash log message type" onchange="onFlashLogTypeChanged()">
+            <option value="">Load settings to choose a message type</option>
+          </select>
+          <button type="button" class="log-action-button scan-button" onclick="requestRecentLogs()">Show latest 10 stored messages</button>
+          <button type="button" class="log-action-button" onclick="downloadFlashLogsByType()">Download all messages of this type</button>
+        </div>
+        <div id="recent-log-results" class="status-log-results">
+          <div class="cmdq-empty">No stored messages loaded yet. Pick a message type and show the latest 10.</div>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button erase-logs-button" onclick="setFlashLogEraseConfirmVisible(true)">Erase all logs</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="ble-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon bluetooth" aria-hidden="true"></span>BLE Scan</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="ble-scan-settings-section" class="settings-container"></div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('ble')">Show latest BLE scan results</button>
+        </div>
+        <div id="ble-scan-results" class="cmdq-results">
+          <div class="cmdq-empty">No BLE scan results received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
+  <div id="wifi-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon wifi-scan" aria-hidden="true"></span>WiFi Scan</summary>
+      <div class="section-card-body cmdq-card">
+        <div id="wifi-scan-settings-section" class="settings-container"></div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('wifi')">Do WiFi scan now</button>
+        </div>
+        <div id="wifi-scan-results" class="cmdq-results">
+          <div class="cmdq-empty">No WiFi scan results received yet.</div>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="cmdq-area" class="commands-section page-section hidden hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon heart-pulse" aria-hidden="true"></span>CMDQ</summary>
@@ -309,94 +392,6 @@
           <div class="cmdq-empty">No fence measurement received yet.</div>
         </div>
       </div>
-    </details>
-  </div>
-
-  <div id="wifi-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon wifi-scan" aria-hidden="true"></span>WiFi Scan</summary>
-      <div class="section-card-body cmdq-card">
-        <div id="wifi-scan-settings-section" class="settings-container"></div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('wifi')">Do WiFi scan now</button>
-        </div>
-        <div id="wifi-scan-results" class="cmdq-results">
-          <div class="cmdq-empty">No WiFi scan results received yet.</div>
-        </div>
-      </div>
-    </details>
-  </div>
-
-  <div id="ble-scan-area" class="commands-section page-section hidden hidden-when-no-settings">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon bluetooth" aria-hidden="true"></span>BLE Scan</summary>
-      <div class="section-card-body cmdq-card">
-        <div id="ble-scan-settings-section" class="settings-container"></div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button scan-button" onclick="requestScanResults('ble')">Show latest BLE scan results</button>
-        </div>
-        <div id="ble-scan-results" class="cmdq-results">
-          <div class="cmdq-empty">No BLE scan results received yet.</div>
-        </div>
-      </div>
-    </details>
-  </div>
-
-  <div id="logs-area" class="commands-section page-section hidden-when-no-settings">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon bug" aria-hidden="true"></span>Logs</summary>
-      <div class="section-card-body">
-        <div class="status-header">
-          <div class="status-item"><span class="icon messages"></span>Flash log</div>
-          <a href="#" onclick="requestFlashLogCount(); return false;">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
-          </a>
-        </div>
-        <div class="data-item">
-          <span>Flash messages</span>
-          <span id="flash-log-count">Not loaded</span>
-        </div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
-        </div>
-        <div class="log-actions">
-          <select id="flash-log-type-select" class="log-type-select" aria-label="Flash log message type">
-            <option value="">Load settings to choose a message type</option>
-          </select>
-          <button type="button" class="log-action-button" onclick="downloadFlashLogsByType()">Download selected message type</button>
-        </div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button erase-logs-button" onclick="setFlashLogEraseConfirmVisible(true)">Erase all logs</button>
-        </div>
-      </div>
-    </details>
-  </div>
-
-  <div id="status-log-area" class="commands-section page-section hidden-when-no-settings">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon square-poll-horizontal" aria-hidden="true"></span>Recent Status Logs</summary>
-      <div class="section-card-body status-log-card">
-        <div class="status-header">
-          <div class="status-item"><span class="icon messages"></span>Last 10 status messages</div>
-          <a href="#" onclick="requestRecentStatusLogs(); return false;">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
-          </a>
-        </div>
-        <div class="log-actions">
-          <button type="button" class="log-action-button scan-button" onclick="requestRecentStatusLogs()">Load latest status logs</button>
-        </div>
-        <div id="status-log-results" class="status-log-results">
-          <div class="cmdq-empty">No status logs loaded yet.</div>
-        </div>
-      </div>
-    </details>
-  </div>
-
-  <div id="firmware-notes-anchor"></div>
-  <div id="firmware-notes-area" class="commands-section page-section hidden">
-    <details class="section section-card">
-      <summary class="section-card-title"><span class="icon book" aria-hidden="true"></span>Firmware Notes</summary>
-      <div class="section-card-body" id="firmware-notes-body"></div>
     </details>
   </div>
 
@@ -428,19 +423,6 @@
             <button type="button" class="log-action-button" onclick="requestMessengerDownlink()">Ping LR1</button>
           </div>
         </div>
-      </div>
-    </details>
-  </div>
-
-  <div id="panels-area" class="commands-section panels-section page-section hidden-when-no-settings">
-    <details class="section section-card panels-card" open>
-      <summary class="section-card-title"><span class="icon gears" aria-hidden="true"></span>Settings</summary>
-      <div class="section-card-body">
-        <div class="panels-search">
-          <input type="search" id="panels-search" placeholder="Find a setting..." aria-label="Find a setting in the panels" autocomplete="off">
-          <span id="panels-search-count" class="panels-search-count"></span>
-        </div>
-        <div id="panels-list"></div>
       </div>
     </details>
   </div>
@@ -481,6 +463,15 @@
       <div class="section-card-body">
         <div id="commands-buttons-section"></div>
       </div>
+    </details>
+  </div>
+
+  <div id="firmware-notes-anchor"></div>
+
+  <div id="firmware-notes-area" class="commands-section page-section hidden">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon book" aria-hidden="true"></span>Firmware Notes</summary>
+      <div class="section-card-body" id="firmware-notes-body"></div>
     </details>
   </div>
 
@@ -973,14 +964,16 @@
       lastError: '',
       lastRequest: null
     };
-    const RECENT_STATUS_LOG_LIMIT = 10;
-    const STATUS_LOG_TIMEOUT_MS = 12000;
-    let statusLogState = {
+    const RECENT_LOG_LIMIT = 10;
+    const RECENT_LOG_TIMEOUT_MS = 12000;
+    let recentLogState = {
       active: false,
       records: [],
       flashBuffer: new Uint8Array(0),
       timeoutId: null,
-      requestedCount: RECENT_STATUS_LOG_LIMIT
+      requestedCount: RECENT_LOG_LIMIT,
+      port: null,
+      label: ''
     };
     let flashLogCountTotal = null;
     let cmdqLatestResult = null;
@@ -2624,26 +2617,28 @@
       };
     }
 
-    function clearStatusLogTimeout() {
-      if (statusLogState.timeoutId) {
-        clearTimeout(statusLogState.timeoutId);
-        statusLogState.timeoutId = null;
+    function clearRecentLogTimeout() {
+      if (recentLogState.timeoutId) {
+        clearTimeout(recentLogState.timeoutId);
+        recentLogState.timeoutId = null;
       }
     }
 
-    function getStatusLogMessageMeta() {
-      if (!settingsData || !settingsData.ports || !settingsData.messages) {
+    // The message type picked in the Logs card: its port number and a label for the results.
+    function getRecentLogTarget() {
+      const select = document.getElementById('flash-log-type-select');
+      if (!select || !select.value || !settingsData || !settingsData.ports) {
         return null;
       }
-      const meta = settingsData.messages.msg_status;
-      const port = settingsData.ports.port_status;
-      if (!meta || !Number.isFinite(port)) {
+      const port = Number.parseInt(select.value, 10);
+      if (!Number.isFinite(port)) {
         return null;
       }
+      const portName = Object.keys(settingsData.ports).find(key => settingsData.ports[key] === port) || '';
       return {
         port,
-        id: parseInt(meta.id, 16),
-        length: meta.length
+        portName,
+        label: portName.replace(/^port_/, '').replace(/_/g, ' ') || `port ${port}`
       };
     }
 
@@ -2702,23 +2697,78 @@
       return `${new Date(timestamp * 1000).toLocaleString('nl-NL')} - Unix ${timestamp}`;
     }
 
-    function renderStatusLogResults(message = '') {
-      const resultsEl = document.getElementById('status-log-results');
-      if (!resultsEl) {
-        return;
-      }
+    function formatRecentLogUnixTime(seconds) {
+      return Number.isFinite(seconds) && seconds > 0
+        ? `${new Date(seconds * 1000).toLocaleString('nl-NL')} (${seconds})`
+        : 'no time';
+    }
 
-      if (message) {
-        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(message)}</div>`;
-        return;
-      }
+    function formatRecentLogCoordinate(latitude, longitude) {
+      return `${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`;
+    }
 
-      if (!statusLogState.records.length) {
-        resultsEl.innerHTML = '<div class="cmdq-empty">No status logs found.</div>';
-        return;
+    // One line that describes a stored message, using the decoder the app already has for
+    // that message type; anything unknown falls back to the schema conversion or plain hex.
+    function summarizeRecentLogRecord(record) {
+      const key = record.message ? record.message.key : '';
+      const meta = record.message ? record.message.meta : null;
+      const bytes = record.payload;
+      try {
+        if (key === 'msg_ublox_location') {
+          const fix = decodeUbloxFixMessage(bytes);
+          return `${fix.success ? 'Fix' : 'No fix'}: ${formatRecentLogCoordinate(fix.latitude, fix.longitude)}, `
+            + `alt ${formatUbloxFixValue(fix.altitude, 1)} m, ${fix.siv} sats, hacc ${fix.h_acc_est} m, `
+            + `ttf ${fix.ttf} s, fix time ${formatRecentLogUnixTime(fix.fix_timestamp)}`
+            + (fix.active_tracking ? ', active tracking' : '');
+        }
+        if (['msg_ublox_location_short', 'msg_ublox_resend_location', 'msg_lp0_ping'].includes(key)) {
+          const point = decodeTrackPointFromShortMessage(bytes);
+          return point
+            ? `${formatRecentLogCoordinate(point.latitude, point.longitude)}, fix time ${formatRecentLogUnixTime(point.timestamp)}`
+            : 'No valid position in this message';
+        }
+        if (key === 'msg_last_position' && bytes.length >= 16) {
+          const point = decodeLastPositionMessage(bytes);
+          return `${formatRecentLogCoordinate(point.latitude, point.longitude)}, alt ${point.altitude} m, `
+            + `fix time ${formatRecentLogUnixTime(point.timestamp)}`;
+        }
+        if (key === 'msg_timestamp' && bytes.length >= 4) {
+          return `Device time ${formatRecentLogUnixTime(bytesToSetting({ conversion: 'uint32' }, bytes))}`;
+        }
+        if (key === 'msg_lr_messaging' || key === 'msg_lr_messaging_timestamp') {
+          const decoded = decodeLrMessagingPayload(bytes, key === 'msg_lr_messaging_timestamp');
+          return `"${decoded.text}" seq ${decoded.seq ?? '-'}, retry ${decoded.retry ?? '-'}`
+            + (key === 'msg_lr_messaging_timestamp' ? `, ${formatRecentLogUnixTime(decoded.timestamp)}` : '');
+        }
+        if (key === 'msg_ble_cmdq') {
+          const decoded = decodeCmdqPayload(bytes);
+          return decoded.empty ? decoded.message : `${decoded.measurements.length} CMDQ measurement${decoded.measurements.length === 1 ? '' : 's'}`;
+        }
+        if (key === 'msg_fence') {
+          const decoded = decodeFencePayload(bytes);
+          return decoded.empty
+            ? decoded.message
+            : `${decoded.measurement.success ? 'OK' : 'Failed'}: voltage ${decoded.measurement.voltage}, energy ${decoded.measurement.energy}, N ${decoded.measurement.N}`;
+        }
+        if (['msg_wifi_scan', 'msg_wifi_scan_aggregated', 'msg_ble_scan', 'msg_ble_scan_aggregated'].includes(key)) {
+          const decoded = decodeScanPayload(key.startsWith('msg_wifi') ? 'wifi' : 'ble', key, bytes);
+          if (decoded.empty) {
+            return decoded.message;
+          }
+          const list = decoded.entries.slice(0, 6).map(entry => `${entry.id} (${entry.rssi} dBm${entry.count !== null && entry.count !== undefined ? `, x${entry.count}` : ''})`).join('; ');
+          return `${decoded.entries.length} result${decoded.entries.length === 1 ? '' : 's'}: ${list}${decoded.entries.length > 6 ? '; ...' : ''}`;
+        }
+        if (meta && meta.conversion && meta.conversion !== 'byte_array') {
+          return String(bytesToSetting(meta, bytes.slice(0, meta.length)));
+        }
+      } catch (error) {
+        return `Could not decode: ${error.message}`;
       }
+      return `${bytes.length} byte${bytes.length === 1 ? '' : 's'}`;
+    }
 
-      const sortedRecords = statusLogState.records
+    function sortRecentLogRecords(records) {
+      return records
         .slice()
         .sort((a, b) => {
           const aTime = Number.isFinite(a.timestamp) && a.timestamp > 0 ? a.timestamp : -Infinity;
@@ -2728,9 +2778,11 @@
           }
           return (a.sequence || 0) - (b.sequence || 0);
         });
+    }
 
-      const rows = sortedRecords.map((record, index) => {
-        const status = record.status;
+    function renderStatusLogTable(records) {
+      const rows = records.map((record, index) => {
+        const status = decodeStatusMessage(new Uint8Array([record.id, record.length, ...record.payload]));
         const version = `${status.ver_fw_major}.${status.ver_fw_minor}`;
         const hardware = `${status.ver_hw_major}.${status.ver_hw_minor}`;
         const resetLabel = `${decodeReset(status.reset)} (${status.reset})`;
@@ -2762,7 +2814,7 @@
         `;
       }).join('');
 
-      resultsEl.innerHTML = `
+      return `
         <div class="status-log-table-wrap">
           <table class="status-log-table">
             <thead>
@@ -2792,21 +2844,77 @@
       `;
     }
 
-    function finishStatusLogRequest(message = '') {
-      clearStatusLogTimeout();
-      statusLogState.active = false;
-      renderStatusLogResults(message);
+    function renderGenericLogTable(records) {
+      const rows = records.map((record, index) => {
+        const name = record.message ? record.message.key.replace(/^msg_/, '').replace(/_/g, ' ') : `id 0x${record.id.toString(16).padStart(2, '0')}`;
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td class="status-log-age" title="${escapeHtml(formatStatusLogTimestampTitle(record.timestamp))}">${escapeHtml(formatStatusLogAge(record.timestamp))}</td>
+            <td>${escapeHtml(name)}</td>
+            <td class="recent-log-details">${escapeHtml(summarizeRecentLogRecord(record))}</td>
+            <td class="recent-log-raw"><code>${escapeHtml(bytesToHex(record.payload) || '-')}</code></td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div class="status-log-table-wrap">
+          <table class="status-log-table recent-log-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Age</th>
+                <th>Message</th>
+                <th>Details</th>
+                <th>Raw</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `;
     }
 
-    function failStatusLogRequest(message) {
-      clearStatusLogTimeout();
-      statusLogState.active = false;
-      renderStatusLogResults(message);
+    function renderRecentLogResults(message = '') {
+      const resultsEl = document.getElementById('recent-log-results');
+      if (!resultsEl) {
+        return;
+      }
+
+      if (message) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">${escapeHtml(message)}</div>`;
+        return;
+      }
+
+      if (!recentLogState.records.length) {
+        resultsEl.innerHTML = `<div class="cmdq-empty">No ${escapeHtml(recentLogState.label)} messages found.</div>`;
+        return;
+      }
+
+      const records = sortRecentLogRecords(recentLogState.records);
+      const heading = `<div class="recent-log-heading">Latest ${records.length} ${escapeHtml(recentLogState.label)} message${records.length === 1 ? '' : 's'}, newest first</div>`;
+      const statusPort = settingsData && settingsData.ports ? settingsData.ports.port_status : null;
+      const isStatus = Number.isFinite(statusPort) && recentLogState.port === statusPort
+        && records.every(record => record.message && record.message.key === 'msg_status');
+      resultsEl.innerHTML = heading + (isStatus ? renderStatusLogTable(records) : renderGenericLogTable(records));
+    }
+
+    function finishRecentLogRequest(message = '') {
+      clearRecentLogTimeout();
+      recentLogState.active = false;
+      renderRecentLogResults(message);
+    }
+
+    function failRecentLogRequest(message) {
+      clearRecentLogTimeout();
+      recentLogState.active = false;
+      renderRecentLogResults(message);
       showToast(message);
     }
 
-    function tryHandleStatusLogResponse(data) {
-      if (!statusLogState.active || !settingsData) {
+    function tryHandleRecentLogResponse(data) {
+      if (!recentLogState.active || !settingsData) {
         return false;
       }
 
@@ -2816,11 +2924,9 @@
 
       if (Number.isFinite(messagesPort) && port === messagesPort && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_GET_FROM_HEAD) {
         if (data[4] !== 0x01) {
-          failStatusLogRequest(`Failed to request status logs: device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
-        } else if (!statusLogState.records.length) {
-          finishStatusLogRequest('No status logs found.');
+          failRecentLogRequest(`Failed to request ${recentLogState.label} messages: device returned status 0x${data[4].toString(16).padStart(2, '0')}.`);
         } else {
-          finishStatusLogRequest();
+          finishRecentLogRequest();
         }
         return true;
       }
@@ -2829,44 +2935,43 @@
         return false;
       }
 
-      clearStatusLogTimeout();
-      statusLogState.timeoutId = setTimeout(() => {
-        if (statusLogState.active) {
-          finishStatusLogRequest(statusLogState.records.length ? '' : 'No new status log data received.');
+      clearRecentLogTimeout();
+      recentLogState.timeoutId = setTimeout(() => {
+        if (recentLogState.active) {
+          finishRecentLogRequest(recentLogState.records.length ? '' : `No new ${recentLogState.label} message data received.`);
         }
-      }, STATUS_LOG_TIMEOUT_MS);
+      }, RECENT_LOG_TIMEOUT_MS);
 
-      const expected = getStatusLogMessageMeta();
-      const parsed = parseFlashLogRecords(data, statusLogState.flashBuffer);
-      statusLogState.flashBuffer = parsed.remainder;
+      const parsed = parseFlashLogRecords(data, recentLogState.flashBuffer);
+      recentLogState.flashBuffer = parsed.remainder;
 
       for (const record of parsed.records) {
-        if (!expected || record.port !== expected.port || record.id !== expected.id) {
+        if (record.port !== recentLogState.port) {
           continue;
         }
-        const framedPayload = new Uint8Array([record.id, record.length, ...record.payload]);
-        const decoded = decodeStatusMessage(framedPayload);
-        statusLogState.records.push({
-          status: decoded,
-          timestamp: record.timestamp,
-          sequence: statusLogState.records.length
+        recentLogState.records.push({
+          ...record,
+          message: findMessageByPortAndId(record.port, record.id),
+          sequence: recentLogState.records.length
         });
-        if (statusLogState.records.length >= statusLogState.requestedCount) {
-          statusLogState.records = statusLogState.records.slice(0, statusLogState.requestedCount);
-          finishStatusLogRequest();
+        if (recentLogState.records.length >= recentLogState.requestedCount) {
+          recentLogState.records = recentLogState.records.slice(0, recentLogState.requestedCount);
+          finishRecentLogRequest();
           return true;
         }
       }
 
-      renderStatusLogResults(statusLogState.records.length
+      renderRecentLogResults(recentLogState.records.length
         ? ''
-        : `Loading latest ${statusLogState.requestedCount} status messages...`);
+        : `Loading latest ${recentLogState.requestedCount} ${recentLogState.label} messages...`);
       return true;
     }
 
-    async function requestRecentStatusLogs() {
-      if (statusLogState.active) {
-        showToast('Status log request already running.');
+    // Fetches the newest RECENT_LOG_LIMIT stored messages of the type picked in the Logs card
+    // (CMD_FLASH_GET_FROM_HEAD, start 0) and shows them decoded.
+    async function requestRecentLogs() {
+      if (recentLogState.active) {
+        showToast('A recent messages request is already running.');
         return;
       }
       if (flashLogState.active || mapTrackState.active) {
@@ -2883,36 +2988,42 @@
       }
 
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
-      const statusMeta = getStatusLogMessageMeta();
-      if (!flashCommand || !statusMeta) {
-        showToast('Status log retrieval is not available in this firmware.');
+      const target = getRecentLogTarget();
+      if (!flashCommand) {
+        showToast('Reading stored messages is not available in this firmware.');
+        return;
+      }
+      if (!target) {
+        showToast('Select a message type first.');
         return;
       }
 
       const payload = new Uint8Array(12);
       const view = new DataView(payload.buffer);
-      view.setUint32(0, statusMeta.port, true);
+      view.setUint32(0, target.port, true);
       view.setUint32(4, 0, true);
-      view.setUint32(8, RECENT_STATUS_LOG_LIMIT, true);
+      view.setUint32(8, RECENT_LOG_LIMIT, true);
 
-      clearStatusLogTimeout();
-      statusLogState = {
+      clearRecentLogTimeout();
+      recentLogState = {
         active: true,
         records: [],
         flashBuffer: new Uint8Array(0),
         timeoutId: setTimeout(() => {
-          if (statusLogState.active) {
-            failStatusLogRequest('Timed out while loading status logs.');
+          if (recentLogState.active) {
+            failRecentLogRequest(`Timed out while loading ${target.label} messages.`);
           }
-        }, STATUS_LOG_TIMEOUT_MS),
-        requestedCount: RECENT_STATUS_LOG_LIMIT
+        }, RECENT_LOG_TIMEOUT_MS),
+        requestedCount: RECENT_LOG_LIMIT,
+        port: target.port,
+        label: target.label
       };
-      renderStatusLogResults(`Loading latest ${RECENT_STATUS_LOG_LIMIT} status messages...`);
+      renderRecentLogResults(`Loading latest ${RECENT_LOG_LIMIT} ${target.label} messages...`);
 
       try {
         await executeBleCommand([0x20, parseInt(flashCommand.id, 16), payload.length, ...payload]);
       } catch (error) {
-        failStatusLogRequest(`Failed to request status logs: ${error.message}`);
+        failRecentLogRequest(`Failed to request ${target.label} messages: ${error.message}`);
       }
     }
 
@@ -6715,9 +6826,9 @@
       if (flashLogState.active) {
         cancelFlashLogDownload();
       }
-      if (statusLogState.active) {
+      if (recentLogState.active) {
         clearStatusLogTimeout();
-        statusLogState.active = false;
+        recentLogState.active = false;
       }
       mapTrackState.active = false;
       mapTrackState.pendingPlans = [];
@@ -6756,7 +6867,6 @@
         document.getElementById('settings-area'),
         document.getElementById('panels-area'),
         document.getElementById('logs-area'),
-        document.getElementById('status-log-area'),
         document.getElementById('messenger-area'),
         document.getElementById('other-commands'),
         document.getElementById('map-area'),
@@ -7802,7 +7912,7 @@
         if (tryHandleTrackResponse(data)) {
           return;
         }
-        if (tryHandleStatusLogResponse(data)) {
+        if (tryHandleRecentLogResponse(data)) {
           return;
         }
         if (tryHandleScanFlashResponse(data)) {
@@ -8145,6 +8255,20 @@
       select.innerHTML = options
         .map((option) => `<option value="${option.port}">${option.name} - port ${option.port}</option>`)
         .join('');
+      if (Number.isFinite(ports.port_status)) {
+        select.value = String(ports.port_status);
+      }
+    }
+
+    function onFlashLogTypeChanged() {
+      if (recentLogState.active) {
+        return;
+      }
+      const target = getRecentLogTarget();
+      if (recentLogState.records.length && target && target.port !== recentLogState.port) {
+        recentLogState.records = [];
+        renderRecentLogResults(`Show the latest 10 to load ${target.label} messages.`);
+      }
     }
 
     function downloadFlashLogsByType() {
@@ -8152,8 +8276,8 @@
         showToast('A log download is already in progress.');
         return;
       }
-      if (statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         return;
       }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
@@ -8203,8 +8327,8 @@
         showToast('A log download is already in progress.');
         return;
       }
-      if (statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         return;
       }
       const request = flashLogState.lastRequest;
@@ -8269,8 +8393,8 @@
         showToast('Cancel the current log download first.');
         return;
       }
-      if (statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         return;
       }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
@@ -8290,8 +8414,8 @@
     }
 
     function confirmFlashLogDownloadAll() {
-      if (statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         setFlashLogDownloadConfirmVisible(false);
         return;
       }
@@ -8310,8 +8434,8 @@
         showToast('Cancel the current log download first.');
         return;
       }
-      if (statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         return;
       }
       const flashClear = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_clear : null;
@@ -8707,8 +8831,8 @@
         showToast('A log download is already in progress.');
         return;
       }
-      if ((key === 'cmd_flash_get_all' || key === 'cmd_flash_get_from_head') && statusLogState.active) {
-        showToast('Wait for the status log request to finish first.');
+      if ((key === 'cmd_flash_get_all' || key === 'cmd_flash_get_from_head') && recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
         return;
       }
       if (key === 'cmd_get_ublox_fix') {

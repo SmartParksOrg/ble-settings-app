@@ -2640,6 +2640,39 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     font-variant-numeric: tabular-nums;
 }
 
+/* Recent messages of any type: a narrower table whose details column may wrap. */
+.recent-log-header {
+    margin-top: 14px;
+}
+
+.recent-log-heading {
+    padding: 10px 12px 0;
+    font-size: 13px;
+    color: rgba(31, 42, 35, 0.72);
+}
+
+.recent-log-table {
+    min-width: 560px;
+}
+
+.recent-log-table td.recent-log-details {
+    white-space: normal;
+    min-width: 220px;
+    max-width: 420px;
+}
+
+.recent-log-table td.recent-log-raw code {
+    display: inline-block;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+}
+
+#recent-log-results {
+    margin-top: 10px;
+}
+
 .cmdq-result-card {
     display: flex;
     flex-direction: column;

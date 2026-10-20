@@ -106,3 +106,13 @@ collapsible Settings card. Verify on SP051307: with a join error the amber Join 
 Re-join button sends the same command; Export from Actions produces a JSON with app_key and
 device_eui and refuses while edits are pending; the pending chip and the Features card still
 jump to a panel field when the Settings card is collapsed.
+
+## Recent stored messages in the Logs card (added 2026-10-20, hardware test pending)
+
+The Recent Status Logs card was folded into the Logs card and generalised: the message type
+selector drives "Show latest 10 stored messages" for any port. A headless replay of flash-log
+records checks the status table, a short position, a BLE scan and a timestamp message. Verify
+on SP051307: latest 10 status messages still render as before; pick "ublox short message" and
+confirm the rows show coordinates and the fix time; pick a type with no stored messages and
+confirm the "No ... messages found" line; change the type after a load and confirm the old rows
+clear; the download of all messages of a type still works from the same selector.
