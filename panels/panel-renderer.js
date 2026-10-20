@@ -9,6 +9,11 @@
   const engine = window.PanelEngine;
   let mounted = null; // { container, definitions, host, updaters: [], fieldElements: Map }
 
+  // Experiment (2026-10-20): a field's help text hides behind an "i" button in its head and
+  // opens on tap, so the panels read as labels and controls only. Set to false to show the
+  // help text under every field again, as before.
+  const COLLAPSIBLE_HELP = true;
+
   function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
@@ -737,7 +742,27 @@
     }
     row.appendChild(control.node);
     const help = fieldHelp(field, host);
-    if (help) row.appendChild(el('div', 'panel-field-help', help));
+    if (help) {
+      const helpNode = el('div', 'panel-field-help', help);
+      if (COLLAPSIBLE_HELP) {
+        helpNode.classList.add('panel-field-help-collapsible');
+        helpNode.hidden = true;
+        const info = el('button', 'panel-info-button', 'i');
+        info.type = 'button';
+        info.title = 'Show explanation';
+        info.setAttribute('aria-label', `Explain ${fieldLabel(field, host)}`);
+        info.setAttribute('aria-expanded', 'false');
+        info.addEventListener('click', () => {
+          const open = helpNode.hidden;
+          helpNode.hidden = !open;
+          info.setAttribute('aria-expanded', String(open));
+          info.classList.toggle('is-open', open);
+          info.title = open ? 'Hide explanation' : 'Show explanation';
+        });
+        head.insertBefore(info, badge);
+      }
+      row.appendChild(helpNode);
+    }
     const reason = el('div', 'panel-field-reason', '');
     row.appendChild(reason);
     const warning = el('div', 'panel-field-warning', '');

@@ -311,7 +311,7 @@
         <div class="status-header">
           <div class="status-item"><span class="icon messages"></span>Flash log</div>
           <a href="#" onclick="requestFlashLogCount(); return false;">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
           </a>
         </div>
         <div class="data-item">
@@ -324,7 +324,7 @@
         <div class="status-header recent-log-header">
           <div class="status-item"><span class="icon messages"></span>Recent messages</div>
           <a href="#" onclick="requestRecentLogs(); return false;">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
           </a>
         </div>
         <div class="log-actions">
@@ -409,7 +409,7 @@
         <div class="status-header messenger-header">
           <div class="status-item"><span class="icon messages"></span>Chat</div>
           <a href="#" onclick="messengerCheckNow()">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
           </a>
         </div>
         <div class="messenger-meta">
@@ -439,8 +439,10 @@
       <summary class="section-card-title"><span class="icon gear" aria-hidden="true"></span>All settings</summary>
       <div class="section-card-body">
         <div class="settings-options">
-          <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();">Import settings</button>
-          <button id="export-button" class="section-action" onclick="exportToJson()">Export settings</button>
+          <div class="settings-actions">
+            <button id="import-button" class="section-action" onclick="document.getElementById('import-file').click();" title="Import settings from a JSON file"><span class="icon file-arrow-up" aria-hidden="true"></span>Import</button>
+            <button id="export-button" class="section-action" onclick="exportToJson()" title="Export settings to a JSON file"><span class="icon file-arrow-down" aria-hidden="true"></span>Export</button>
+          </div>
           <label class="settings-option">
             <input type="checkbox" id="import-credentials-toggle">
             Include device credentials on import
@@ -4076,10 +4078,9 @@
         hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`
       });
       statusMessageElement.innerHTML = `
-        <div class="status-header">
-          <h4>${device.name}</h4>
+        <div class="status-header status-header-refresh-only">
           <a href="#" onclick="requestStatusMessage()">
-            <div class="status-item"><span class="icon refresh"></span>refresh</div>
+            <div class="status-item status-item-refresh" title="Refresh"><span class="icon refresh"></span><span class="visually-hidden">Refresh</span></div>
           </a>
         </div>
         ${lrUpdateBanner}
@@ -4200,11 +4201,6 @@
       section.appendChild(sectionGrid);
       settingsContainer.appendChild(section);
       return new Set(motionEntries.map(([key]) => key));
-    }
-
-    function toggleGroup(groupWrapper) {
-      const isCollapsed = groupWrapper.classList.toggle('is-collapsed');
-      groupWrapper.querySelector('.group-toggle')?.setAttribute('aria-expanded', String(!isCollapsed));
     }
 
     function displaySettings() {
@@ -7474,8 +7470,7 @@
       }
       const group = row.closest('.settings-group');
       if (group && group.classList.contains('is-collapsed')) {
-        group.classList.remove('is-collapsed');
-        group.querySelector('.group-toggle')?.setAttribute('aria-expanded', 'true');
+        expandSettingsGroup(group);
       }
       row.scrollIntoView({ behavior: 'smooth', block: 'center' });
       const input = row.querySelector('input, select, textarea, button');

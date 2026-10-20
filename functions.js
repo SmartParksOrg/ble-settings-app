@@ -318,11 +318,32 @@ function filterSettings() {
     });
 }
 
-function toggleGroup(group) {
-    const isCollapsed = group.classList.toggle('is-collapsed');
+function setSettingsGroupCollapsed(group, collapsed) {
+    group.classList.toggle('is-collapsed', collapsed);
     const groupToggle = group.querySelector('.group-toggle');
     if (groupToggle) {
-        groupToggle.setAttribute('aria-expanded', (!isCollapsed).toString());
+        groupToggle.setAttribute('aria-expanded', (!collapsed).toString());
+    }
+}
+
+// Only one group of the settings list is open at a time: opening one folds the others.
+function expandSettingsGroup(group) {
+    const parent = group.parentElement;
+    if (parent) {
+        parent.querySelectorAll(':scope > .settings-group').forEach(other => {
+            if (other !== group) {
+                setSettingsGroupCollapsed(other, true);
+            }
+        });
+    }
+    setSettingsGroupCollapsed(group, false);
+}
+
+function toggleGroup(group) {
+    if (group.classList.contains('is-collapsed')) {
+        expandSettingsGroup(group);
+    } else {
+        setSettingsGroupCollapsed(group, true);
     }
 }
 

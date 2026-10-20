@@ -236,6 +236,13 @@ settings blocks are hidden because the panels edit those settings now.
   not define are left out, a device value outside the table is shown as "not defined for this
   region", and US 915 and AU 915 DR8 to DR13 are marked downlink only. The Network summary and
   the helper under the raw number in the All settings list use the same translation.
+- The "All settings" list opens one category at a time: opening a category folds the one that
+  was open, the open header is drawn in forest green, and categories sit 10 px apart. Its
+  Import and Export buttons are icon-labelled and spaced like the Actions card.
+- Experiment (2026-10-20): in the panels a field's help text is hidden behind an "i" button
+  next to its label and opens on tap, so a panel reads as labels and controls. The constant
+  `COLLAPSIBLE_HELP` at the top of `panels/panel-renderer.js` turns this off again. Group
+  descriptions, gate reasons, warnings and validation errors stay visible.
 - Help text in `settings-meta.json` and the panel definitions only states what the firmware
   READMEs document (VHF beeps per burst, S-Band send modes, port bitmasks, satellite retry
   timing, air quality duty cycle, report-empty options). Settings the firmware does not
