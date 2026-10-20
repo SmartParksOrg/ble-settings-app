@@ -13,7 +13,8 @@
 //   { control: 'datarate', key, regionKey }   (LoRaWAN DR picker with SF/bandwidth per region)
 //   { control: 'byte', key, byte: n, options | min, max, unit }   (one byte of a byte-array setting;
 //     several byte fields may share a key, and conditions take `byte: n` to test one byte)
-//   { control: 'hex', key, secret: true, generate: true }   (generate: a button fills random bytes)
+//   { control: 'hex', key, secret: true, generate: true, copy: true }   (generate: a button fills
+//     random bytes; copy: a button copies the value to the clipboard)
 //   Panel: { requires: [keys] } renders only when the schema has every key; { beta: true } tags the
 //   title; { minFirmware: { major, minor } } lets the host hide it on older firmware.
 //   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
@@ -644,7 +645,7 @@
         help: 'Number of discovery response slots for nearby stations, 10 by default. Every tracker and station in the cluster must use the same count; it is capacity for stations, not for trackers.' },
       { key: 'lp0_node_params', byte: 4, control: 'byte', label: 'Discovery interval', unit: 's', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
         help: 'How often a tracker looks for a station, 60 s by default. 0 means as soon as LP0 is idle. Scheduling, random delays and retry backoff make the real wait longer.' },
-      { key: 'lp0_master_key', control: 'hex', secret: true, generate: true, label: 'Cluster master key',
+      { key: 'lp0_master_key', control: 'hex', secret: true, generate: true, copy: true, label: 'Cluster master key',
         help: 'One random 16-byte key shared by every tracker and station in the cluster. Generate it once, write the same key to every device and store it safely; a device with another key cannot join. Exported only when credentials are included.',
         warnings: [{ when: { key: 'lp0_master_key', in: ['00000000000000000000000000000000', ''] },
           text: 'All zeros is the public default key. Generate a random key for a real deployment and write it to every device in the cluster.' }] },

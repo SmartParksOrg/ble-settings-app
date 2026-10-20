@@ -115,7 +115,8 @@ whenever the 8.1.0 schema is selected.
   discovery interval are the bytes of `lp0_node_params`, edited one byte at a time through
   the new `byte` panel control (`{ key, byte: n, options | min, max }`) and gated with byte
   conditions (`{ key, byte: 0, equals: 2 }`). The cluster master key is a secret hex field with
-  a Generate button (`crypto.getRandomValues`) and a warning while it is the all-zero default.
+  a Generate button (`crypto.getRandomValues`), a copy button, and a warning while it is the all-zero
+  default.
   Focus on offloading, the statistics interval (station only, warns under 60 s), the radio
   group (frequencies, spreading factor, bandwidth, coding rate, listen window, channel span),
   the six signal-check bytes (CAD, minimum RSSI entered as a positive magnitude, background

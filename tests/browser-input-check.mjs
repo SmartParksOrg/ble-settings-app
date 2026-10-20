@@ -475,7 +475,7 @@ async function lp0Offload(tag) {
   const shown = await evaluate(`({ panel: Boolean(document.getElementById('panel-lp0')), beta: Boolean(document.querySelector('#panel-lp0 .panel-beta-tag')), card: !document.getElementById('lp0-area').classList.contains('hidden'),
     summary: document.querySelector('#panel-lp0 .panel-summary').textContent, feature: Array.from(document.querySelectorAll('#features-list .feature-item')).map(n => n.querySelector('.feature-name').textContent + ':' + n.querySelector('.feature-status').textContent).find(t => /LP0/.test(t)),
     ports: Array.from(document.getElementById('lp0-offload-port').options).map(o => o.textContent) })`);
-  check(`${tag} LP0: panel with beta tag, card, Features row and port list appear on 8.1`, shown.panel && shown.beta && shown.card && /^Offloading off\. Cluster master key is the all-zero default\.$/.test(shown.summary) && shown.feature === 'LP0 offload:Disabled' && shown.ports[0] === 'all message types (port 0)' && shown.ports.some(p => /LP0 station statistics \(port 23\)/.test(p)), shown);
+  check(`${tag} LP0: panel with beta tag, card, Features row and port list appear on 8.1`, shown.panel && shown.beta && shown.card && /^Offloading off\. Cluster master key is the all-zero default\.$/.test(shown.summary) && shown.feature === 'LP0 offload:Disabled' && shown.ports[0] === 'all message types' && shown.ports.some(p => /LP0 station statistics \(port 23\)/.test(p)), shown);
 
   const role = '#panel-lp0 .panel-field[data-keys~="lp0_node_params"][data-byte="0"] select';
   const stationId = '#panel-lp0 .panel-field[data-keys~="lp0_node_params"][data-byte="1"] input';
@@ -502,6 +502,11 @@ async function lp0Offload(tag) {
   const generated = await evaluate(`({ value: ${q(keyInput)}.value, type: ${q(keyInput)}.type, hidden: document.getElementById('new-value-' + settingsData.settings.lp0_master_key.id).value,
     warning: ${q(keyInput)}.closest('.panel-field').querySelector('.panel-field-warning').textContent, summary: document.querySelector('#panel-lp0 .panel-summary').textContent })`);
   check(`${tag} LP0: Generate fills a random 16-byte master key, shows it and clears the all-zero warning`, /all-zero|All zeros/.test(warned) && /^[0-9A-F]{32}$/.test(generated.value) && generated.type === 'text' && generated.hidden === generated.value && generated.warning === '' && /Cluster master key set/.test(generated.summary), { warned, generated });
+  await evaluate(`(() => { window.__copied = null; navigator.clipboard.writeText = text => { window.__copied = text; return Promise.resolve(); }; return true; })()`);
+  await evaluate(`${q('#panel-lp0 .panel-field[data-keys~="lp0_master_key"] .panel-copy')}.click()`);
+  await sleep(80);
+  const copied = await evaluate(`({ copied: window.__copied, toast: document.getElementById('toast').innerText, icon: Boolean(${q('#panel-lp0 .panel-field[data-keys~="lp0_master_key"] .panel-copy .icon.copy')}) })`);
+  check(`${tag} LP0: the copy button puts the generated key on the clipboard`, copied.icon && copied.copied === generated.value && /copied/i.test(copied.toast), copied);
 
   const checks = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="3"] input';
   const master = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="0"] select';

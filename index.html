@@ -419,7 +419,7 @@
           </select>
           <label class="command-helper-label" for="lp0-offload-port">Message type</label>
           <select id="lp0-offload-port" class="command-helper-input" aria-label="Message type">
-            <option value="0">all message types (port 0)</option>
+            <option value="0">all message types</option>
           </select>
         </div>
         <div class="log-actions">
@@ -8543,7 +8543,7 @@
           .filter(([name, number]) => Number.isFinite(number) && number >= 1 && number <= 32 && !skipPorts.includes(name))
           .sort((a, b) => a[1] - b[1])
           .map(([name, number]) => `<option value="${number}">${escapeHtml(labels[name] || name.replace(/^port_/, '').replace(/_/g, ' '))} (port ${number})</option>`);
-        portSelect.innerHTML = `<option value="0">all message types (port 0)</option>${options.join('')}`;
+        portSelect.innerHTML = `<option value="0">all message types</option>${options.join('')}`;
       }
       renderLp0JobStatus();
     }

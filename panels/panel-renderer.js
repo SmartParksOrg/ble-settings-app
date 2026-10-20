@@ -516,6 +516,27 @@
       });
       wrap.appendChild(generate);
     }
+    if (field.copy) {
+      // Copies the current value (a key to carry to the other devices) to the clipboard.
+      const copy = el('button', 'panel-inline-button panel-copy');
+      copy.type = 'button';
+      copy.title = `Copy the ${fieldLabel(field, host).toLowerCase()}`;
+      copy.setAttribute('aria-label', copy.title);
+      const icon = el('span', 'icon copy');
+      icon.setAttribute('aria-hidden', 'true');
+      copy.appendChild(icon);
+      copy.addEventListener('click', () => {
+        const text = input.value || '';
+        const done = () => { if (host.notify) host.notify(`${fieldLabel(field, host)} copied to the clipboard.`); };
+        const failed = () => { if (host.notify) host.notify('Could not copy to the clipboard.'); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, failed);
+        } else {
+          failed();
+        }
+      });
+      wrap.appendChild(copy);
+    }
     const control = {
       node: wrap,
       focusable: input,

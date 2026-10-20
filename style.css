@@ -4611,6 +4611,21 @@ body.has-pending-changes {
     font-size: 13px;
 }
 
+.panel-copy {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+}
+
+.panel-copy .icon.copy {
+    width: 16px;
+    height: 16px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    filter: invert(1);
+}
+
 .panel-ports {
     display: grid;
     gap: 6px 16px;
