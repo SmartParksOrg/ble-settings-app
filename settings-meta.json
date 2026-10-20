@@ -247,7 +247,11 @@
         "lp0_network_key",
         "lp0_app_key",
         "lp0_communication_params",
-        "lp0_node_params"
+        "lp0_node_params",
+        "lp0_master_key",
+        "lp0_signal_checks",
+        "lp0_focus_offloading",
+        "lp0_statistics_interval"
       ]
     },
     "rf_scan": {
@@ -751,6 +755,30 @@
       "label": "LP0 node parameters",
       "description": "LP0 node configuration (byte array). See the firmware LP0 documentation for the byte layout.",
       "display_name": "LP0 node parameters"
+    },
+    "lp0_master_key": {
+      "category": "lp0",
+      "label": "LP0 cluster master key",
+      "description": "16-byte key shared by every tracker and offload station in one LP0 cluster. Devices with different master keys cannot discover each other. The all-zero default is accepted but public; use one random key per cluster. Firmware 8.1 development builds.",
+      "display_name": "LP0 cluster master key"
+    },
+    "lp0_signal_checks": {
+      "category": "lp0",
+      "label": "LP0 signal checks",
+      "description": "Six bytes: master switch, CAD veto, minimum RSSI check, minimum RSSI magnitude (100 = -100 dBm), background margin check, minimum margin in dB. Default 1 1 1 100 1 20. A change applies to the next offload visit. Firmware 8.1 development builds.",
+      "display_name": "LP0 signal checks"
+    },
+    "lp0_focus_offloading": {
+      "category": "lp0",
+      "label": "LP0 focus on offloading",
+      "description": "When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Enable it on both the tracker and the station for a dedicated offload session. Firmware 8.1 development builds.",
+      "display_name": "LP0 focus on offloading"
+    },
+    "lp0_statistics_interval": {
+      "category": "lp0",
+      "label": "LP0 station statistics interval",
+      "description": "How often an offload station generates its statistics report (port 23). 0 disables it; enabled values must be 60 to 604800 seconds. Only the station role generates reports; port 23 must also be ticked in the send or store flags. Firmware 8.1 development builds.",
+      "display_name": "LP0 station statistics interval"
     },
     "lp0_rx_frequency_hz": {
       "category": "lp0",
@@ -1409,6 +1437,31 @@
       "label": "flash clear",
       "description": "Clear all data from external flash.",
       "display_name": "flash clear"
+    },
+    "cmd_flash_clear_confirmed": {
+      "category": "commands",
+      "label": "delete confirmed logs",
+      "description": "Erase whole flash sectors from the oldest logs onward as long as every record in them was confirmed delivered over the selected medium (or any medium). Stops at the first sector with an unconfirmed record. Replies with cmd_confirm 1 (done) or 0 (busy or failed). Firmware 8.1 development builds.",
+      "display_name": "delete confirmed logs",
+      "options": [
+        { "value": 0, "label": "Confirmed over any medium" },
+        { "value": 8, "label": "Confirmed by an LP0 station" },
+        { "value": 4, "label": "Confirmed over LoRaWAN" },
+        { "value": 2, "label": "Confirmed over Bluetooth" },
+        { "value": 1, "label": "Confirmed over satellite" }
+      ]
+    },
+    "cmd_offload_start": {
+      "category": "commands",
+      "label": "start offload",
+      "description": "Start a manual offload of saved records: medium (0 LP0, 1 LoRaWAN, 2 satellite, 3 Bluetooth), selection (0 all, 1 confirmed, 2 unconfirmed), port (0 all, or 1 to 32). The reply carries the job ID, state and result. Firmware 8.1 development builds.",
+      "display_name": "start offload"
+    },
+    "cmd_offload_cancel": {
+      "category": "commands",
+      "label": "cancel offload",
+      "description": "Cancel the current manual or automatic offload: job ID as uint32, or 0 for whatever runs. Firmware 8.1 development builds.",
+      "display_name": "cancel offload"
     },
     "cmd_flash_get_all": {
       "category": "commands",

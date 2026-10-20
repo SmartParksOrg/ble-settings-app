@@ -37,7 +37,29 @@
     return String(actual ?? '') === String(expected ?? '');
   }
 
+  // Byte-array settings are hex strings ("07050101", or "{0x07,0x05,...}" straight from a
+  // schema default). byteAt reads one byte of such a value; setByte writes one back and
+  // returns the full upper-case hex string, padded or cut to `length` bytes.
+  function hexDigits(value) {
+    return String(value ?? '').replace(/0x/gi, '').replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+  }
+
+  function byteAt(value, index) {
+    const hex = hexDigits(value);
+    if (!Number.isInteger(index) || index < 0 || hex.length < (index + 1) * 2) return NaN;
+    return parseInt(hex.substr(index * 2, 2), 16);
+  }
+
+  function setByte(value, index, byte, length) {
+    const size = Number.isInteger(length) && length > 0 ? length : Math.max(index + 1, hexDigits(value).length / 2);
+    const current = hexDigits(value).padEnd(size * 2, '0').slice(0, size * 2);
+    const clamped = Math.min(255, Math.max(0, Math.round(toNumber(byte)) || 0));
+    const text = clamped.toString(16).padStart(2, '0').toUpperCase();
+    return current.slice(0, index * 2) + text + current.slice(index * 2 + 2);
+  }
+
   // Condition forms: true/false, { key, equals | notEquals | in | truthy | gt | gte | lt | lte },
+  // optionally with `byte: n` to test one byte of a byte-array setting instead of the whole value,
   // { all: [...] }, { any: [...] }, { not: condition }. getValue(key) returns the effective value.
   function evaluateCondition(condition, getValue) {
     if (condition === null || condition === undefined) return true;
@@ -46,7 +68,7 @@
     if (Array.isArray(condition.any)) return condition.any.some(item => evaluateCondition(item, getValue));
     if (condition.not !== undefined) return !evaluateCondition(condition.not, getValue);
     if (!condition.key) return true;
-    const value = getValue(condition.key);
+    const value = Number.isInteger(condition.byte) ? byteAt(getValue(condition.key), condition.byte) : getValue(condition.key);
     if ('equals' in condition) return sameValue(value, condition.equals);
     if ('notEquals' in condition) return !sameValue(value, condition.notEquals);
     if (Array.isArray(condition.in)) return condition.in.some(candidate => sameValue(value, candidate));
@@ -540,6 +562,37 @@
     return (on ? (current | portBit(portNumber)) : (current & ~portBit(portNumber))) >>> 0;
   }
 
+  // LP0 offload (firmware 8.1 development builds): role and station slot from
+  // lp0_node_params, master key presence, focus mode and the statistics interval.
+  function describeLp0(getValue, fmt = {}) {
+    const has = key => getValue(key) !== null && getValue(key) !== undefined;
+    const duration = fmt.duration || formatDurationWords;
+    if (!has('lp0_node_params')) return '';
+    const node = getValue('lp0_node_params');
+    const role = byteAt(node, 0);
+    const slot = byteAt(node, 1);
+    const count = byteAt(node, 2);
+    const ping = byteAt(node, 4);
+    const sentences = [];
+    if (role === 1) {
+      sentences.push(`Tracker: looks for a station ${ping > 0 ? `every ${duration(ping)}` : 'as soon as LP0 is idle'}, ${count} station slot${count === 1 ? '' : 's'}.`);
+    } else if (role === 2) {
+      sentences.push(`Offload station, ID ${slot} of ${count} slot${count === 1 ? '' : 's'}.`);
+    } else {
+      sentences.push('Offloading off.');
+    }
+    if (has('lp0_master_key')) {
+      const key = hexDigits(getValue('lp0_master_key'));
+      sentences.push(key && !/^0+$/.test(key) ? 'Cluster master key set.' : 'Cluster master key is the all-zero default.');
+    }
+    if (has('lp0_focus_offloading') && toBool(getValue('lp0_focus_offloading'))) sentences.push('Focus on offloading.');
+    if (role === 2 && has('lp0_statistics_interval')) {
+      const seconds = toNumber(getValue('lp0_statistics_interval'));
+      sentences.push(seconds > 0 ? `Statistics every ${duration(seconds)}.` : 'Statistics off.');
+    }
+    return sentences.join(' ');
+  }
+
   // ports: [{ name, number, label }]; columns: [{ key, label }]
   function describeDataFlags(getValue, ports, columns) {
     const parts = [];
@@ -579,6 +632,10 @@
     dataRateOptions,
     describeDevice,
     describeDataFlags,
+    describeLp0,
+    hexDigits,
+    byteAt,
+    setByte,
     portBit,
     isPortSet,
     setPort,

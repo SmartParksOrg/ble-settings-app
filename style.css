@@ -3058,6 +3058,81 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     background: linear-gradient(145deg, #e35d5d, #a51616);
 }
 
+/* LP0 offload card (firmware 8.1 development builds). */
+.lp0-note {
+    margin: 0 0 12px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: rgba(31, 42, 35, 0.75);
+}
+
+.lp0-fields {
+    margin-bottom: 8px;
+}
+
+.lp0-job {
+    display: grid;
+    gap: 6px;
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--sp-border);
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.lp0-job-state {
+    font-weight: 700;
+    color: var(--sp-forest-dark);
+}
+
+.lp0-job-state.is-failed {
+    color: #b42318;
+}
+
+.lp0-job-state.is-done {
+    color: #1e7a3c;
+}
+
+.lp0-job-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.lp0-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #f1f3f6;
+    color: #1f2430;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.recent-log-more {
+    margin-top: 6px;
+    font-size: 12px;
+}
+
+.recent-log-more summary {
+    cursor: pointer;
+    color: var(--sp-forest-dark);
+    font-weight: 600;
+}
+
+.recent-log-list {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    columns: 2;
+    column-gap: 18px;
+}
+
+.recent-log-list li {
+    break-inside: avoid;
+}
+
 .log-type-select {
     width: 100%;
     padding: 10px 12px;
@@ -4152,6 +4227,21 @@ body.has-pending-changes {
 
 .panel-field-label {
     font-weight: 700;
+}
+
+/* Beta tag after a panel or card title (LP0 offload on 8.1 development firmware). */
+.panel-beta-tag {
+    display: inline-block;
+    margin-left: 10px;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    background: rgba(217, 119, 6, 0.16);
+    color: #7c2d12;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.5;
 }
 
 .panel-field-badge {

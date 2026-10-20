@@ -93,6 +93,60 @@ stubbed device picker, stubbed downloads) and checks these paths; the desktop an
 check that exports still download through an anchor and that the manufacturer filter stays.
 Verification on a real iPhone with Bluefy is still open (see to-do.md).
 
+## Firmware 8.1 development builds: LP0 offload (beta)
+
+Firmware 8.1 is under development on the `fix/existing-lp0-implementation` branch of the
+private firmware repository and is flashed by hand; the app bundles no DFU file for it. Its
+settings schema, `settings/settings-v8.1.0.json`, is `scripts/settings/settings.json` from that
+branch at commit 7bae042 (fetched 2026-10-20). Replace the file when the branch changes the
+schema. Against 8.0.3 it adds four settings (`lp0_master_key`, `lp0_signal_checks`,
+`lp0_focus_offloading`, `lp0_statistics_interval`), three commands (`cmd_offload_start` 0xCF,
+`cmd_offload_cancel` 0xD1, `cmd_flash_clear_confirmed` 0xD2), the station statistics message
+(port 23, id 0x9D) and new defaults for `flash_store_flag` and `lp0_send_flag` (port 23 set).
+
+The eight LP0 settings that older schemas already have stay where they were: in the LP0 group
+of the All settings list and as the LP0 column of the Data sending and storing matrix. The
+LP0 features below are only offered when the device reports firmware 8.1 or newer and the
+loaded schema carries the master key and the offload commands; they are hidden on 8.0.x, also
+when someone picks the 8.1.0 schema by hand for an 8.0 collar. The composer shows the panel
+whenever the 8.1.0 schema is selected.
+
+- **LP0 offload panel** (beta tag, between S-Band and VHF): role, station ID, station count and
+  discovery interval are the bytes of `lp0_node_params`, edited one byte at a time through
+  the new `byte` panel control (`{ key, byte: n, options | min, max }`) and gated with byte
+  conditions (`{ key, byte: 0, equals: 2 }`). The cluster master key is a secret hex field with
+  a Generate button (`crypto.getRandomValues`) and a warning while it is the all-zero default.
+  Focus on offloading, the statistics interval (station only, warns under 60 s), the radio
+  group (frequencies, spreading factor, bandwidth, coding rate, listen window, channel span),
+  the six signal-check bytes (CAD, minimum RSSI entered as a positive magnitude, background
+  margin, each gated by the master switch) and the device payload keys follow. The send mask
+  stays in the Data matrix so no key has two editing paths. The panel summary reads
+  "Offload station, ID 3 of 10 slots. Cluster master key set. Statistics every 1 hour."
+- **Features card** gets an "LP0 offload" row (Tracker / Station, ID n / Off) that jumps to
+  the role field.
+- **LP0 offload card** (after FenceEdge): Start offload sends `20 CF 03 medium selection port`
+  (LP0, LoRaWAN or satellite; unconfirmed, all or confirmed records; one message type or all),
+  Cancel sends `20 D1 04 00 00 00 00` (job 0 stops whatever runs), and the device's 19-byte
+  reply on the commands port is decoded (`decodeOffloadJobReply` in `functions.js`: job ID,
+  state, medium, selection, port, discovery attempts, errno with its documented meaning,
+  confirmed records) into the card and a toast. The firmware has no status query, so the card
+  shows the last reply only. "Delete confirmed logs" asks first, then sends `20 D2 01 selector`
+  (any medium, LP0 station, LoRaWAN, Bluetooth or satellite); the usual cmd_confirm reply
+  shows a toast and refreshes the flash message count. The Bluetooth offload medium is not
+  offered: the Logs card's download already covers it.
+- **Station statistics** stored in flash (port 23) are decoded in the Logs card's recent
+  messages (`decodeLp0StatisticsMessage`, versions 1 to 3): a one-line summary with uptime,
+  the status flags that are set, visit and data counters and the SD card size, plus every flag
+  and counter behind a fold. Unknown flags are reported as unknown, never as healthy.
+- `lp0_signal_checks` is validated byte by byte against the schema's min and max (the first
+  byte array with real bounds); all-zero bounds stay unchecked as before. The LP0 communication
+  parameters renderer in the list now names the real defaults (SF7, 250 kHz) and only shows a
+  fifth byte where the schema has one (v7.0.0).
+- `tests/browser-input-check.mjs` has an LP0 scenario: nothing on 8.0.1, panel, card, Features
+  row and port list on 8.1, byte edits through the shared hidden input, Generate, the signal
+  check gate, the start command and its reply, the delete confirmation, a replayed statistics
+  record, and no panel or card for an 8.0 status with the 8.1.0 schema.
+
 ## Firmware v8 settings support
 
 The app and HEX composer support both the legacy settings protocol and the family-based

@@ -52,6 +52,7 @@ const skipPorts = ['port_lr_messaging', 'port_flash_log', 'port_values', 'port_m
 const customByteArrayRenderers = {
     lp0_communication_params: renderLp0CommunicationParams,
     lp0_node_params: renderLp0NodeParams,
+    lp0_signal_checks: renderLp0SignalChecks,
     outdoor_detection_parameters: renderOutdoorDetectionParameters,
     cmdq_searched_mac_address: renderMacAddressParameters
 };
@@ -80,6 +81,7 @@ const customInputRenderers = {
 
 // Static list of settings files
 const SETTINGS_FILES = [
+    "settings-v8.1.0.json", // development snapshot (LP0 offload beta), see README
     "settings-v8.0.3.json",
     "settings-v8.0.2.json",
     "settings-v8.0.1.json",
@@ -454,7 +456,7 @@ function decodeSettingRecords(bytes, expectedType, onWarning = () => {}) {
 
 const credentialSettingKeys = new Set([
     'app_key', 'device_eui', 'app_eui', 'device_name', 'device_pin',
-    'lp0_app_key', 'lp0_network_key', 'lp0_dev_addr',
+    'lp0_app_key', 'lp0_network_key', 'lp0_dev_addr', 'lp0_master_key',
     's_band_app_key', 's_band_network_key', 's_band_dev_adr'
 ]);
 
@@ -1176,7 +1178,7 @@ function renderLp0CommunicationParams(setting, value) {
                 { value: 0x0A, label: 'LR11XX_RADIO_LORA_SF10 (0x0A)' },
                 { value: 0x0B, label: 'LR11XX_RADIO_LORA_SF11 (0x0B)' },
                 { value: 0x0C, label: 'LR11XX_RADIO_LORA_SF12 (0x0C)' }
-            ], 'Default: LR11XX_RADIO_LORA_SF9 (0x09)')}
+            ], 'Default: LR11XX_RADIO_LORA_SF7 (0x07)')}
             ${renderByteArrayField(setting.id, 1, 'Bandwidth', bytes[1], [
                 { value: 0x08, label: 'LR11XX_RADIO_LORA_BW_10 (10.42 kHz, 0x08)' },
                 { value: 0x01, label: 'LR11XX_RADIO_LORA_BW_15 (15.63 kHz, 0x01)' },
@@ -1190,7 +1192,7 @@ function renderLp0CommunicationParams(setting, value) {
                 { value: 0x0D, label: 'LR11XX_RADIO_LORA_BW_200 (203.00 kHz, 0x0D)' },
                 { value: 0x0E, label: 'LR11XX_RADIO_LORA_BW_400 (406.00 kHz, 0x0E)' },
                 { value: 0x0F, label: 'LR11XX_RADIO_LORA_BW_800 (812.00 kHz, 0x0F)' }
-            ], 'Default: LR11XX_RADIO_LORA_BW_125 (0x04)')}
+            ], 'Default: LR11XX_RADIO_LORA_BW_250 (0x05)')}
             ${renderByteArrayField(setting.id, 2, 'Coding rate', bytes[2], [
                 { value: 0x00, label: 'LR11XX_RADIO_LORA_NO_CR (0x00)' },
                 { value: 0x01, label: 'LR11XX_RADIO_LORA_CR_4_5 (0x01)' },
@@ -1202,9 +1204,39 @@ function renderLp0CommunicationParams(setting, value) {
                 { value: 0x07, label: 'LR11XX_RADIO_LORA_CR_LI_4_8 (0x07)' }
             ], 'Default: LR11XX_RADIO_LORA_CR_4_5 (0x01)')}
             ${renderByteArrayField(setting.id, 3, 'RX1 window delay (seconds)', bytes[3], null, 'Must match across devices in the same network')}
-            ${renderByteArrayField(setting.id, 4, 'Unused (reserved)', bytes[4], null, 'Currently not used')}
+            ${setting.length > 4 ? renderByteArrayField(setting.id, 4, 'Unused (reserved)', bytes[4], null, 'Currently not used') : ''}
         </div>
     `;
+}
+
+// LP0 signal checks (firmware 8.1 development builds): six bytes
+// [master, CAD, RSSI enabled, RSSI magnitude, margin enabled, margin dB]. The RSSI byte is a
+// positive magnitude (100 means -100 dBm); zero is a real threshold, not off.
+const LP0_SIGNAL_CHECK_FIELDS = [
+    { index: 0, label: 'All signal checks', options: [{ value: 0, label: '0 - Off (bypass every check)' }, { value: 1, label: '1 - On' }], help: 'Master switch. Off bypasses the CAD, RSSI and margin checks but keeps their values.' },
+    { index: 1, label: 'CAD activity veto', options: [{ value: 0, label: '0 - Off' }, { value: 1, label: '1 - On' }], help: 'Channel activity detection before transmitting.' },
+    { index: 2, label: 'Minimum RSSI check', options: [{ value: 0, label: '0 - Off' }, { value: 1, label: '1 - On' }], help: 'Rejects discovery packets weaker than the minimum, and stops after three consecutive weak packets.' },
+    { index: 3, label: 'Minimum RSSI (magnitude, dBm)', min: 0, max: 125, help: '0 to 125. 100 means -100 dBm; a larger number admits weaker packets.' },
+    { index: 4, label: 'Background margin check', options: [{ value: 0, label: '0 - Off' }, { value: 1, label: '1 - On' }], help: 'Requires a packet to be stronger than the background noise by the margin below.' },
+    { index: 5, label: 'Minimum margin (dB)', min: 0, max: 127, help: '0 to 127 dB above the background RSSI.' }
+];
+
+function renderLp0SignalChecks(setting, value) {
+    const bytes = parseByteArrayValue(value, setting.length);
+    return `
+        <input type="hidden" id="new-value-${setting.id}" value="${bytesToHex(bytes)}" />
+        <div class="byte-array-grid">
+            ${LP0_SIGNAL_CHECK_FIELDS.map(field => renderByteArrayField(setting.id, field.index, field.label, bytes[field.index], field.options || null, field.help)).join('')}
+        </div>
+    `;
+}
+
+function formatLp0SignalCheckLine(field, byte) {
+    if (field.options) {
+        return formatOptionPreview(field.label, byte, field.options);
+    }
+    const unit = field.index === 3 ? `-${byte} dBm` : `${byte} dB`;
+    return formatOptionPreview(field.label, unit);
 }
 
 function renderLp0NodeParams(setting, value) {
@@ -2044,6 +2076,14 @@ function formatCustomByteArrayPreview(key, setting, value) {
         `;
     }
 
+    if (key === 'lp0_signal_checks') {
+        return `
+            <ul class="import-preview-list">
+              ${LP0_SIGNAL_CHECK_FIELDS.map(field => `<li>${formatLp0SignalCheckLine(field, bytes[field.index])}</li>`).join('')}
+            </ul>
+        `;
+    }
+
     if (key === 'cmdq_searched_mac_address') {
         return `<div class="import-preview-mono">${escapeHtml(formatMacAddressForDisplay(bytesToHex(bytes), setting.length) || '—')}</div>`;
     }
@@ -2347,6 +2387,33 @@ function getSettingConstraintDetails(key, setting) {
     return details;
 }
 
+// Byte-array bounds. Most schemas give byte arrays an all-zero max, meaning "not checked";
+// where the max carries real limits (lp0_signal_checks since firmware 8.1) each byte is
+// checked against its own min and max, as the firmware does before saving.
+function parseByteArrayBound(bound, expectedLength) {
+    if (typeof bound !== 'string') {
+        return null;
+    }
+    const hex = stripBytes(bound);
+    if (hex.length !== expectedLength * 2) {
+        return null;
+    }
+    return parseByteArrayValue(hex, expectedLength);
+}
+
+function validateByteArrayRange(setting, bytes) {
+    const max = parseByteArrayBound(setting.max, setting.length);
+    if (!max || max.every(byte => byte === 0)) {
+        return;
+    }
+    const min = parseByteArrayBound(setting.min, setting.length) || new Uint8Array(setting.length);
+    for (let i = 0; i < setting.length; i++) {
+        if (bytes[i] < min[i] || bytes[i] > max[i]) {
+            throw new Error(`Byte ${i + 1} must be between ${min[i]} and ${max[i]} (is ${bytes[i]})`);
+        }
+    }
+}
+
 function validateInput(key, setting, value) {
     if (setting.length === 0) {
         return;
@@ -2384,7 +2451,8 @@ function validateInput(key, setting, value) {
             : key === 'cmdq_searched_mac_address'
                 ? normalizeMacAddressInput(value)
                 : value;
-        stringToUint8Array(byteArrayValue, setting.length);
+        const bytes = stringToUint8Array(byteArrayValue, setting.length);
+        validateByteArrayRange(setting, bytes);
     } else if (setting.conversion === 'string') {
         if (value.length > setting.length) {
             throw new Error(`Max length is ${setting.length} characters`);
@@ -2520,6 +2588,172 @@ if (typeof window !== 'undefined') {
     window.isIosWebKit = isIosWebKit;
     window.isBluefyBrowser = isBluefyBrowser;
     window.saveTextFileCompat = saveTextFileCompat;
+}
+
+// ---- LP0 offload (firmware 8.1 development builds) -------------------------------------
+// Pure decoders for the station statistics message (port 23, id 0x9D) and the reply to the
+// offload start and cancel commands (0xCF, 0xD1). Layouts follow app/src/lp0/README.md
+// ("Statistics wire layout", "Explicit saved-record actions") in the firmware repository.
+
+const LP0_STATISTICS_STATUS_BITS = [
+    { bit: 0, key: 'card_detected', label: 'SD card detected' },
+    { bit: 1, key: 'card_writable', label: 'SD card writable' },
+    { bit: 2, key: 'sdfs_unresponsive', label: 'SD reader unresponsive' },
+    { bit: 3, key: 'sdfs_recovery_required', label: 'SD reader needs resync' },
+    { bit: 4, key: 'sdfs_active', label: 'SD operation running' },
+    { bit: 5, key: 'enabled', label: 'LP0 enabled' },
+    { bit: 6, key: 'listening', label: 'Listening for trackers' },
+    { bit: 7, key: 'session_active', label: 'Offload visit active' },
+    { bit: 8, key: 'radio_fault', label: 'Radio fault' },
+    { bit: 9, key: 'storage_queue_full', label: 'Storage queue full' },
+    { bit: 10, key: 'flash_available', label: 'Flash logging available' },
+    { bit: 11, key: 'sd_card_missing', label: 'SD card missing' },
+    { bit: 12, key: 'sdfs_error', label: 'Storage fault latched' }
+];
+
+const LP0_STATISTICS_COUNTERS = [
+    { key: 'visits_complete', label: 'Visits complete' },
+    { key: 'visits_partial', label: 'Visits partial' },
+    { key: 'visits_cancelled', label: 'Visits cancelled' },
+    { key: 'visits_timed_out', label: 'Visits timed out' },
+    { key: 'visits_failed', label: 'Visits failed' },
+    { key: 'data_received', label: 'Data packets received' },
+    { key: 'data_saved', label: 'Data packets saved' },
+    { key: 'data_failed', label: 'Data saves failed' },
+    { key: 'data_dropped', label: 'Data packets dropped' },
+    { key: 'data_saved_bytes', label: 'Data bytes saved' },
+    { key: 'sd_media_errors', label: 'SD media errors' },
+    { key: 'sdfs_errors', label: 'SD reader errors' },
+    { key: 'cad_rejections', label: 'CAD rejections' },
+    { key: 'rssi_rejections', label: 'RSSI rejections' },
+    { key: 'rx_rejections', label: 'Packets rejected' },
+    { key: 'radio_errors', label: 'Radio errors' },
+    { key: 'reports_generated', label: 'Reports generated' },
+    { key: 'reports_superseded', label: 'Reports superseded' },
+    { key: 'report_tx_failed', label: 'Report sends failed' },
+    { key: 'report_rx_dropped', label: 'Received reports dropped' },
+    { key: 'report_sd_failed', label: 'Received report saves failed' }
+];
+
+// `body` is the message body after the id and length bytes: 97 bytes for version 1,
+// 102 bytes for versions 2 and 3. Throws on an unknown version or a short body.
+function decodeLp0StatisticsMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    if (bytes.length < 1) {
+        throw new Error('Empty statistics message');
+    }
+    const version = bytes[0];
+    if (![1, 2, 3].includes(version)) {
+        throw new Error(`Unknown statistics version ${version}`);
+    }
+    const expectedLength = version === 1 ? 97 : 102;
+    if (bytes.length < expectedLength) {
+        throw new Error(`Statistics body is ${bytes.length} bytes, expected ${expectedLength}`);
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const latest = view.getUint16(1, true);
+    const known = view.getUint16(3, true);
+    const status = LP0_STATISTICS_STATUS_BITS
+        .filter(entry => version >= 3 || entry.bit < 11)
+        .map(entry => ({
+            ...entry,
+            known: (known & (1 << entry.bit)) !== 0,
+            value: (known & (1 << entry.bit)) !== 0 ? (latest & (1 << entry.bit)) !== 0 : null
+        }));
+    const counters = {};
+    LP0_STATISTICS_COUNTERS.forEach((counter, index) => {
+        counters[counter.key] = view.getUint32(13 + index * 4, true);
+    });
+    let sdCapacityMb = null;
+    let sdFreePercent = null;
+    if (version >= 2) {
+        const capacity = view.getUint32(97, true);
+        const free = bytes[101];
+        if (capacity !== 0xFFFFFFFF) {
+            sdCapacityMb = capacity;
+        }
+        if (free !== 0xFF && free <= 100) {
+            sdFreePercent = free;
+        }
+    }
+    return {
+        version,
+        status,
+        uptimeSeconds: view.getUint32(5, true),
+        pendingSdJobs: view.getUint16(9, true),
+        peakSdJobs: view.getUint16(11, true),
+        counters,
+        sdCapacityMb,
+        sdFreePercent
+    };
+}
+
+// One line for a list row: role health first, then the counts people look for.
+function summarizeLp0Statistics(decoded) {
+    const active = decoded.status.filter(entry => entry.value === true).map(entry => entry.label.toLowerCase());
+    const unknown = decoded.status.filter(entry => !entry.known).length;
+    const c = decoded.counters;
+    const parts = [
+        `Station statistics v${decoded.version}`,
+        `up ${formatDurationCompact(decoded.uptimeSeconds)}`,
+        active.length ? active.join(', ') : 'no status flags set',
+        `${c.visits_complete} visits complete, ${c.visits_partial} partial, ${c.visits_failed + c.visits_timed_out + c.visits_cancelled} not completed`,
+        `${c.data_saved} data packets saved (${c.data_saved_bytes} bytes), ${c.data_failed} failed, ${c.data_dropped} dropped`
+    ];
+    if (decoded.sdCapacityMb !== null || decoded.sdFreePercent !== null) {
+        parts.push(`SD ${decoded.sdCapacityMb !== null ? `${decoded.sdCapacityMb} MB` : 'size unknown'}${decoded.sdFreePercent !== null ? `, ${decoded.sdFreePercent}% free` : ''}`);
+    } else {
+        parts.push('SD size unknown');
+    }
+    if (unknown) {
+        parts.push(`${unknown} status flag${unknown === 1 ? '' : 's'} unknown`);
+    }
+    return parts.join('; ');
+}
+
+const LP0_OFFLOAD_STATES = ['idle', 'preparing', 'waiting', 'discovering', 'sending', 'cancelling', 'done', 'failed'];
+const LP0_OFFLOAD_MEDIA = ['LP0', 'LoRaWAN', 'satellite', 'Bluetooth'];
+const LP0_OFFLOAD_SELECTIONS = ['all records', 'confirmed records', 'unconfirmed records'];
+// Zephyr errno values the firmware documents for the offload job reply.
+const LP0_OFFLOAD_ERRNO = {
+    0: 'ok',
+    '-6': 'no station offered within three discovery attempts (ENXIO)',
+    '-16': 'another offload still owns the radio or flash (EBUSY)',
+    '-22': 'invalid medium, selection or port (EINVAL)',
+    '-90': 'a selected message is too large for LP0 (EMSGSIZE)',
+    '-95': 'medium not supported by this build (ENOTSUP)',
+    '-100': 'satellite modem not detected or disabled (ENETDOWN)',
+    '-107': 'Bluetooth connection no longer valid (ENOTCONN)',
+    '-115': 'in progress (EINPROGRESS)',
+    '-116': 'job ID does not match the current job (ESTALE)',
+    '-125': 'cancelled (ECANCELED)'
+};
+
+// `body` is the 17 bytes after the command id and the length byte 17.
+function decodeOffloadJobReply(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    if (bytes.length < 17) {
+        throw new Error(`Offload reply is ${bytes.length} bytes, expected 17`);
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const result = view.getInt32(9, true);
+    const state = bytes[4];
+    const medium = bytes[5];
+    const selection = bytes[6];
+    return {
+        jobId: view.getUint32(0, true),
+        state,
+        stateLabel: LP0_OFFLOAD_STATES[state] || `state ${state}`,
+        medium,
+        mediumLabel: LP0_OFFLOAD_MEDIA[medium] || `medium ${medium}`,
+        selection,
+        selectionLabel: LP0_OFFLOAD_SELECTIONS[selection] || `selection ${selection}`,
+        port: bytes[7],
+        attempts: bytes[8],
+        result,
+        resultLabel: LP0_OFFLOAD_ERRNO[String(result)] || `firmware error ${result}`,
+        confirmed: view.getUint32(13, true)
+    };
 }
 
 let toastTimeout;

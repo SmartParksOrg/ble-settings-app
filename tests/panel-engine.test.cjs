@@ -9,7 +9,9 @@ const definitions = require(path.join(root, 'panels/panel-definitions.js'));
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.0.1.json'), 'utf8'));
 // Older firmware only: keys a panel may reference that v8 dropped (S-Band credentials).
 const legacySchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v6.15.0.json'), 'utf8'));
-const inSomeSchema = key => Boolean(schema.settings[key] || legacySchema.settings[key]);
+// Development firmware: the LP0 offload keys only exist from 8.1 on.
+const betaSchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.1.0.json'), 'utf8'));
+const inSomeSchema = key => Boolean(schema.settings[key] || legacySchema.settings[key] || betaSchema.settings[key]);
 const meta = JSON.parse(fs.readFileSync(path.join(root, 'settings-meta.json'), 'utf8'));
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -325,9 +327,9 @@ test('every panel definition only references settings, options and ports that ex
         assert.ok(inSomeSchema(key), `a bundled schema has ${key}`);
     }
     Object.keys(definitions.portLabels).forEach(port => {
-        if (schema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
+        if (schema.ports[port] === undefined && betaSchema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
     });
-    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'sband', 'vhf', 'wifi-scanning', 'ble-scanning', 'cmdq', 'fence', 'switch', 'air-quality', 'sensors']);
+    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'sband', 'lp0', 'vhf', 'wifi-scanning', 'ble-scanning', 'cmdq', 'fence', 'switch', 'air-quality', 'sensors']);
     definitions.supersededSections.forEach(item => assert.ok(schema.settings[item.key], `superseded key ${item.key}`));
     // No setting is edited by two panels (one editing path per key).
     const seen = new Map();
@@ -340,9 +342,101 @@ test('every panel definition only references settings, options and ports that ex
     }));
     assert.ok(seen.size >= 100, `${seen.size} settings covered by panels`);
     definitions.panels.forEach(panel => engine.walkFields(panel.fields, field => {
-        (field.warnings || []).forEach(item => engine.conditionKeys(item.when).forEach(key => assert.ok(schema.settings[key], `warning key ${key}`)));
+        (field.warnings || []).forEach(item => engine.conditionKeys(item.when).forEach(key => assert.ok(inSomeSchema(key), `warning key ${key}`)));
         (field.onAlso || []).forEach(item => assert.ok(schema.settings[item.key], `onAlso key ${item.key}`));
     }));
+});
+
+test('settings-meta categories cover every setting in the v8.1.0 development schema too', () => {
+    for (const key of Object.keys(betaSchema.settings)) {
+        const category = meta.settings[key] && meta.settings[key].category;
+        assert.ok(category, `${key} has a category`);
+        const entry = meta.categories[category];
+        assert.ok(entry && entry.settings.includes(key), `${key} is ordered inside ${category}`);
+        assert.ok(meta.settings[key].display_name, `${key} has a display name`);
+    }
+    for (const key of ['cmd_offload_start', 'cmd_offload_cancel', 'cmd_flash_clear_confirmed']) {
+        assert.ok(betaSchema.commands[key], `${key} in the 8.1.0 schema`);
+        assert.ok(meta.commands[key] && meta.commands[key].description, `${key} described in the meta`);
+    }
+    assert.ok(meta.commands.cmd_flash_clear_confirmed.options.some(option => option.value === 8), 'LP0 selector 0x08 offered');
+});
+
+test('byte helpers read and write one byte of a hex or brace-formatted byte array', () => {
+    assert.equal(engine.byteAt('02040A013C', 0), 2);
+    assert.equal(engine.byteAt('02040A013C', 4), 0x3C);
+    assert.equal(engine.byteAt('{0x01,0x00,0x0a,0x01,0x3c}', 2), 10);
+    assert.ok(Number.isNaN(engine.byteAt('0204', 2)), 'past the end');
+    assert.ok(Number.isNaN(engine.byteAt(null, 0)));
+    assert.equal(engine.setByte('00000A013C', 0, 2, 5), '02000A013C');
+    assert.equal(engine.setByte('{0x00,0x00,0x0a,0x01,0x3c}', 1, 7, 5), '00070A013C');
+    assert.equal(engine.setByte('', 4, 60, 5), '000000003C', 'an empty value is padded');
+    assert.equal(engine.setByte('0102030405', 2, 300, 5), '0102FF0405', 'clamped to a byte');
+    assert.equal(engine.hexDigits(' 0xAb, 0xcd '), 'ABCD');
+});
+
+test('conditions can test one byte of a byte-array setting', () => {
+    const values = { lp0_node_params: '02030A013C', lp0_signal_checks: '010101640114' };
+    const get = key => values[key];
+    assert.equal(engine.evaluateCondition({ key: 'lp0_node_params', byte: 0, equals: 2 }, get), true);
+    assert.equal(engine.evaluateCondition({ key: 'lp0_node_params', byte: 0, equals: 1 }, get), false);
+    assert.equal(engine.evaluateCondition({ key: 'lp0_node_params', byte: 0, in: [1, 2] }, get), true);
+    assert.equal(engine.evaluateCondition({ key: 'lp0_node_params', byte: 1, gt: 2 }, get), true);
+    assert.equal(engine.evaluateCondition({ key: 'lp0_signal_checks', byte: 3, equals: 100 }, get), true);
+    assert.equal(engine.evaluateCondition({ key: 'lp0_node_params', byte: 9, equals: 0 }, get), false, 'a missing byte matches nothing');
+    assert.deepEqual([...engine.conditionKeys({ key: 'lp0_node_params', byte: 0, equals: 2 })], ['lp0_node_params']);
+});
+
+test('the LP0 panel is gated to the 8.1 schema and its byte fields fit the arrays', () => {
+    const panel = definitions.panels.find(item => item.id === 'lp0');
+    assert.ok(panel.beta && panel.minFirmware.major === 8 && panel.minFirmware.minor === 1);
+    panel.requires.forEach(key => {
+        assert.ok(betaSchema.settings[key], `${key} in 8.1.0`);
+    });
+    assert.ok(panel.requires.some(key => !schema.settings[key]), 'at least one required key is missing from 8.0.x, so the panel is left out there');
+    const keys = new Set();
+    engine.walkFields(panel.fields, field => {
+        engine.fieldKeys(field).forEach(key => {
+            keys.add(key);
+            assert.ok(betaSchema.settings[key], `${key} in 8.1.0`);
+            assert.ok(meta.settings[key] && meta.settings[key].display_name, `${key} named in the meta`);
+        });
+        if (field.control === 'byte') {
+            const setting = betaSchema.settings[field.key];
+            assert.equal(setting.conversion, 'byte_array', `${field.key} is a byte array`);
+            assert.ok(Number.isInteger(field.byte) && field.byte >= 0 && field.byte < setting.length, `${field.label} byte ${field.byte} inside ${setting.length}`);
+            (field.options || []).forEach(option => assert.ok(option.value >= 0 && option.value <= 255, `${field.label} option ${option.value}`));
+            if (!field.options) assert.ok(field.min >= 0 && field.max <= 255, `${field.label} range`);
+        }
+        if (field.control === 'hex') {
+            assert.equal(betaSchema.settings[field.key].conversion, 'byte_array');
+        }
+        engine.conditionKeys(field.enabledWhen, keys);
+    });
+    for (const key of ['lp0_node_params', 'lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval', 'lp0_communication_params', 'lp0_tx_frequency_hz', 'lp0_app_key']) {
+        assert.ok(keys.has(key), `${key} edited in the LP0 panel`);
+    }
+    assert.ok(!keys.has('lp0_send_flag'), 'the send mask stays in the Data matrix');
+    const stationId = panel.fields.find(field => field.label === 'Station ID');
+    assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '02000A013C' })[key]), true);
+    assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '01000A013C' })[key]), false);
+    const plan = engine.planWriteOrder([{ key: 'lp0_node_params' }, { key: 'lp0_statistics_interval' }], definitions);
+    assert.deepEqual(plan.map(change => change.key), ['lp0_node_params', 'lp0_statistics_interval'], 'same-key byte gates do not reorder');
+});
+
+test('the LP0 summary reads as sentences for off, tracker and station', () => {
+    const describe = values => engine.describeLp0(key => (key in values ? values[key] : null));
+    assert.equal(describe({ lp0_node_params: '00000A013C', lp0_master_key: '00000000000000000000000000000000', lp0_focus_offloading: 'false', lp0_statistics_interval: '3600' }),
+        'Offloading off. Cluster master key is the all-zero default.');
+    assert.equal(describe({ lp0_node_params: '01000A013C', lp0_master_key: 'EC7F380E7ADFB2E5C9BBDE5AC21694A8', lp0_focus_offloading: true }),
+        'Tracker: looks for a station every 1 minute, 10 station slots. Cluster master key set. Focus on offloading.');
+    assert.equal(describe({ lp0_node_params: '0100 0A 01 00', lp0_master_key: '{0x01,0x00}' }),
+        'Tracker: looks for a station as soon as LP0 is idle, 10 station slots. Cluster master key set.');
+    assert.equal(describe({ lp0_node_params: '02030A013C', lp0_master_key: 'AB', lp0_statistics_interval: '0' }),
+        'Offload station, ID 3 of 10 slots. Cluster master key set. Statistics off.');
+    assert.equal(describe({ lp0_node_params: '02000A013C', lp0_statistics_interval: 7200 }),
+        'Offload station, ID 0 of 10 slots. Statistics every 2 hours.');
+    assert.equal(describe({}), '');
 });
 
 test('the generic schedule summary covers off, fixed, day/night and zero-interval states', () => {

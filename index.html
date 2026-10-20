@@ -396,6 +396,59 @@
     </details>
   </div>
 
+  <div id="lp0-area" class="commands-section page-section hidden hidden-when-no-settings">
+    <details class="section section-card">
+      <summary class="section-card-title"><span class="icon file-arrow-up" aria-hidden="true"></span>LP0 offload<span class="panel-beta-tag">beta</span></summary>
+      <div class="section-card-body cmdq-card lp0-card">
+        <p class="lp0-note">Firmware 8.1 development build. The role, cluster master key, radio parameters and signal checks are in the LP0 offload panel under Settings. Automatic offloading runs by itself once a tracker and a station are configured; the actions here are for a manual session.</p>
+        <div class="status-header">
+          <div class="status-item"><span class="icon file-arrow-up"></span>Manual offload</div>
+        </div>
+        <div class="command-helper-fields lp0-fields">
+          <label class="command-helper-label" for="lp0-offload-medium">Send over</label>
+          <select id="lp0-offload-medium" class="command-helper-input" aria-label="Offload medium">
+            <option value="0">LP0, to an offload station in range</option>
+            <option value="1">LoRaWAN (needs a joined network)</option>
+            <option value="2">Satellite (needs the RockBLOCK modem)</option>
+          </select>
+          <label class="command-helper-label" for="lp0-offload-selection">Records</label>
+          <select id="lp0-offload-selection" class="command-helper-input" aria-label="Record selection">
+            <option value="2">Not yet confirmed over that medium</option>
+            <option value="0">All retained records</option>
+            <option value="1">Already confirmed over that medium</option>
+          </select>
+          <label class="command-helper-label" for="lp0-offload-port">Message type</label>
+          <select id="lp0-offload-port" class="command-helper-input" aria-label="Message type">
+            <option value="0">all message types (port 0)</option>
+          </select>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button scan-button" onclick="startLp0Offload()">Start offload</button>
+          <button type="button" class="log-action-button" onclick="cancelLp0Offload()">Cancel offload</button>
+        </div>
+        <div id="lp0-job-status" class="cmdq-results">
+          <div class="cmdq-empty">No offload requested from this app yet. The device answers a start or cancel with the job state; there is no separate status query.</div>
+        </div>
+        <div class="status-header">
+          <div class="status-item"><span class="icon bug"></span>Flash log cleanup</div>
+        </div>
+        <div class="command-helper-fields lp0-fields">
+          <label class="command-helper-label" for="lp0-delete-selector">Delete logs confirmed</label>
+          <select id="lp0-delete-selector" class="command-helper-input" aria-label="Confirmation medium">
+            <option value="8">by an LP0 offload station</option>
+            <option value="0">over any medium</option>
+            <option value="4">over LoRaWAN</option>
+            <option value="2">over Bluetooth</option>
+            <option value="1">over satellite</option>
+          </select>
+        </div>
+        <div class="log-actions">
+          <button type="button" class="log-action-button erase-logs-button" onclick="requestLp0DeleteConfirmed()">Delete confirmed logs</button>
+        </div>
+      </div>
+    </details>
+  </div>
+
   <div id="messenger-area" class="commands-section page-section hidden-when-no-settings">
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon envelope" aria-hidden="true"></span>Messenger</summary>
@@ -611,6 +664,16 @@
     </div>
   </div>
 
+  <div id="lp0-delete-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
+    <div class="dfu-waiting-card">
+      <div class="dfu-waiting-text" id="lp0-delete-confirm-text">This erases whole flash sectors from the oldest logs onward as long as every record in them was confirmed delivered. The records are gone from every download afterwards.</div>
+      <div class="dfu-confirmation-actions">
+        <button id="lp0-delete-cancel" class="secondary" type="button" onclick="setLp0DeleteConfirmVisible(false)">Cancel</button>
+        <button id="lp0-delete-confirm" type="button" onclick="lp0DeleteConfirmed()">Delete</button>
+      </div>
+    </div>
+  </div>
+
   <div id="flash-log-download-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card">
       <div class="dfu-waiting-text" id="flash-log-download-warning"></div>
@@ -815,6 +878,9 @@
     const CMD_FLASH_GET_FROM_HEAD = 0xBC;
     const CMD_SEND_LR_MESSAGE = 0xC4;
     const CMD_READ_ALL_LR_MESSAGES = 0xC5;
+    const CMD_OFFLOAD_START = 0xCF;
+    const CMD_OFFLOAD_CANCEL = 0xD1;
+    const CMD_FLASH_CLEAR_CONFIRMED = 0xD2;
     const TRACK_POINTS_LIMIT = 25;
     const VAL_UBLOX_TIME = 0xD8;
     const MSG_TIMESTAMP = 0x97;
@@ -2779,6 +2845,9 @@
         if (key === 'msg_timestamp' && bytes.length >= 4) {
           return `Device time ${formatRecentLogUnixTime(bytesToSetting({ conversion: 'uint32' }, bytes))}`;
         }
+        if (key === 'msg_lp0_statistics') {
+          return summarizeLp0Statistics(decodeLp0StatisticsMessage(bytes));
+        }
         if (key === 'msg_lr_messaging' || key === 'msg_lr_messaging_timestamp') {
           const decoded = decodeLrMessagingPayload(bytes, key === 'msg_lr_messaging_timestamp');
           return `"${decoded.text}" seq ${decoded.seq ?? '-'}, retry ${decoded.retry ?? '-'}`
@@ -2888,6 +2957,27 @@
       `;
     }
 
+    // The details cell: the one-line summary, plus every flag and counter behind a fold for
+    // an LP0 station statistics report.
+    function renderRecentLogDetailsHtml(record) {
+      const summary = escapeHtml(summarizeRecentLogRecord(record));
+      if (!record.message || record.message.key !== 'msg_lp0_statistics') {
+        return summary;
+      }
+      try {
+        const decoded = decodeLp0StatisticsMessage(record.payload);
+        const flags = decoded.status
+          .map(entry => `<li>${escapeHtml(entry.label)}: ${entry.value === null ? 'unknown' : entry.value ? 'yes' : 'no'}</li>`)
+          .join('');
+        const counters = LP0_STATISTICS_COUNTERS
+          .map(counter => `<li>${escapeHtml(counter.label)}: ${decoded.counters[counter.key]}</li>`)
+          .join('');
+        return `${summary}<details class="recent-log-more"><summary>All flags and counters</summary><ul class="recent-log-list">${flags}<li>Pending SD jobs: ${decoded.pendingSdJobs} (peak ${decoded.peakSdJobs})</li>${counters}</ul></details>`;
+      } catch (error) {
+        return summary;
+      }
+    }
+
     function renderGenericLogTable(records) {
       const rows = records.map((record, index) => {
         const name = record.message ? record.message.key.replace(/^msg_/, '').replace(/_/g, ' ') : `id 0x${record.id.toString(16).padStart(2, '0')}`;
@@ -2896,7 +2986,7 @@
             <td>${index + 1}</td>
             <td class="status-log-age" title="${escapeHtml(formatStatusLogTimestampTitle(record.timestamp))}">${escapeHtml(formatStatusLogAge(record.timestamp))}</td>
             <td>${escapeHtml(name)}</td>
-            <td class="recent-log-details">${escapeHtml(summarizeRecentLogRecord(record))}</td>
+            <td class="recent-log-details">${renderRecentLogDetailsHtml(record)}</td>
             <td class="recent-log-raw"><code>${escapeHtml(bytesToHex(record.payload) || '-')}</code></td>
           </tr>
         `;
@@ -3253,6 +3343,7 @@
         renderFenceSection();
         renderScanSection('wifi');
         renderScanSection('ble');
+        renderLp0Section();
         displayMainCommands();
         displayCommands();
         populateFlashLogTypeOptions();
@@ -6630,6 +6721,7 @@
           const rendered = normalizeRenderableValue(setting.default);
           return setting.conversion === 'byte_array' ? stripBytes(rendered) : rendered;
         },
+        firmwareSupports: min => firmwareAtLeast(min.major, min.minor),
         notify: message => showToast(message),
       });
       // The older feature cards keep their actions and results; their settings blocks
@@ -7360,8 +7452,22 @@
         'ble_scan_interval', 'ble_scan_aggregate_interval', 'ble_scan_aggregated_interval',
         'fence_enabled', 'fence_interval',
         'outdoor_detection_enabled',
-        'switch_detection_enable', 'switch_detection_enabled', 'external_switch_detection_enabled'
+        'switch_detection_enable', 'switch_detection_enabled', 'external_switch_detection_enabled',
+        'lp0_node_params'
       ].includes(String(key || ''));
+    }
+
+    function getLp0FeatureState() {
+      if (!lp0OffloadAvailable() || !window.PanelEngine) {
+        return null;
+      }
+      const node = getSettingValueByKey('lp0_node_params');
+      const role = PanelEngine.byteAt(node, 0);
+      if (!Number.isFinite(role)) {
+        return null;
+      }
+      const detail = role === 2 ? `Station, ID ${PanelEngine.byteAt(node, 1)}` : role === 1 ? 'Tracker' : 'Off';
+      return { enabled: role === 1 || role === 2, settingKey: 'lp0_node_params', detail };
     }
 
     function getFeatureDefinitions() {
@@ -7413,6 +7519,10 @@
         (() => {
           const state = getVhfFeatureState();
           return state && { name: 'VHF', state, settingKey: state.settingKey, detail: formatMultipleIntervalDetail(state.schedule) };
+        })(),
+        (() => {
+          const state = getLp0FeatureState();
+          return state && { name: 'LP0 offload', state, settingKey: state.settingKey, detail: state.detail };
         })()
       ].filter(Boolean);
     }
@@ -7616,6 +7726,7 @@
       resetFenceState();
       resetScanState('wifi');
       resetScanState('ble');
+      resetLp0State();
       mapFullscreen = false;
       document.body.classList.remove('map-fullscreen');
       const mapViewToggle = document.getElementById('map-view-toggle');
@@ -7938,6 +8049,9 @@
         if (tryHandleScanFlashResponse(data)) {
           return;
         }
+        if (tryHandleLp0OffloadReply(data)) {
+          return;
+        }
         const flashLogPort = settingsData && settingsData.ports ? settingsData.ports.port_flash_log : null;
         if (flashLogPort && port === flashLogPort) {
           handleFlashLogChunk(data);
@@ -7954,6 +8068,14 @@
           } else {
             showToast(`Failed to erase logs (status 0x${data[4].toString(16).padStart(2, '0')}).`);
             setFlashLogStatus('Erase failed');
+          }
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_CLEAR_CONFIRMED) {
+          if (data[4] === 0x01) {
+            showToast('Confirmed logs deleted.');
+            setFlashLogStatus('Confirmed logs deleted');
+            requestFlashLogCount();
+          } else {
+            showToast('The device did not delete confirmed logs (busy, a download or offload is running, or a storage error).');
           }
         } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB) {
           if (data[4] === 0x01) {
@@ -8369,6 +8491,217 @@
       startFlashLogCapture(request);
       executeBleCommand([0x20, parseInt(flashCommand.id, 16), 0x01, request.requestedPort]);
     }
+
+    // ---- LP0 offload card (firmware 8.1 development builds, beta) -----------------------
+    // Offered only when the loaded schema carries the offload commands and the cluster master
+    // key, and the connected device reports firmware 8.1 or newer. The start and cancel
+    // commands are answered on the commands port with a 19-byte job reply (decodeOffloadJobReply
+    // in functions.js); "delete confirmed logs" is answered with the usual cmd_confirm.
+    const lp0State = { lastRequest: null, lastReply: null };
+
+    function firmwareAtLeast(major, minor) {
+      if (!lastStatusInfo) {
+        return false;
+      }
+      const fwMajor = Number(lastStatusInfo.ver_fw_major);
+      const fwMinor = Number(lastStatusInfo.ver_fw_minor);
+      return fwMajor > major || (fwMajor === major && fwMinor >= minor);
+    }
+
+    function lp0OffloadAvailable() {
+      const commands = settingsData && settingsData.commands ? settingsData.commands : null;
+      const settings = settingsData && settingsData.settings ? settingsData.settings : null;
+      return Boolean(commands && settings && commands.cmd_offload_start && commands.cmd_offload_cancel
+        && settings.lp0_master_key && settings.lp0_node_params) && firmwareAtLeast(8, 1);
+    }
+
+    function resetLp0State() {
+      lp0State.lastRequest = null;
+      lp0State.lastReply = null;
+      const area = document.getElementById('lp0-area');
+      if (area) {
+        area.classList.add('hidden');
+      }
+      renderLp0JobStatus();
+    }
+
+    function renderLp0Section() {
+      const area = document.getElementById('lp0-area');
+      if (!area) {
+        return;
+      }
+      if (!lp0OffloadAvailable()) {
+        area.classList.add('hidden');
+        return;
+      }
+      area.classList.remove('hidden');
+      const portSelect = document.getElementById('lp0-offload-port');
+      if (portSelect) {
+        const ports = settingsData.ports || {};
+        const labels = (window.PanelDefinitions && PanelDefinitions.portLabels) || {};
+        const options = Object.entries(ports)
+          .filter(([name, number]) => Number.isFinite(number) && number >= 1 && number <= 32 && !skipPorts.includes(name))
+          .sort((a, b) => a[1] - b[1])
+          .map(([name, number]) => `<option value="${number}">${escapeHtml(labels[name] || name.replace(/^port_/, '').replace(/_/g, ' '))} (port ${number})</option>`);
+        portSelect.innerHTML = `<option value="0">all message types (port 0)</option>${options.join('')}`;
+      }
+      renderLp0JobStatus();
+    }
+
+    function lp0Busy() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return true;
+      }
+      if (flashLogState.active) {
+        showToast('Cancel the current log download first.');
+        return true;
+      }
+      if (recentLogState.active) {
+        showToast('Wait for the recent messages request to finish first.');
+        return true;
+      }
+      return false;
+    }
+
+    function startLp0Offload() {
+      if (!lp0OffloadAvailable()) {
+        showToast('Offloading is not available in this firmware.');
+        return;
+      }
+      if (lp0Busy()) {
+        return;
+      }
+      const medium = Number(document.getElementById('lp0-offload-medium')?.value);
+      const selection = Number(document.getElementById('lp0-offload-selection')?.value);
+      const port = Number(document.getElementById('lp0-offload-port')?.value);
+      if (![medium, selection, port].every(Number.isInteger)) {
+        showToast('Pick a medium, a record selection and a message type.');
+        return;
+      }
+      lp0State.lastRequest = { command: CMD_OFFLOAD_START, medium, selection, port, at: Date.now() };
+      lp0State.lastReply = null;
+      renderLp0JobStatus();
+      executeBleCommand([0x20, CMD_OFFLOAD_START, 0x03, medium, selection, port]);
+    }
+
+    function cancelLp0Offload() {
+      if (!lp0OffloadAvailable()) {
+        showToast('Offloading is not available in this firmware.');
+        return;
+      }
+      if (lp0Busy()) {
+        return;
+      }
+      // Job ID 0 stops whatever runs, manual or automatic.
+      lp0State.lastRequest = { command: CMD_OFFLOAD_CANCEL, at: Date.now() };
+      lp0State.lastReply = null;
+      renderLp0JobStatus();
+      executeBleCommand([0x20, CMD_OFFLOAD_CANCEL, 0x04, 0x00, 0x00, 0x00, 0x00]);
+    }
+
+    function tryHandleLp0OffloadReply(data) {
+      const commandsPort = settingsData && settingsData.ports && Number.isFinite(settingsData.ports.port_commands)
+        ? settingsData.ports.port_commands : 32;
+      if (data[0] !== commandsPort || data.length < 20 || data[2] !== 17) {
+        return false;
+      }
+      if (data[1] !== CMD_OFFLOAD_START && data[1] !== CMD_OFFLOAD_CANCEL) {
+        return false;
+      }
+      const decoded = decodeOffloadJobReply(data.slice(3, 20));
+      lp0State.lastReply = { command: data[1], decoded, at: Date.now() };
+      log(`Offload ${data[1] === CMD_OFFLOAD_START ? 'start' : 'cancel'} reply: job ${decoded.jobId}, ${decoded.stateLabel}, ${decoded.resultLabel}, ${decoded.confirmed} confirmed`);
+      renderLp0JobStatus();
+      if (data[1] === CMD_OFFLOAD_START) {
+        showToast(decoded.result === 0 || decoded.result === -115
+          ? `Offload job ${decoded.jobId} ${decoded.stateLabel}.`
+          : `Offload not started: ${decoded.resultLabel}.`);
+      } else {
+        showToast(decoded.result === -125 || decoded.result === 0
+          ? 'Offload cancelled.'
+          : `Cancel answered: ${decoded.resultLabel}.`);
+      }
+      return true;
+    }
+
+    function renderLp0JobStatus() {
+      const target = document.getElementById('lp0-job-status');
+      if (!target) {
+        return;
+      }
+      const { lastRequest, lastReply } = lp0State;
+      if (!lastRequest && !lastReply) {
+        target.innerHTML = '<div class="cmdq-empty">No offload requested from this app yet. The device answers a start or cancel with the job state; there is no separate status query.</div>';
+        return;
+      }
+      if (!lastReply) {
+        const what = lastRequest.command === CMD_OFFLOAD_START
+          ? `Start requested: ${LP0_OFFLOAD_SELECTIONS[lastRequest.selection] || 'records'} over ${LP0_OFFLOAD_MEDIA[lastRequest.medium] || 'medium'}, ${lastRequest.port ? `port ${lastRequest.port}` : 'all message types'}.`
+          : 'Cancel requested.';
+        target.innerHTML = `<div class="lp0-job"><div class="lp0-job-state">Waiting for the device...</div><div>${escapeHtml(what)}</div></div>`;
+        return;
+      }
+      const d = lastReply.decoded;
+      const stateClass = d.state === 7 ? ' is-failed' : d.state === 6 ? ' is-done' : '';
+      const pills = [
+        `Job ${d.jobId || 'automatic'}`,
+        `${d.selectionLabel} over ${d.mediumLabel}`,
+        d.port ? `port ${d.port}` : 'all message types',
+        `${d.attempts} discovery attempt${d.attempts === 1 ? '' : 's'}`,
+        `${d.confirmed} record${d.confirmed === 1 ? '' : 's'} confirmed saved`
+      ].map(text => `<span class="lp0-pill">${escapeHtml(text)}</span>`).join('');
+      target.innerHTML = `
+        <div class="lp0-job">
+          <div class="lp0-job-state${stateClass}">${escapeHtml(`${lastReply.command === CMD_OFFLOAD_START ? 'Start' : 'Cancel'} answered: ${d.stateLabel}`)}</div>
+          <div>${escapeHtml(`Result: ${d.resultLabel}.`)} ${escapeHtml(formatLocalDateTimeDisplay(new Date(lastReply.at)))}</div>
+          <div class="lp0-job-meta">${pills}</div>
+          <div>The device sends no further updates; start or cancel again to see the current state.</div>
+        </div>
+      `;
+    }
+
+    function setLp0DeleteConfirmVisible(visible) {
+      const overlay = document.getElementById('lp0-delete-confirm-overlay');
+      if (overlay) {
+        overlay.classList.toggle('hidden', !visible);
+      }
+    }
+
+    function requestLp0DeleteConfirmed() {
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_clear_confirmed : null;
+      if (!command) {
+        showToast('Deleting confirmed logs is not available in this firmware.');
+        return;
+      }
+      if (lp0Busy()) {
+        return;
+      }
+      const select = document.getElementById('lp0-delete-selector');
+      const label = select && select.selectedOptions[0] ? select.selectedOptions[0].textContent : 'over any medium';
+      const text = document.getElementById('lp0-delete-confirm-text');
+      if (text) {
+        text.textContent = `This erases whole flash sectors from the oldest logs onward as long as every record in them was confirmed delivered ${label}. The records are gone from every download afterwards.`;
+      }
+      setLp0DeleteConfirmVisible(true);
+    }
+
+    function lp0DeleteConfirmed() {
+      setLp0DeleteConfirmVisible(false);
+      const selector = Number(document.getElementById('lp0-delete-selector')?.value);
+      if (!Number.isInteger(selector)) {
+        showToast('Pick which confirmation counts.');
+        return;
+      }
+      setFlashLogStatus('Deleting confirmed logs...');
+      executeBleCommand([0x20, CMD_FLASH_CLEAR_CONFIRMED, 0x01, selector]);
+    }
+
+    window.startLp0Offload = startLp0Offload;
+    window.cancelLp0Offload = cancelLp0Offload;
+    window.requestLp0DeleteConfirmed = requestLp0DeleteConfirmed;
+    window.lp0DeleteConfirmed = lp0DeleteConfirmed;
+    window.setLp0DeleteConfirmVisible = setLp0DeleteConfirmVisible;
 
     function setFlashLogEraseConfirmVisible(visible) {
       const overlay = document.getElementById('flash-log-erase-confirm-overlay');

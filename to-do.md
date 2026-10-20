@@ -48,6 +48,32 @@ settings-UI change must be checked against them. Open items:
    progress, a toast confirms, and no dialog opens; then apply an edit the device rejects and
    confirm the outcome dialog opens and its Close button is reachable on a phone.
 
+## Firmware 8.1 development builds, LP0 offload beta (added 2026-10-20, hardware test pending)
+
+The app bundles the 8.1.0 settings schema (branch fix/existing-lp0-implementation, commit
+7bae042) and offers the LP0 offload panel, card, Features row and statistics decoding only
+when a device reports 8.1. Nothing has run against 8.1 hardware yet; the headless check covers
+the UI and the wire bytes. Verify on a manually flashed 8.1 tracker and station:
+
+1. Connect to an 8.1 collar: the app selects settings-v8.1.0.json, the 8.1.0 firmware note
+   shows, the LP0 offload panel (beta) and card appear, and an 8.0.3 collar shows neither.
+2. In the panel set the station role and ID on the station and the tracker role on the
+   tracker, Generate one master key, copy it to the other device (Show, select, copy), apply on
+   both: the device reads back the same bytes and the summary names the role and key.
+3. Signal checks: switch the master off, apply, read back 00 01 01 64 01 14; a margin of 200
+   must be refused by the app before the write.
+4. Set the statistics interval to 60 s on the station and tick port 23 under Store in the Data
+   matrix; after a few minutes "Show latest 10 stored messages" for LP0 station statistics
+   shows decoded rows with the SD card state and counters.
+5. Card: Start offload (LP0, unconfirmed, all types) on the tracker with the station in range:
+   the reply shows a job ID and discovering or sending, a later start while it runs answers
+   busy, Cancel answers cancelled. Start with the satellite medium on a collar without a modem
+   answers "satellite modem not detected".
+6. Delete confirmed logs (LP0 station) after an offload: the toast confirms and the flash
+   message count drops; with a download running it reports that the device did not delete.
+7. Export on 8.1, import on the same collar: zero changes, master key included only with the
+   credentials box ticked; import an 8.0.3 profile on 8.1: the four new settings are untouched.
+
 ## Firmware v8.0.3 (bundled 2026-10-07, hardware test pending)
 
 Schema identical to v8.0.0/v8.0.1/v8.0.2; DFU bundles for open-collar (15 variants) and

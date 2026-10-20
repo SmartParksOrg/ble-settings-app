@@ -21,7 +21,8 @@
 // CHROME defaults to the Playwright Chromium under ~/.cache/ms-playwright. ONLY=index or
 // ONLY=composer limits the run to one page; VERBOSE=1 prints where a failed tap landed.
 // Screenshots of the outcome dialog are written to the current directory. Exit code 1 = a
-// check failed.
+// check failed. The LP0 scenario reloads the main page with the 8.1.0 development schema and
+// a status that says firmware 8.1, and checks the panel, the card and the job reply.
 import { spawn } from 'node:child_process';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -456,6 +457,91 @@ async function dfuVersion(tag) {
   check(`${tag} DFU version: a 0.0.0 header version counts as unknown, a real one is kept`,
     got.zero === null && got.zeroShort === null && got.real === '8.0.3' && got.missing === null, got);
 }
+// LP0 offload (beta): only on 8.1 development firmware. The panel edits single bytes of the
+// node parameters through the shared hidden input, Generate fills a random master key, the
+// card sends the start command and renders the device's job reply, and nothing of this is
+// shown with the 8.0.1 schema or an 8.0 status.
+async function lp0Offload(tag) {
+  const before = await evaluate(`({ panel: Boolean(document.getElementById('panel-lp0')), card: !document.getElementById('lp0-area').classList.contains('hidden'),
+    feature: Array.from(document.querySelectorAll('#features-list .feature-name')).map(n => n.textContent).includes('LP0 offload') })`);
+  check(`${tag} LP0: nothing offered on the 8.0.1 schema`, !before.panel && !before.card && !before.feature, before);
+  // Reload with the 8.1.0 schema and an 8.1 status, as a connected 8.1 collar would give.
+  const seeded = await evaluate(`loadSettings('settings/settings-v8.1.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
+    displaySettings(); const errors = [];
+    Object.entries(settingsData.settings).forEach(([k, s]) => { try { const v = s.conversion === 'byte_array' ? stripBytes(normalizeRenderableValue(s.default)) : normalizeRenderableValue(s.default); currentSettingValues.set(String(s.id), v); setInputValue(s.id, v); } catch (e) { errors.push(k + ': ' + e.message); } });
+    document.querySelectorAll('.setting.disabled').forEach(row => row.classList.remove('disabled'));
+    settingsDraft.reset(); mountSettingsPanels(); renderLp0Section(); renderFeatures(); return errors; })`);
+  if (seeded.length) console.log('seeding 8.1.0 values raised errors:', seeded);
+  const shown = await evaluate(`({ panel: Boolean(document.getElementById('panel-lp0')), beta: Boolean(document.querySelector('#panel-lp0 .panel-beta-tag')), card: !document.getElementById('lp0-area').classList.contains('hidden'),
+    summary: document.querySelector('#panel-lp0 .panel-summary').textContent, feature: Array.from(document.querySelectorAll('#features-list .feature-item')).map(n => n.querySelector('.feature-name').textContent + ':' + n.querySelector('.feature-status').textContent).find(t => /LP0/.test(t)),
+    ports: Array.from(document.getElementById('lp0-offload-port').options).map(o => o.textContent) })`);
+  check(`${tag} LP0: panel with beta tag, card, Features row and port list appear on 8.1`, shown.panel && shown.beta && shown.card && /^Offloading off\. Cluster master key is the all-zero default\.$/.test(shown.summary) && shown.feature === 'LP0 offload:Disabled' && shown.ports[0] === 'all message types (port 0)' && shown.ports.some(p => /LP0 station statistics \(port 23\)/.test(p)), shown);
+
+  const role = '#panel-lp0 .panel-field[data-keys~="lp0_node_params"][data-byte="0"] select';
+  const stationId = '#panel-lp0 .panel-field[data-keys~="lp0_node_params"][data-byte="1"] input';
+  const hidden = `document.getElementById('new-value-' + settingsData.settings.lp0_node_params.id).value`;
+  const start = await evaluate(`({ role: ${q(role)}.value, hidden: ${hidden}, idDisabled: ${q(stationId)}.disabled, reason: ${q(stationId)}.closest('.panel-field').querySelector('.panel-field-reason').textContent })`);
+  check(`${tag} LP0: role reads byte 0, station ID is greyed out with a reason while off`, start.role === '0' && start.hidden === '00000A013C' && start.idDisabled && /offload station/.test(start.reason), start);
+  await evaluate(`(() => { const s = ${q(role)}; s.value = '2'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await sleep(60);
+  const station = await evaluate(`({ hidden: ${hidden}, idDisabled: ${q(stationId)}.disabled, draft: settingsDraft.size, summary: document.querySelector('#panel-lp0 .panel-summary').textContent,
+    feature: Array.from(document.querySelectorAll('#features-list .feature-item')).map(n => n.querySelector('.feature-name').textContent + ':' + n.querySelector('.feature-status').textContent + ':' + (n.querySelector('.feature-detail') || {}).textContent).find(t => /LP0/.test(t)) })`);
+  check(`${tag} LP0: choosing the station role writes byte 0 only, enables the station ID, updates summary and Features`, station.hidden === '02000A013C' && !station.idDisabled && station.draft === 1 && /^Offload station, ID 0 of 10 slots/.test(station.summary) && station.feature === 'LP0 offload:Enabled:Station, ID 0', station);
+  const focused = await focus(stationId);
+  await keys.backspace();
+  await keys.type('3');
+  await sleep(60);
+  const typed = await evaluate(`({ hidden: ${hidden}, value: ${q(stationId)}.value })`);
+  check(`${tag} LP0: typing a station ID writes byte 1 and keeps the other bytes`, focused && typed.hidden === '02030A013C' && typed.value === '3', typed);
+  await blur(stationId);
+
+  const keyInput = '#panel-lp0 .panel-field[data-keys~="lp0_master_key"] input';
+  const warned = await evaluate(`${q(keyInput)}.closest('.panel-field').querySelector('.panel-field-warning').textContent`);
+  await evaluate(`${q('#panel-lp0 .panel-field[data-keys~="lp0_master_key"] .panel-generate')}.click()`);
+  await sleep(60);
+  const generated = await evaluate(`({ value: ${q(keyInput)}.value, type: ${q(keyInput)}.type, hidden: document.getElementById('new-value-' + settingsData.settings.lp0_master_key.id).value,
+    warning: ${q(keyInput)}.closest('.panel-field').querySelector('.panel-field-warning').textContent, summary: document.querySelector('#panel-lp0 .panel-summary').textContent })`);
+  check(`${tag} LP0: Generate fills a random 16-byte master key, shows it and clears the all-zero warning`, /all-zero|All zeros/.test(warned) && /^[0-9A-F]{32}$/.test(generated.value) && generated.type === 'text' && generated.hidden === generated.value && generated.warning === '' && /Cluster master key set/.test(generated.summary), { warned, generated });
+
+  const checks = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="3"] input';
+  const master = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="0"] select';
+  const rssiBefore = await evaluate(`({ value: ${q(checks)}.value, disabled: ${q(checks)}.disabled })`);
+  await evaluate(`(() => { const s = ${q(master)}; s.value = '0'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await sleep(60);
+  const rssiAfter = await evaluate(`({ disabled: ${q(checks)}.disabled, hidden: document.getElementById('new-value-' + settingsData.settings.lp0_signal_checks.id).value })`);
+  check(`${tag} LP0: the signal-check master switch gates the RSSI threshold (default 100 = -100 dBm)`, rssiBefore.value === '100' && !rssiBefore.disabled && rssiAfter.disabled && rssiAfter.hidden === '000101640114', { rssiBefore, rssiAfter });
+
+  // The card: start sends 20 CF 03 <medium> <selection> <port>; the reply renders the job.
+  await evaluate(FAKE_DEVICE);
+  await evaluate(`(() => { document.getElementById('lp0-offload-medium').value = '0'; document.getElementById('lp0-offload-selection').value = '2'; document.getElementById('lp0-offload-port').value = '4'; startLp0Offload(); return true; })()`);
+  await sleep(120);
+  const sent = await evaluate(`({ writes: window.__writes, status: document.getElementById('lp0-job-status').textContent })`);
+  check(`${tag} LP0: Start offload sends the start command with medium, selection and port`, sent.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xCF, 0x03, 0, 2, 4])) && /Waiting for the device/.test(sent.status), sent);
+  const reply = [0x20, 0xCF, 17, 7, 0, 0, 0, 3, 0, 2, 4, 1, 0x8D, 0xFF, 0xFF, 0xFF, 42, 0, 0, 0]; // job 7, discovering, LP0, unconfirmed, port 4, 1 attempt, -115, 42 confirmed
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(reply)}).buffer) } })`);
+  await sleep(80);
+  const answered = await evaluate(`({ status: document.getElementById('lp0-job-status').textContent, toast: document.getElementById('toast').innerText, state: document.querySelector('#lp0-job-status .lp0-job-state').textContent })`);
+  check(`${tag} LP0: the device's job reply is decoded into the card`, /Start answered: discovering/.test(answered.state) && /in progress/.test(answered.status) && /Job 7/.test(answered.status) && /unconfirmed records over LP0/.test(answered.status) && /port 4/.test(answered.status) && /42 records confirmed saved/.test(answered.status) && /Offload job 7 discovering/.test(answered.toast), answered);
+  await evaluate(`(() => { document.getElementById('lp0-delete-selector').value = '8'; requestLp0DeleteConfirmed(); return true; })()`);
+  const overlay = await evaluate(`({ hidden: document.getElementById('lp0-delete-confirm-overlay').classList.contains('hidden'), text: document.getElementById('lp0-delete-confirm-text').textContent })`);
+  await evaluate(`lp0DeleteConfirmed()`);
+  await sleep(80);
+  const deleted = await evaluate(`({ writes: window.__writes, hidden: document.getElementById('lp0-delete-confirm-overlay').classList.contains('hidden') })`);
+  check(`${tag} LP0: deleting confirmed logs asks first, then sends D2 01 08`, !overlay.hidden && /LP0 offload station/.test(overlay.text) && deleted.hidden && deleted.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD2, 0x01, 8])), { overlay, deleted });
+
+  // Statistics report (port 23, id 0x9D) in the Logs card: a replayed flash record decodes.
+  const body = new Array(102).fill(0); body[0] = 3; body[1] = 0x63; body[3] = 0xFF; body[4] = 0x1F; body[5] = 0x10; body[6] = 0x0E; body[13 + 6 * 4] = 12; body[13 + 9 * 4] = 0xE8; body[13 + 9 * 4 + 1] = 0x03; body[97] = 0x9C; body[98] = 0x1D; body[101] = 93;
+  const frame = [29, 23, 0x9D, 102, ...body, 0, 0, 0, 0];
+  await evaluate(`(() => { recentLogState.active = true; recentLogState.port = 23; recentLogState.label = 'lp0 statistics'; recentLogState.records = []; recentLogState.requestedCount = 10; recentLogState.flashBuffer = null;
+    tryHandleRecentLogResponse(new Uint8Array(${J(frame)})); finishRecentLogRequest(); return true; })()`);
+  const logRow = await evaluate(`({ details: document.querySelector('#recent-log-results .recent-log-details') ? document.querySelector('#recent-log-results .recent-log-details').textContent : '', items: document.querySelectorAll('#recent-log-results .recent-log-list li').length })`);
+  check(`${tag} LP0: a stored station statistics report is summarised and expandable in the Logs card`, /Station statistics v3; up 1 hour/.test(logRow.details) && /sd card detected, sd card writable/.test(logRow.details) && /12 data packets saved \(1000 bytes\)/.test(logRow.details) && /SD 7580 MB, 93% free/.test(logRow.details) && logRow.items === 13 + 1 + 21, logRow);
+
+  // An 8.0 status with the 8.1.0 schema loaded by hand: no panel, no card.
+  const older = await evaluate(`(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 0 }; mountSettingsPanels(); renderLp0Section(); renderFeatures();
+    return { panel: Boolean(document.getElementById('panel-lp0')), card: !document.getElementById('lp0-area').classList.contains('hidden'), feature: Array.from(document.querySelectorAll('#features-list .feature-name')).map(n => n.textContent).includes('LP0 offload') }; })()`);
+  check(`${tag} LP0: an 8.0 collar with the 8.1.0 schema picked by hand still gets no LP0 panel or card`, !older.panel && !older.card && !older.feature, older);
+}
 async function noBluetoothNote(tag) {
   await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
   const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
@@ -473,7 +559,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

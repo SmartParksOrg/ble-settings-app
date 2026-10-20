@@ -11,6 +11,11 @@
 //   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
 //   { control: 'text' | 'pin' | 'select' | 'hex' | 'ports', key, ... }   (hex: secret: true masks the value)
 //   { control: 'datarate', key, regionKey }   (LoRaWAN DR picker with SF/bandwidth per region)
+//   { control: 'byte', key, byte: n, options | min, max, unit }   (one byte of a byte-array setting;
+//     several byte fields may share a key, and conditions take `byte: n` to test one byte)
+//   { control: 'hex', key, secret: true, generate: true }   (generate: a button fills random bytes)
+//   Panel: { requires: [keys] } renders only when the schema has every key; { beta: true } tags the
+//   title; { minFirmware: { major, minor } } lets the host hide it on older firmware.
 //   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
 //   Panel: { id, title, icon, description, summary, fields }   (every panel renders folded)
 //   summary is an id ('positioning', 'data', 'network', 'device') or { type: 'schedule', ...keys }
@@ -232,6 +237,7 @@
     port_external_switch_detection_status: 'Switch status',
     port_air_quality: 'Air quality',
     port_lp0_ping: 'LP0 ping',
+    port_lp0_statistics: 'LP0 station statistics',
     port_lp0_commands: 'LP0 commands',
     port_memfault: 'Memfault diagnostics',
     port_rf_scan: 'RF scan',
@@ -606,6 +612,102 @@
     ],
   };
 
+  // LP0 offload clusters (firmware 8.1 development builds, beta): a tracker sends its saved
+  // records over plain LoRa to an offload station that stores them on a microSD card. The
+  // role, slot, count, channel span and discovery interval are the five bytes of
+  // lp0_node_params; the radio parameters are the four bytes of lp0_communication_params;
+  // the signal checks are the six bytes of lp0_signal_checks (docs/lp0-offload/README.md and
+  // app/src/lp0/README.md in the firmware repository).
+  const lp0Role = { key: 'lp0_node_params', byte: 0 };
+  const lp0Station = { ...lp0Role, equals: 2 };
+  const lp0Tracker = { ...lp0Role, equals: 1 };
+  const lp0RoleOn = { ...lp0Role, in: [1, 2] };
+  const lp0ChecksOn = { key: 'lp0_signal_checks', byte: 0, equals: 1 };
+  const lp0ChecksReason = 'Turn on the signal checks first.';
+  const onOff = [{ value: 0, label: 'Off' }, { value: 1, label: 'On' }];
+  const lp0Offload = {
+    id: 'lp0',
+    title: 'LP0 offload',
+    icon: 'file-arrow-up',
+    beta: true,
+    minFirmware: { major: 8, minor: 1 },
+    requires: ['lp0_master_key', 'lp0_node_params', 'lp0_signal_checks'],
+    description: 'Beta, firmware 8.1 development builds only. A tracker sends its saved records over LoRa to an offload station, which stores them on a microSD card. Every tracker and station in a cluster needs the same master key, radio parameters, station count and channel span. Which message types go over LP0 is set in Data sending and storing; manual offloads and log cleanup are in the LP0 offload card.',
+    summary: 'lp0',
+    fields: [
+      { key: 'lp0_node_params', byte: 0, control: 'byte', label: 'Role',
+        options: [{ value: 0, label: 'Off (no offloading)' }, { value: 1, label: 'Tracker (sends its saved records)' }, { value: 2, label: 'Offload station (stores records on its SD card)' }],
+        help: 'Off still allows ordinary sending over LP0. The station role needs RangerEdge firmware with SD card support; air quality builds have no LP0 offloading.' },
+      { key: 'lp0_node_params', byte: 1, control: 'byte', label: 'Station ID', min: 0, max: 254, enabledWhen: lp0Station, reason: 'Only used by an offload station.',
+        help: 'Response slot of this station: 0 up to the station count minus one. Nearby stations need different IDs or their replies collide. Trackers leave it at 0.' },
+      { key: 'lp0_node_params', byte: 2, control: 'byte', label: 'Station count', min: 1, max: 255, enabledWhen: lp0RoleOn, reason: 'Turn on a role first.',
+        help: 'Number of discovery response slots for nearby stations, 10 by default. Every tracker and station in the cluster must use the same count; it is capacity for stations, not for trackers.' },
+      { key: 'lp0_node_params', byte: 4, control: 'byte', label: 'Discovery interval', unit: 's', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
+        help: 'How often a tracker looks for a station, 60 s by default. 0 means as soon as LP0 is idle. Scheduling, random delays and retry backoff make the real wait longer.' },
+      { key: 'lp0_master_key', control: 'hex', secret: true, generate: true, label: 'Cluster master key',
+        help: 'One random 16-byte key shared by every tracker and station in the cluster. Generate it once, write the same key to every device and store it safely; a device with another key cannot join. Exported only when credentials are included.',
+        warnings: [{ when: { key: 'lp0_master_key', in: ['00000000000000000000000000000000', ''] },
+          text: 'All zeros is the public default key. Generate a random key for a real deployment and write it to every device in the cluster.' }] },
+      { key: 'lp0_focus_offloading', control: 'toggle', label: 'Focus on offloading',
+        help: 'When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Turn it on on both the tracker and the station for a dedicated offload session; the defaults are enough for ordinary use.' },
+      { key: 'lp0_statistics_interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, label: 'Station statistics report', enabledWhen: lp0Station, reason: 'Only an offload station sends statistics.',
+        help: 'How often the station reports its counters and SD card state on port 23, 1 hour by default. Tick port 23 under Data sending and storing to send or store the report; a device updated from 8.0 keeps its old masks.',
+        warnings: [{ when: { all: [{ key: 'lp0_statistics_interval', gt: 0 }, { key: 'lp0_statistics_interval', lt: 60 }] }, text: 'The firmware rejects intervals under 60 seconds.' }] },
+      {
+        group: 'Radio',
+        advanced: true,
+        help: 'Must match on every device in the cluster. The defaults are the EU868 setup: SF7, 250 kHz, coding rate 4/5, 1 second, 869.150 MHz.',
+        fields: [
+          { key: 'lp0_tx_frequency_hz', label: 'Transmit frequency', unit: 'Hz', help: 'Discovery and ordinary LP0 messages. During an offload the devices switch by themselves to a channel derived from the station ID.' },
+          { key: 'lp0_rx_frequency_hz', label: 'Receive frequency', unit: 'Hz', help: 'Discovery and ordinary LP0 messages; usually the same as the transmit frequency.' },
+          { key: 'lp0_communication_params', byte: 0, control: 'byte', label: 'Spreading factor',
+            options: [5, 6, 7, 8, 9, 10, 11, 12].map(sf => ({ value: sf, label: `SF${sf}` })) },
+          { key: 'lp0_communication_params', byte: 1, control: 'byte', label: 'Bandwidth',
+            options: [{ value: 0x08, label: '10.42 kHz' }, { value: 0x01, label: '15.63 kHz' }, { value: 0x09, label: '20.83 kHz' }, { value: 0x02, label: '31.25 kHz' },
+              { value: 0x0A, label: '41.67 kHz' }, { value: 0x03, label: '62.5 kHz' }, { value: 0x04, label: '125 kHz' }, { value: 0x05, label: '250 kHz' }, { value: 0x06, label: '500 kHz' },
+              { value: 0x0D, label: '203 kHz (2.4 GHz chips only)' }, { value: 0x0E, label: '406 kHz (2.4 GHz chips only)' }, { value: 0x0F, label: '812 kHz (2.4 GHz chips only)' }] },
+          { key: 'lp0_communication_params', byte: 2, control: 'byte', label: 'Coding rate',
+            options: [{ value: 0, label: 'None' }, { value: 1, label: '4/5' }, { value: 2, label: '4/6' }, { value: 3, label: '4/7' }, { value: 4, label: '4/8' },
+              { value: 5, label: '4/5 long interleaver' }, { value: 6, label: '4/6 long interleaver' }, { value: 7, label: '4/8 long interleaver' }] },
+          { key: 'lp0_communication_params', byte: 3, control: 'byte', label: 'Listen window after a transmit', unit: 's', min: 0, max: 255,
+            help: 'How long a device listens for replies after it has sent. Station offers are spread over this window, so it must be the same on every device.' },
+          { key: 'lp0_node_params', byte: 3, control: 'byte', label: 'Offload channel span',
+            options: [{ value: 1, label: 'Frequency span of the LoRaWAN region' }, { value: 0, label: 'Full 863 to 923 MHz span' }],
+            help: 'Which band the offload channels are spread over. Every device in the cluster must match.' },
+        ],
+      },
+      {
+        group: 'Signal checks',
+        advanced: true,
+        help: 'Radio checks a device runs before it takes part in an offload. A change applies to the next offload visit.',
+        fields: [
+          { key: 'lp0_signal_checks', byte: 0, control: 'byte', label: 'All signal checks', options: onOff, help: 'Off bypasses the three checks below but keeps their values.' },
+          { key: 'lp0_signal_checks', byte: 1, control: 'byte', label: 'Channel activity (CAD) veto', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason, help: 'Do not transmit while the channel is in use.' },
+          { key: 'lp0_signal_checks', byte: 2, control: 'byte', label: 'Minimum RSSI check', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason,
+            help: 'Ignore discovery packets weaker than the minimum below, and stop after three consecutive weak packets.' },
+          { key: 'lp0_signal_checks', byte: 3, control: 'byte', label: 'Minimum RSSI', unit: 'dBm below zero', min: 0, max: 125,
+            enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 2, equals: 1 }] }, reason: 'Only used with the minimum RSSI check.',
+            help: 'Entered as a positive number: 100 means -100 dBm. A larger number admits weaker packets; 0 is a real threshold of 0 dBm, not off.' },
+          { key: 'lp0_signal_checks', byte: 4, control: 'byte', label: 'Background margin check', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason,
+            help: 'Require a packet to be stronger than the background noise by the margin below.' },
+          { key: 'lp0_signal_checks', byte: 5, control: 'byte', label: 'Minimum margin', unit: 'dB', min: 0, max: 127,
+            enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 4, equals: 1 }] }, reason: 'Only used with the background margin check.',
+            help: 'Packet strength above the background, 20 dB by default.' },
+        ],
+      },
+      {
+        group: 'Device payload keys',
+        advanced: true,
+        help: 'Keys this device uses for its own LP0 payloads. A station stores payloads encrypted and never needs them. Keep the provisioned values and record them with the device EUI in the backend, since the archives are decoded with them. Exported only when credentials are included.',
+        fields: [
+          { key: 'lp0_dev_addr', control: 'hex', label: 'LP0 device address', help: '4 bytes that identify this device in its payload frames.' },
+          { key: 'lp0_app_key', control: 'hex', secret: true, label: 'LP0 app key', help: '16 bytes; encrypts this device\'s payloads.' },
+          { key: 'lp0_network_key', control: 'hex', secret: true, label: 'LP0 network key', help: '16 bytes; protects the integrity of this device\'s payloads.' },
+        ],
+      },
+    ],
+  };
+
   const sensors = {
     id: 'sensors',
     title: 'Sensors',
@@ -624,8 +726,8 @@
   };
 
   return {
-    version: 4,
-    panels: [positioning, dataSending, network, device, satellite, sBand, vhf, wifiScanning, bleScanning, cmdq, fence, externalSwitch, airQuality, sensors],
+    version: 5,
+    panels: [positioning, dataSending, network, device, satellite, sBand, lp0Offload, vhf, wifiScanning, bleScanning, cmdq, fence, externalSwitch, airQuality, sensors],
     portLabels,
     // Settings blocks inside the older feature cards that a panel now covers.
     supersededSections: [

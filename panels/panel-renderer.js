@@ -488,8 +488,9 @@
     input.addEventListener('input', () => host.setValue(field.key, input.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase()));
     const wrap = el('div', 'panel-control');
     wrap.appendChild(input);
+    let reveal = null;
     if (field.secret) {
-      const reveal = el('button', 'panel-inline-button', 'Show');
+      reveal = el('button', 'panel-inline-button', 'Show');
       reveal.type = 'button';
       reveal.addEventListener('click', () => {
         const showing = input.type === 'text';
@@ -498,10 +499,87 @@
       });
       wrap.appendChild(reveal);
     }
+    let generate = null;
+    if (field.generate && bytes) {
+      // Fills the field with random bytes (a cluster key, for example) and shows them, so the
+      // person can copy the key to the other devices before it is applied.
+      generate = el('button', 'panel-inline-button panel-generate', 'Generate');
+      generate.type = 'button';
+      generate.title = `Fill with ${bytes} random bytes`;
+      generate.addEventListener('click', () => {
+        const random = new Uint8Array(bytes);
+        (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(random) : random.forEach((_, i) => { random[i] = Math.floor(Math.random() * 256); });
+        const hex = Array.from(random, byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
+        host.setValue(field.key, hex);
+        input.value = hex;
+        if (reveal) { input.type = 'text'; reveal.textContent = 'Hide'; }
+      });
+      wrap.appendChild(generate);
+    }
     const control = {
       node: wrap,
       focusable: input,
       update(value) { if (!isFocused(input)) input.value = value ?? ''; },
+      setDisabled(disabled) { input.disabled = disabled; if (generate) generate.disabled = disabled; },
+    };
+    resyncOnBlur(input, control, field, host);
+    return control;
+  }
+
+  // One byte of a byte-array setting (field.byte), as a select when the field lists options
+  // and as a number otherwise. Writes the whole array back through the host so the list
+  // input, validation and the draft stay the single source of truth.
+  function makeByteControl(field, setting, host) {
+    const length = setting && Number.isFinite(setting.length) ? setting.length : field.byte + 1;
+    const index = field.byte;
+    const write = byte => host.setValue(field.key, engine.setByte(host.getValue(field.key), index, byte, length));
+    const wrap = el('div', 'panel-control');
+    if (Array.isArray(field.options)) {
+      const select = el('select', 'panel-select panel-select-wide');
+      field.options.forEach(option => {
+        const node = el('option', null, option.label);
+        node.value = String(option.value);
+        select.appendChild(node);
+      });
+      select.addEventListener('change', () => { if (select.value !== '') write(Number(select.value)); });
+      wrap.appendChild(select);
+      const unknown = el('span', 'panel-hint', '');
+      wrap.appendChild(unknown);
+      return {
+        node: wrap,
+        focusable: select,
+        update(value) {
+          const byte = engine.byteAt(value, index);
+          const text = Number.isFinite(byte) ? String(byte) : '';
+          const known = field.options.some(option => String(option.value) === text);
+          if (!isFocused(select)) select.value = known ? text : '';
+          unknown.textContent = known || text === '' ? '' : `Device value ${text} is not in the list.`;
+        },
+        setDisabled(disabled) { select.disabled = disabled; },
+      };
+    }
+    const input = el('input', 'panel-input');
+    input.type = 'number';
+    input.step = '1';
+    input.min = Number.isFinite(field.min) ? field.min : 0;
+    input.max = Number.isFinite(field.max) ? field.max : 255;
+    input.addEventListener('input', () => {
+      const number = entryNumber(input);
+      if (number === null) return; // empty or partial: nothing to commit yet
+      write(number);
+    });
+    const inputs = el('span', 'panel-duration-inputs');
+    inputs.appendChild(input);
+    if (field.unit) inputs.appendChild(el('span', 'panel-unit', field.unit));
+    wrap.appendChild(inputs);
+    const control = {
+      node: wrap,
+      focusable: input,
+      update(value) {
+        if (isFocused(input)) return;
+        const byte = engine.byteAt(value, index);
+        input.value = Number.isFinite(byte) ? String(byte) : '';
+      },
       setDisabled(disabled) { input.disabled = disabled; },
     };
     resyncOnBlur(input, control, field, host);
@@ -686,6 +764,8 @@
         return makeDataRateControl(field, setting, host);
       case 'hex':
         return makeHexControl(field, setting, host);
+      case 'byte':
+        return makeByteControl(field, setting, host);
       case 'ports':
         return makePortsControl(field, setting, host);
       case 'matrix':
@@ -736,10 +816,11 @@
     row.appendChild(head);
     const control = makeControl(field, primarySetting, host, `${panel.id}-${slug(fieldLabel(field, host))}`);
     if (control.focusable && keys.length === 1) {
-      const id = `panel-${panel.id}-${slug(keys[0])}`;
+      const id = `panel-${panel.id}-${slug(keys[0])}${field.control === 'byte' ? `-byte${field.byte}` : ''}`;
       control.focusable.id = id;
       label.htmlFor = id;
     }
+    if (field.control === 'byte') row.dataset.byte = String(field.byte);
     row.appendChild(control.node);
     const help = fieldHelp(field, host);
     if (help) {
@@ -792,7 +873,10 @@
       badge.classList.toggle('visible', keys.some(key => host.isPending(key)));
     };
     state.updaters.push(updater);
-    keys.forEach(key => state.fieldElements.set(key, row));
+    keys.forEach(key => {
+      if (field.control === 'byte' && state.fieldElements.has(key)) return; // jump to the first byte of an array
+      state.fieldElements.set(key, row);
+    });
     state.searchable.push({ row, text: `${fieldLabel(field, host)} ${help} ${keys.join(' ')}`.toLowerCase() });
     return row;
   }
@@ -913,6 +997,10 @@
   }
 
   function renderPanel(panel, host, state) {
+    // A panel for a feature the loaded schema lacks, or that the host says the connected
+    // firmware does not have, is left out altogether.
+    if ((panel.requires || []).some(key => !host.getSetting(key))) return null;
+    if (panel.minFirmware && typeof host.firmwareSupports === 'function' && !host.firmwareSupports(panel.minFirmware)) return null;
     const card = el('details', 'section section-card panel-card');
     card.id = `panel-${panel.id}`;
     card.open = false; // every panel starts folded, whatever was open before
@@ -921,6 +1009,7 @@
     icon.setAttribute('aria-hidden', 'true');
     title.appendChild(icon);
     title.appendChild(document.createTextNode(panel.title));
+    if (panel.beta) title.appendChild(el('span', 'panel-beta-tag', 'beta'));
     card.appendChild(title);
     const body = el('div', 'section-card-body panel-body');
     if (panel.description) body.appendChild(el('p', 'panel-description', panel.description));
@@ -940,6 +1029,8 @@
         } else if (panel.summary === 'data') {
           const matrix = (panel.fields || []).find(field => field.control === 'matrix');
           text = matrix ? engine.describeDataFlags(host.getValue, portRows(host), matrix.__columns || []) : '';
+        } else if (panel.summary === 'lp0') {
+          text = engine.describeLp0(host.getValue);
         }
         summary.textContent = text;
         summary.classList.toggle('hidden', !text);
