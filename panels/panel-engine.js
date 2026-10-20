@@ -446,6 +446,53 @@
     return value === null || value === undefined ? null : String(value);
   }
 
+  // LoRaWAN data rate (DR0..DR15) to spreading factor and bandwidth per region, from the
+  // LoRaWAN Regional Parameters RP002-1.0.4 uplink tables; region numbers are the firmware's
+  // lr_region values. Entries the specification leaves undefined (RFU) are absent.
+  const LORA = (sf, bw) => ({ sf, bw, label: `SF${sf} / ${bw} kHz` });
+  const FSK50 = { label: 'FSK 50 kbps' };
+  const LRFHSS = cr => ({ label: `LR-FHSS ${cr}` });
+  const SF12_TO_7_125 = [LORA(12, 125), LORA(11, 125), LORA(10, 125), LORA(9, 125), LORA(8, 125), LORA(7, 125)];
+  const SF12_TO_7_500 = [LORA(12, 500), LORA(11, 500), LORA(10, 500), LORA(9, 500), LORA(8, 500), LORA(7, 500)];
+  const EU_LIKE = [...SF12_TO_7_125, LORA(7, 250), FSK50];
+  const LORAWAN_DATA_RATES = {
+    1: EU_LIKE,                                                     // EU 868
+    2: EU_LIKE, 7: EU_LIKE, 8: EU_LIKE, 13: EU_LIKE,                // AS 923 groups 1-4
+    3: [LORA(10, 125), LORA(9, 125), LORA(8, 125), LORA(7, 125), LORA(8, 500),
+      LRFHSS('CR 1/3'), LRFHSS('CR 2/3'), undefined, ...SF12_TO_7_500], // US 915 (DR8-13 downlink)
+    4: [...SF12_TO_7_125, LORA(8, 500), LRFHSS('CR 1/3'), ...SF12_TO_7_500], // AU 915 (DR8-13 downlink)
+    5: [...SF12_TO_7_125, LORA(7, 500), FSK50],                     // CN 470
+    12: [...SF12_TO_7_125],                                         // CN 470 RP 1.0
+    6: [LORA(12, 812), LORA(11, 812), LORA(10, 812), LORA(9, 812), LORA(8, 812), LORA(7, 812)], // WW 2.4 GHz
+    9: [...SF12_TO_7_125, undefined, FSK50],                        // IN 865
+    10: [...SF12_TO_7_125],                                         // KR 920
+    11: [...SF12_TO_7_125, LORA(7, 250), FSK50],                    // RU 864
+  };
+  const DOWNLINK_ONLY = { 3: [8, 9, 10, 11, 12, 13], 4: [8, 9, 10, 11, 12, 13] };
+
+  // "SF9 / 125 kHz" for a region and data rate number, or null when the region is unknown
+  // or the data rate is not defined there.
+  function describeDataRate(region, dataRate) {
+    const table = LORAWAN_DATA_RATES[toNumber(region)];
+    const dr = toNumber(dataRate);
+    if (!table || !Number.isInteger(dr) || dr < 0) return null;
+    const entry = table[dr];
+    if (!entry) return null;
+    const downlink = (DOWNLINK_ONLY[toNumber(region)] || []).includes(dr);
+    return downlink ? `${entry.label}, downlink only` : entry.label;
+  }
+
+  // Options for a data rate picker: every data rate the region defines, DR0 first.
+  function dataRateOptions(region, maxDataRate = 15) {
+    const table = LORAWAN_DATA_RATES[toNumber(region)] || [];
+    const options = [];
+    for (let dr = 0; dr <= maxDataRate && dr < table.length; dr += 1) {
+      const text = describeDataRate(region, dr);
+      if (text) options.push({ value: dr, label: `DR${dr} = ${text}` });
+    }
+    return options;
+  }
+
   function describeNetwork(getValue, fmt = {}) {
     const has = key => getValue(key) !== null && getValue(key) !== undefined;
     const duration = fmt.duration || formatDurationWords;
@@ -454,9 +501,13 @@
     if (has('lr_adr_profile')) {
       const profile = toNumber(getValue('lr_adr_profile'));
       const label = optionLabel(fmt, 'lr_adr_profile', getValue('lr_adr_profile'));
-      sentences.push(profile === 3 && has('lr_adr')
-        ? `Adaptive data rate: custom, DR${toNumber(getValue('lr_adr'))}.`
-        : `Adaptive data rate: ${label}.`);
+      if (profile === 3 && has('lr_adr')) {
+        const dr = toNumber(getValue('lr_adr'));
+        const sf = has('lr_region') ? describeDataRate(getValue('lr_region'), dr) : null;
+        sentences.push(`Adaptive data rate: custom, DR${dr}${sf ? ` (${sf})` : ' (not defined for this region)'}.`);
+      } else {
+        sentences.push(`Adaptive data rate: ${label}.`);
+      }
     }
     if (has('rejoin_interval')) sentences.push(`Rejoin attempts every ${duration(toNumber(getValue('rejoin_interval')))}.`);
     return sentences.join(' ');
@@ -524,6 +575,8 @@
     describeSchedule,
     describeFixQuality,
     describeNetwork,
+    describeDataRate,
+    dataRateOptions,
     describeDevice,
     describeDataFlags,
     portBit,

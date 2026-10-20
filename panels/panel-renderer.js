@@ -422,6 +422,57 @@
     };
   }
 
+  // Data rate picker whose options follow the region (field.regionKey): DR numbers shown
+  // with their spreading factor and bandwidth, rebuilt whenever the region changes.
+  function makeDataRateControl(field, setting, host) {
+    const select = el('select', 'panel-select panel-select-wide');
+    const maxDr = Number.isFinite(Number(setting.max)) ? Number(setting.max) : 15;
+    let builtFor = null;
+    let builtWithUnknown = null;
+    const rebuild = (region, current) => {
+      const options = engine.dataRateOptions(region, maxDr);
+      const known = options.some(option => String(option.value) === current);
+      const unknown = current !== '' && !known ? current : null;
+      if (builtFor === String(region) && builtWithUnknown === unknown && select.options.length) return;
+      select.innerHTML = '';
+      options.forEach(option => {
+        const node = el('option', null, option.label);
+        node.value = String(option.value);
+        select.appendChild(node);
+      });
+      if (unknown !== null) {
+        const node = el('option', null, `DR${unknown} (not defined for this region)`);
+        node.value = unknown;
+        select.appendChild(node);
+      }
+      if (!options.length && unknown === null) {
+        const node = el('option', null, 'Select a region first');
+        node.value = '';
+        select.appendChild(node);
+      }
+      builtFor = String(region);
+      builtWithUnknown = unknown;
+    };
+    select.addEventListener('change', () => { if (select.value !== '') host.setValue(field.key, select.value); });
+    const wrap = el('div', 'panel-control');
+    wrap.appendChild(select);
+    const hint = el('span', 'panel-hint', '');
+    wrap.appendChild(hint);
+    return {
+      node: wrap,
+      focusable: select,
+      update(value) {
+        const text = String(value ?? '');
+        const region = host.getValue(field.regionKey);
+        rebuild(region, text);
+        if (!isFocused(select)) select.value = text;
+        const described = engine.describeDataRate(region, text);
+        hint.textContent = text === '' || described ? '' : `DR${text} is not defined for this region (LoRaWAN Regional Parameters).`;
+      },
+      setDisabled(disabled) { select.disabled = disabled; },
+    };
+  }
+
   function makeHexControl(field, setting, host) {
     const input = el('input', 'panel-input panel-input-mono');
     input.type = field.secret ? 'password' : 'text';
@@ -626,6 +677,8 @@
         return makePinControl(field, setting, host);
       case 'select':
         return makeSelectControl(field, setting, host);
+      case 'datarate':
+        return makeDataRateControl(field, setting, host);
       case 'hex':
         return makeHexControl(field, setting, host);
       case 'ports':
@@ -837,7 +890,7 @@
   function renderPanel(panel, host, state) {
     const card = el('details', 'section section-card panel-card');
     card.id = `panel-${panel.id}`;
-    card.open = !panel.collapsed;
+    card.open = false; // every panel starts folded, whatever was open before
     const title = el('summary', 'section-card-title');
     const icon = el('span', `icon ${panel.icon || 'location-dot'}`);
     icon.setAttribute('aria-hidden', 'true');
@@ -928,7 +981,7 @@
   }
 
   // Show only fields matching the query (label, help or key); open what contains a match.
-  // An empty query restores everything, including the panels' default open state.
+  // An empty query restores everything and folds every panel again.
   function filter(query) {
     if (!mounted) return 0;
     const text = String(query || '').trim().toLowerCase();
@@ -950,7 +1003,7 @@
           if (inner) group.open = true;
         });
       } else {
-        card.open = !panel.collapsed;
+        card.open = false;
         card.querySelectorAll('details.panel-group').forEach(group => {
           group.classList.remove('hidden');
           group.open = !group.classList.contains('panel-group-advanced');

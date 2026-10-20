@@ -122,6 +122,7 @@
   <link rel="icon" href="favicon.ico" sizes="any">
   <link rel="manifest" href="manifest.json">
   <script src="hardware-types.js"></script>
+  <script src="device-icons.js"></script>
   <script src="functions.js"></script>
   <script src="panels/panel-engine.js"></script>
   <script src="panels/panel-definitions.js"></script>
@@ -221,15 +222,24 @@
     </div>
   </div>
 
-  <div id="sticky-status-bar" class="sticky-status-bar hidden-when-disconnected dfu-hide" role="region" aria-label="Connected device">
-    <button type="button" id="sticky-status-top" class="sticky-status-identity" title="Back to top">
-      <span class="sticky-status-dot" aria-hidden="true"></span>
-      <span id="sticky-status-name" class="sticky-status-name">Device</span>
-    </button>
-    <span id="sticky-status-fw" class="sticky-status-meta sticky-status-fw hidden" title="Firmware version"><span class="icon fw-version" aria-hidden="true"></span><span id="sticky-status-fw-text"></span></span>
-    <span id="sticky-status-battery" class="sticky-status-meta sticky-status-battery hidden" title="Battery"><span class="icon battery" aria-hidden="true"></span><span id="sticky-status-battery-text"></span></span>
-    <button type="button" id="sticky-status-pending" class="sticky-status-pending hidden" title="Go to the first pending change"></button>
-    <button type="button" id="sticky-status-disconnect" class="sticky-status-disconnect">Disconnect</button>
+  <div id="device-sentinel" class="device-sentinel hidden-when-disconnected dfu-hide" aria-hidden="true"></div>
+  <div id="device-area" class="device-section page-section hidden-when-disconnected dfu-hide">
+    <div id="sticky-status-bar" class="section section-card device-card" role="region" aria-label="Connected device">
+      <button type="button" id="sticky-status-top" class="sticky-status-identity device-identity" title="Back to top">
+        <span id="device-icon" class="device-icon" aria-hidden="true"></span>
+        <span class="device-text">
+          <span class="device-name-row">
+            <span class="sticky-status-dot" aria-hidden="true"></span>
+            <span id="sticky-status-name" class="sticky-status-name">Device</span>
+          </span>
+          <span id="device-type-label" class="device-type">Connecting...</span>
+        </span>
+      </button>
+      <span id="sticky-status-fw" class="sticky-status-meta sticky-status-fw hidden" title="Firmware version"><span class="icon fw-version" aria-hidden="true"></span><span id="sticky-status-fw-text"></span></span>
+      <span id="sticky-status-battery" class="sticky-status-meta sticky-status-battery hidden" title="Battery"><span class="icon battery" aria-hidden="true"></span><span id="sticky-status-battery-text"></span></span>
+      <button type="button" id="sticky-status-pending" class="sticky-status-pending hidden" title="Go to the first pending change"></button>
+      <button type="button" id="sticky-status-disconnect" class="sticky-status-disconnect">Disconnect</button>
+    </div>
   </div>
 
   <div id="status-area" class="status-section page-section hidden-when-no-status">
@@ -1539,24 +1549,27 @@
 
     // Slim bar pinned to the top once the header scrolls out of view: device
     // identity, connection state, firmware, battery, pending edits, Disconnect.
+    // The device card above Status: icon and name of the collar, firmware, battery, pending
+    // chip and Disconnect. It is position: sticky, so it stays in view while scrolling; once
+    // the sentinel above it leaves the viewport the card is "stuck" and drawn compact.
     const stickyStatus = (() => {
       const byId = id => document.getElementById(id);
       let observer = null;
-      let pastHeader = false;
+      let stuck = false;
       function render() {
-        const bar = byId('sticky-status-bar');
-        if (bar) bar.classList.toggle('is-visible', pastHeader);
+        const area = byId('device-area');
+        if (area) area.classList.toggle('is-stuck', stuck);
       }
       function init() {
-        const header = byId('header-section');
-        const bar = byId('sticky-status-bar');
-        if (!header || !bar || !('IntersectionObserver' in window)) return;
+        const sentinel = byId('device-sentinel');
+        const area = byId('device-area');
+        if (!sentinel || !area || !('IntersectionObserver' in window)) return;
         observer = new IntersectionObserver(entries => {
           const entry = entries[0];
-          pastHeader = !entry.isIntersecting && entry.boundingClientRect.bottom < 0;
+          stuck = !entry.isIntersecting && entry.boundingClientRect.top < 0;
           render();
         }, { threshold: 0 });
-        observer.observe(header);
+        observer.observe(sentinel);
         byId('sticky-status-top').addEventListener('click', () => {
           window.scrollTo({ top: 0, behavior: 'smooth' });
         });
@@ -1572,7 +1585,32 @@
         const el = byId('sticky-status-name');
         if (el) el.textContent = name || 'Device';
       }
+      // Icon and type line from the status message: the Connect app's animal for the
+      // firmware type (hardware type as fallback), the hardware name and version after it.
+      function setType(info) {
+        const icon = byId('device-icon');
+        const label = byId('device-type-label');
+        const hasType = info && (Number.isFinite(info.hwType) || Number.isFinite(info.fwType));
+        const key = hasType && window.getDeviceIconKey ? getDeviceIconKey(info.hwType, info.fwType) : 'collar';
+        if (icon && window.getDeviceIconSvg) {
+          icon.innerHTML = getDeviceIconSvg(key);
+          icon.dataset.type = key;
+        }
+        if (label) {
+          if (!hasType) {
+            label.textContent = info === null ? 'Connecting...' : 'Waiting for status...';
+            return;
+          }
+          const animal = window.getDeviceTypeName ? getDeviceTypeName(info.hwType, info.fwType) : '';
+          const hardware = window.getHwTypeLabel ? getHwTypeLabel(info.hwType) : '';
+          const parts = [];
+          if (animal) parts.push(animal);
+          if (hardware && hardware !== 'unknown') parts.push(`${hardware}${info.hwVersion ? ' v' + info.hwVersion : ''}`);
+          label.textContent = parts.join(' \u00b7 ') || 'Unknown device type';
+        }
+      }
       function setStatus(info) {
+        setType(info);
         const fw = byId('sticky-status-fw');
         const fwText = byId('sticky-status-fw-text');
         const battery = byId('sticky-status-battery');
@@ -1595,7 +1633,7 @@
         chip.textContent = count ? `${count} change${count === 1 ? '' : 's'}${invalid > 0 ? ', ' + invalid + ' invalid' : ''}` : '';
       }
       function reset() {
-        pastHeader = false;
+        stuck = false;
         render();
         setDevice('');
         setStatus(null);
@@ -4029,7 +4067,10 @@
 
       stickyStatus.setStatus({
         fwVersion: `${statusMessage.ver_fw_major}.${statusMessage.ver_fw_minor}`,
-        batteryMv: Number(statusMessage.bat)
+        batteryMv: Number(statusMessage.bat),
+        hwType: Number(statusMessage.ver_hw_type),
+        fwType: Number(statusMessage.ver_fw_type),
+        hwVersion: `${statusMessage.ver_hw_major}.${statusMessage.ver_hw_minor}`
       });
       statusMessageElement.innerHTML = `
         <div class="status-header">
@@ -7747,6 +7788,7 @@
         log(`Connected to device: ${device.name}`);
         lastConnectedDeviceName = device && device.name ? device.name : null;
         stickyStatus.setDevice(lastConnectedDeviceName);
+        stickyStatus.setStatus({});
         updateDebugFabState();
 
         setConnectionBootstrapState(true, 'Loading device profile...', 'Fetching firmware status and matching settings.');

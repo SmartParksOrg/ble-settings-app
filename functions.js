@@ -1043,9 +1043,30 @@ function getGpsSkippedTriggeredIntervalHelperText() {
     return `With ublox send interval at ${intervalLabel}, the device may skip fixes for about ${formatDurationCompact(maxSkipDuration)} before forcing a new fix if no motion is detected.`;
 }
 
+function getLoraDataRateHelperText() {
+    const engine = typeof window !== 'undefined' ? window.PanelEngine : null;
+    if (!engine || typeof engine.describeDataRate !== 'function') {
+        return '';
+    }
+    const region = getSettingEffectiveValue('lr_region');
+    const dataRate = Number.parseInt(getSettingEffectiveValue('lr_adr'), 10);
+    const regionOption = (getSettingOptions('lr_region') || []).find(option => String(option.value) === String(region));
+    const regionLabel = regionOption ? regionOption.label : `region ${region}`;
+    if (!Number.isFinite(dataRate)) {
+        return `The data rate number means a different spreading factor per region (${regionLabel} selected).`;
+    }
+    const described = engine.describeDataRate(region, dataRate);
+    return described
+        ? `DR${dataRate} is ${described} in ${regionLabel} (LoRaWAN Regional Parameters).`
+        : `DR${dataRate} is not defined for ${regionLabel} (LoRaWAN Regional Parameters).`;
+}
+
 function getDynamicSettingHelperText(key) {
     if (key === 'gps_skipped_triggered_interval') {
         return getGpsSkippedTriggeredIntervalHelperText();
+    }
+    if (key === 'lr_adr') {
+        return getLoraDataRateHelperText();
     }
     return '';
 }
@@ -1074,6 +1095,9 @@ function refreshDynamicSettingHelpers(key) {
     const normalizedKey = String(key || '');
     if (normalizedKey === 'gps_skipped_triggered_interval' || normalizedKey === 'ublox_send_interval') {
         refreshDynamicSettingHelperByKey('gps_skipped_triggered_interval');
+    }
+    if (normalizedKey === 'lr_adr' || normalizedKey === 'lr_region') {
+        refreshDynamicSettingHelperByKey('lr_adr');
     }
 }
 

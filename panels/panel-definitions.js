@@ -10,8 +10,9 @@
 //   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
 //   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
 //   { control: 'text' | 'pin' | 'select' | 'hex' | 'ports', key, ... }   (hex: secret: true masks the value)
+//   { control: 'datarate', key, regionKey }   (LoRaWAN DR picker with SF/bandwidth per region)
 //   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
-//   Panel: { id, title, icon, collapsed, description, summary, fields }
+//   Panel: { id, title, icon, description, summary, fields }   (every panel renders folded)
 //   summary is an id ('positioning', 'data', 'network', 'device') or { type: 'schedule', ...keys }
 //   zeroMeansOff fields may carry onAlso: [{ key, value, when }] applied when switched on.
 //   A duration with zeroMeansOff renders an on/off toggle; `onDefault` is the value used when
@@ -275,15 +276,15 @@
     title: 'Network (LoRaWAN)',
     icon: 'messages',
     connectAppSection: 'LoRa',
-    collapsed: true,
     description: 'How the tracker joins and talks to the LoRaWAN network.',
     summary: 'network',
     fields: [
       { key: 'lr_region', label: 'Region', control: 'select', help: 'LoRaWAN frequency region. Changing it makes the device rejoin the network.' },
       { key: 'lr_adr_profile', label: 'Adaptive data rate', control: 'select',
         help: 'Network controlled suits static devices; the mobile profiles suit moving trackers; Custom uses the data rate below.' },
-      { key: 'lr_adr', label: 'Data rate', enabledWhen: customAdr, reason: 'Only used with the Custom adaptive data rate profile.',
-        help: 'DR0 to DR15. EU 868 allows DR0 to DR7; US 915 allows DR0 to DR4 and DR8 to DR13.' },
+      { key: 'lr_adr', label: 'Data rate', control: 'datarate', regionKey: 'lr_region', enabledWhen: customAdr,
+        reason: 'Only used with the Custom adaptive data rate profile.',
+        help: 'The data rate number means a different spreading factor per region (DR0 is SF12 in EU 868 but SF10 in US 915); the list shows the LoRaWAN Regional Parameters table for the selected region. A lower spreading factor sends faster and uses less battery; a higher one reaches further.' },
       { key: 'rejoin_interval', label: 'Rejoin interval', control: 'duration', unit: 's', help: 'How often the device tries to rejoin the network while not joined.' },
       {
         group: 'Credentials',
@@ -321,7 +322,6 @@
     title: 'Device and security',
     icon: 'locked',
     connectAppSection: 'Security',
-    collapsed: true,
     description: 'Name, Bluetooth access, and how often the tracker reports its status.',
     summary: 'device',
     fields: [
@@ -335,6 +335,13 @@
         fields: [
           { key: 'check_error_interval', label: 'Error check interval', control: 'duration', unit: 's', help: 'How often the device checks for error conditions.' },
           { key: 'tracker_type', label: 'Tracker type', control: 'select', help: 'Tracker model type.' },
+        ],
+      },
+      {
+        group: 'Diagnostics',
+        advanced: true,
+        fields: [
+          { key: 'memfault_send_interval', label: 'Memfault diagnostics', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400, help: 'How often Memfault data is sent.' },
         ],
       },
     ],
@@ -367,7 +374,6 @@
     title: 'Iridium satellite',
     icon: 'square-caret-up',
     connectAppSection: 'Satellite',
-    collapsed: true,
     description: 'When the tracker sends data over the Iridium satellite modem. Which message types go over satellite is set in Data sending and storing.',
     summary: { type: 'schedule', enabledKey: 'satellite_enabled', interval1Key: 'satellite_send_interval', multipleKey: 'satellite_multiple_intervals',
       start1Key: 'satellite_interval1_start', interval2Key: 'satellite_send_interval2', start2Key: 'satellite_send_interval2_start', verb: 'Send', subject: 'Satellite sending' },
@@ -388,10 +394,33 @@
         advanced: true,
         fields: [
           { key: 'satellite_retry', label: 'Send retries', enabledWhen: satelliteOn, reason: satelliteReason, help: 'Send attempts per satellite session. The delay between retries is random: 1 to 5 s for the first 3, 5 to 20 s up to the 6th, 20 to 40 s after that.' },
-          { key: 's_band_send_mode', label: 'S-Band send mode', help: '0 = send without FHSS, 1 = send with FHSS, 2 = both.' },
-          { key: 's_band_send_interval', label: 'S-Band send interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600,
-            help: 'How often the status and short position message is sent over S-Band.' },
-          { key: 's_band_rf_frequency_hz', label: 'S-Band frequency', unit: 'Hz', help: 'Frequency on which S-Band LoRa operates.' },
+        ],
+      },
+    ],
+  };
+
+  // S-Band is a LoRa link on a separate radio, not the Iridium modem, so it gets its own panel.
+  const sBandOn = { key: 's_band_send_interval', gt: 0 };
+  const sBandReason = 'Turn on S-Band sending first.';
+
+  const sBand = {
+    id: 'sband',
+    title: 'S-Band satellite',
+    icon: 'square-caret-up',
+    description: 'Sending the status and short position message over the S-Band LoRa radio. This is separate from the Iridium satellite modem.',
+    fields: [
+      { key: 's_band_send_interval', label: 'S-Band sending', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, offLabel: 'S-Band sending off',
+        help: 'How often the status and short position message is sent over S-Band. Off means no S-Band sending.' },
+      { key: 's_band_send_mode', label: 'Send mode', control: 'select', enabledWhen: sBandOn, reason: sBandReason,
+        help: 'Send without frequency hopping (FHSS), with it, or both.' },
+      { key: 's_band_rf_frequency_hz', label: 'Frequency', unit: 'Hz', enabledWhen: sBandOn, reason: sBandReason, help: 'Frequency on which S-Band LoRa operates.' },
+      {
+        group: 'Credentials',
+        help: 'Keys used to encode S-Band messages. Credentials are only exported when the export option is ticked.',
+        fields: [
+          { key: 's_band_dev_adr', label: 'Device address', control: 'hex', help: 'Device address (4 bytes) used to encode S-Band messages.' },
+          { key: 's_band_network_key', label: 'Network key', control: 'hex', secret: true, help: 'NwkSKey (16 bytes) used to encode S-Band messages.' },
+          { key: 's_band_app_key', label: 'App key', control: 'hex', secret: true, help: 'AppSKey (16 bytes) used to encode S-Band messages.' },
         ],
       },
     ],
@@ -406,7 +435,6 @@
     id: 'vhf',
     title: 'VHF beacon',
     icon: 'bars',
-    collapsed: true,
     description: 'When the tracker transmits VHF beacon pulses for directional tracking.',
     summary: { type: 'schedule', enabledKey: 'vhf_enabled', interval1Key: 'vhf_interval1', multipleKey: 'vhf_multiple_intervals',
       start1Key: 'vhf_interval1_start', interval2Key: 'vhf_interval2', start2Key: 'vhf_interval2_start', verb: 'Transmit', subject: 'The VHF beacon' },
@@ -442,54 +470,55 @@
     text: 'Fence monitoring and external switch detection must not be enabled together; the firmware disables the switch function when both are on.',
   };
 
-  const scanning = {
-    id: 'scanning',
-    title: 'WiFi and BLE scanning',
+  const wifiOn = { key: 'wifi_scan_interval', gt: 0 };
+  const wifiReason = 'Turn on WiFi scanning first.';
+  const wifiScanning = {
+    id: 'wifi-scanning',
+    title: 'WiFi scanning',
     icon: 'wifi-scan',
-    collapsed: true,
-    description: 'Periodic scans for nearby WiFi networks and Bluetooth devices. Results are sent as their own message types (see Data sending and storing).',
+    description: 'Periodic scans for nearby WiFi networks. Results are sent as their own message types (see Data sending and storing).',
     fields: [
-      {
-        group: 'WiFi scan',
-        fields: [
-          { key: 'wifi_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a WiFi scan runs.' },
-          { key: 'wifi_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
-            enabledWhen: { key: 'wifi_scan_interval', gt: 0 }, reason: 'Turn on WiFi scanning first.', help: 'How often aggregated WiFi scan results are produced.' },
-          { key: 'wifi_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: { key: 'wifi_scan_interval', gt: 0 }, reason: 'Turn on WiFi scanning first.',
-            help: 'Also send a result when no networks were found.' },
-        ],
-      },
-      {
-        group: 'BLE scan',
-        fields: [
-          { key: 'ble_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a BLE scan runs.' },
-          { key: 'ble_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
-            enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.', help: 'How often aggregated BLE scan results are produced.' },
-          { key: 'ble_scan_duration', label: 'Scan duration', unit: 'ms', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.', help: 'Scan duration in milliseconds.' },
-          { key: 'ble_scan_filter', label: 'Filter', control: 'select', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.',
-            help: 'Filtering applied to scanned data before storing or sending. The options depend on the firmware version.' },
-          { key: 'ble_scan_manufacturer_id', label: 'Manufacturer ID', control: 'hex-number', enabledWhen: { key: 'ble_scan_filter', in: [1, 2, 4] }, reason: 'Only used with a manufacturer ID filter.',
-            help: 'Bluetooth manufacturer ID, in hex (Smart Parks is 0x0A61).' },
-          { key: 'ble_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: { key: 'ble_scan_interval', gt: 0 }, reason: 'Turn on BLE scanning first.',
-            help: 'Also send a result when no devices were found.' },
-        ],
-      },
+      { key: 'wifi_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a WiFi scan runs.' },
+      { key: 'wifi_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
+        enabledWhen: wifiOn, reason: wifiReason, help: 'How often aggregated WiFi scan results are produced.' },
+      { key: 'wifi_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: wifiOn, reason: wifiReason,
+        help: 'Also send a result when no networks were found.' },
+    ],
+  };
+
+  const bleOn = { key: 'ble_scan_interval', gt: 0 };
+  const bleReason = 'Turn on BLE scanning first.';
+  const bleScanning = {
+    id: 'ble-scanning',
+    title: 'BLE scanning',
+    icon: 'ble-scan',
+    description: 'Periodic scans for nearby Bluetooth devices. Results are sent as their own message types (see Data sending and storing).',
+    fields: [
+      { key: 'ble_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a BLE scan runs.' },
+      { key: 'ble_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
+        enabledWhen: bleOn, reason: bleReason, help: 'How often aggregated BLE scan results are produced.' },
+      { key: 'ble_scan_duration', label: 'Scan duration', unit: 'ms', enabledWhen: bleOn, reason: bleReason, help: 'Scan duration in milliseconds.' },
+      { key: 'ble_scan_filter', label: 'Filter', control: 'select', enabledWhen: bleOn, reason: bleReason,
+        help: 'Filtering applied to scanned data before storing or sending. The options depend on the firmware version.' },
+      { key: 'ble_scan_manufacturer_id', label: 'Manufacturer ID', control: 'hex-number', enabledWhen: { key: 'ble_scan_filter', in: [1, 2, 4] }, reason: 'Only used with a manufacturer ID filter.',
+        help: 'Bluetooth manufacturer ID, in hex (Smart Parks is 0x0A61).' },
+      { key: 'ble_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: bleOn, reason: bleReason,
+        help: 'Also send a result when no devices were found.' },
     ],
   };
 
   const cmdqOn = { key: 'cmdq_enabled', truthy: true };
-  const cmdqReason = 'Turn on tracker search first.';
+  const cmdqReason = 'Turn on CMDQ first.';
   const cmdq = {
     id: 'cmdq',
-    title: 'Tracker search (CMDQ)',
+    title: 'CMDQ',
     icon: 'bluetooth',
-    collapsed: true,
     description: 'Search for one specific Bluetooth device nearby and report when it is detected.',
     fields: [
-      { key: 'cmdq_enabled', label: 'Tracker search', control: 'toggle',
+      { key: 'cmdq_enabled', label: 'CMDQ', control: 'toggle',
         help: 'Scan for the device below on the search interval and report detections.',
         warnings: [{ when: cmdqOn,
-          text: 'While tracker search is on, the device disconnects Bluetooth apps to scan. After enabling it, this app may not be able to reconnect until the scan is ready, which can take up to 5 minutes.' }] },
+          text: 'While CMDQ is on, the device disconnects Bluetooth apps to scan. After enabling it, this app may not be able to reconnect until the scan is ready, which can take up to 5 minutes.' }] },
       { key: 'cmdq_searched_mac_address', label: 'Device to search for', control: 'mac', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Bluetooth MAC address of the device to search for.' },
       { key: 'cmdq_search_interval', label: 'Search interval', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
         help: 'Seconds between scans. For immediate and long scans this is the active scan duration; set it near the searched device\'s advertisement interval.' },
@@ -514,7 +543,6 @@
     id: 'fence',
     title: 'Fence monitor',
     icon: 'electric-fence',
-    collapsed: true,
     description: 'Measure the voltage of an electric fence (requires supported hardware). Measurements and calibration are in the FenceEdge card.',
     fields: [
       { key: 'fence_enabled', label: 'Fence monitoring', control: 'toggle', help: 'Enable fence measurements (requires supported hardware).', warnings: [fenceAndSwitchWarning] },
@@ -538,7 +566,6 @@
     id: 'switch',
     title: 'External switch',
     icon: 'power-off',
-    collapsed: true,
     description: 'Detect activity on the external switch input, or count its pulses, and report it over LoRa.',
     fields: [
       { key: 'external_switch_detection_enabled', label: 'Switch detection', control: 'toggle', help: 'Turns on external switch detection.', warnings: [fenceAndSwitchWarning] },
@@ -567,12 +594,23 @@
     ],
   };
 
+  const airQuality = {
+    id: 'air-quality',
+    title: 'Air quality',
+    icon: 'temperature',
+    description: 'The BME690 and BMV080 air quality sensors, only on rangeredge boards running the air quality firmware.',
+    fields: [
+      { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Enable the BME690 and BMV080 air quality sensors. Only available on rangeredge boards running the air quality firmware.' },
+      { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', enabledWhen: { key: 'air_quality_enabled', truthy: true }, reason: 'Turn on the air quality sensor first.',
+        help: 'How often the tracker checks for new air quality data and packs it into a message. The sensors sample on a fixed 5-minute duty cycle.' },
+    ],
+  };
+
   const sensors = {
     id: 'sensors',
-    title: 'Sensors and diagnostics',
+    title: 'Sensors',
     icon: 'accelerometer',
-    collapsed: true,
-    description: 'Accelerometer, air quality and diagnostics reporting.',
+    description: 'Accelerometer settings.',
     fields: [
       {
         group: 'Accelerometer',
@@ -582,27 +620,12 @@
           { key: 'accel_movement_data_fifo_enabled', label: 'Movement data FIFO', control: 'toggle', help: 'Enable the accelerometer movement data FIFO.' },
         ],
       },
-      {
-        group: 'Air quality',
-        fields: [
-          { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Enable the BME690 and BMV080 air quality sensors. Only available on rangeredge boards running the air quality firmware.' },
-          { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', enabledWhen: { key: 'air_quality_enabled', truthy: true }, reason: 'Turn on the air quality sensor first.',
-            help: 'How often the tracker checks for new air quality data and packs it into a message. The sensors sample on a fixed 5-minute duty cycle.' },
-        ],
-      },
-      {
-        group: 'Diagnostics',
-        advanced: true,
-        fields: [
-          { key: 'memfault_send_interval', label: 'Memfault diagnostics', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400, help: 'How often Memfault data is sent.' },
-        ],
-      },
     ],
   };
 
   return {
     version: 4,
-    panels: [positioning, dataSending, network, device, satellite, vhf, scanning, cmdq, fence, externalSwitch, sensors],
+    panels: [positioning, dataSending, network, device, satellite, sBand, vhf, wifiScanning, bleScanning, cmdq, fence, externalSwitch, airQuality, sensors],
     portLabels,
     // Settings blocks inside the older feature cards that a panel now covers.
     supersededSections: [

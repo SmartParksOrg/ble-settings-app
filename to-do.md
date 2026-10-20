@@ -116,3 +116,21 @@ on SP051307: latest 10 status messages still render as before; pick "ublox short
 confirm the rows show coordinates and the fix time; pick a type with no stored messages and
 confirm the "No ... messages found" line; change the type after a load and confirm the old rows
 clear; the download of all messages of a type still works from the same selector.
+
+## Device card with the Connect app icons (added 2026-10-20, hardware test pending)
+
+The fixed status bar became a sticky device card above Status with the collar's animal icon
+(from the Connect app) and name. Verify on SP051307 (rangeredge): the card shows the ranger
+icon and "Ranger · rangeredge v1.8" after the first status message, stays at the top while
+scrolling through the panels and turns compact, the pending chip and Disconnect still work
+from the stuck card, and the card disappears on the DFU page and after disconnecting.
+
+## Panel changes of 2026-10-20 (hardware test pending)
+
+Data rate picker in the Network panel (DR with SF and bandwidth per region, RP002 tables),
+S-Band satellite split out of the Iridium panel, WiFi and BLE scanning split into two panels,
+"Tracker search (CMDQ)" renamed to CMDQ, Air quality split out of Sensors, Memfault diagnostics moved to Device and security, every panel folded on mount. Verify on SP051307: with
+the Custom ADR profile the data rate list follows the region (EU 868: DR0 = SF12; US 915:
+DR0 = SF10) and an applied value reads back; the S-Band panel edits send interval, mode and
+frequency and the Iridium panel no longer shows them; a v6 collar shows the S-Band
+credentials group; the two scanning panels still hide the old scan settings blocks.

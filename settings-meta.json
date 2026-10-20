@@ -1074,7 +1074,21 @@
       "category": "s_band",
       "label": "send mode",
       "description": "S-Band send mode: 0 = send without FHSS, 1 = send with FHSS, 2 = both.",
-      "display_name": "send mode"
+      "display_name": "send mode",
+      "options": [
+        {
+          "value": 0,
+          "label": "Without FHSS"
+        },
+        {
+          "value": 1,
+          "label": "With FHSS"
+        },
+        {
+          "value": 2,
+          "label": "Both"
+        }
+      ]
     },
     "sat_send_flag": {
       "category": "satellite",

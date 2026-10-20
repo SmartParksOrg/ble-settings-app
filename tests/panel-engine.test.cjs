@@ -7,6 +7,9 @@ const root = path.resolve(__dirname, '..');
 const engine = require(path.join(root, 'panels/panel-engine.js'));
 const definitions = require(path.join(root, 'panels/panel-definitions.js'));
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.0.1.json'), 'utf8'));
+// Older firmware only: keys a panel may reference that v8 dropped (S-Band credentials).
+const legacySchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v6.15.0.json'), 'utf8'));
+const inSomeSchema = key => Boolean(schema.settings[key] || legacySchema.settings[key]);
 const meta = JSON.parse(fs.readFileSync(path.join(root, 'settings-meta.json'), 'utf8'));
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -148,7 +151,7 @@ test('the Positioning definition only references settings that exist in the v8.0
         });
     }));
     for (const key of keys) {
-        assert.ok(schema.settings[key], `schema has ${key}`);
+        assert.ok(inSomeSchema(key), `a bundled schema has ${key}`);
         assert.ok(meta.settings[key], `meta has ${key}`);
     }
     assert.ok(keys.size >= 25);
@@ -287,7 +290,9 @@ test('network, device and data summaries read as sentences', () => {
     assert.equal(engine.describeNetwork(key => network[key] ?? null, { options }),
         'Region EU 868. Adaptive data rate: Mobile, long range. Rejoin attempts every 1 hour.');
     network.lr_adr_profile = '3';
-    assert.match(engine.describeNetwork(key => network[key] ?? null, { options }), /custom, DR3/);
+    assert.match(engine.describeNetwork(key => network[key] ?? null, { options }), /custom, DR3 \(SF9 \/ 125 kHz\)/);
+    network.lr_adr = '9';
+    assert.match(engine.describeNetwork(key => network[key] ?? null, { options }), /DR9 \(not defined for this region\)/);
 
     const device = { device_name: 'SP051307', device_pin: '00000000', led_enabled: 'true', status_send_interval: '3600' };
     const pinDigits = raw => (raw.match(/.{2}/g) || []).map(pair => pair[1]).join('');
@@ -317,12 +322,12 @@ test('every panel definition only references settings, options and ports that ex
         }
     }));
     for (const key of keys) {
-        assert.ok(schema.settings[key], `schema has ${key}`);
+        assert.ok(inSomeSchema(key), `a bundled schema has ${key}`);
     }
     Object.keys(definitions.portLabels).forEach(port => {
         if (schema.ports[port] === undefined) assert.ok(port === 'port_rf_scan', `${port} is a known port or a legacy one`);
     });
-    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'vhf', 'scanning', 'cmdq', 'fence', 'switch', 'sensors']);
+    assert.deepEqual(definitions.panels.map(panel => panel.id), ['positioning', 'data', 'network', 'device', 'satellite', 'sband', 'vhf', 'wifi-scanning', 'ble-scanning', 'cmdq', 'fence', 'switch', 'air-quality', 'sensors']);
     definitions.supersededSections.forEach(item => assert.ok(schema.settings[item.key], `superseded key ${item.key}`));
     // No setting is edited by two panels (one editing path per key).
     const seen = new Map();
@@ -365,4 +370,33 @@ test('the fix-quality summary warns when the satellite timer is below the firmwa
     assert.match(text, /Warning: the satellite check runs every second \(timer 0 s, below the firmware minimum of 5 s\)/);
     values.ublox_min_satellites_timer = '30';
     assert.match(engine.describeFixQuality(key => values[key] ?? null), /abandoned after 30 seconds if fewer than 3/);
+});
+
+test('data rate numbers translate to the spreading factor of the selected region', () => {
+    assert.equal(engine.describeDataRate(1, 0), 'SF12 / 125 kHz', 'EU 868');
+    assert.equal(engine.describeDataRate('1', '5'), 'SF7 / 125 kHz');
+    assert.equal(engine.describeDataRate(1, 6), 'SF7 / 250 kHz');
+    assert.equal(engine.describeDataRate(1, 7), 'FSK 50 kbps');
+    assert.equal(engine.describeDataRate(1, 8), null, 'EU 868 has no DR8');
+    assert.equal(engine.describeDataRate(3, 0), 'SF10 / 125 kHz', 'US 915');
+    assert.equal(engine.describeDataRate(3, 4), 'SF8 / 500 kHz');
+    assert.equal(engine.describeDataRate(3, 7), null, 'US 915 DR7 is RFU');
+    assert.equal(engine.describeDataRate(3, 8), 'SF12 / 500 kHz, downlink only');
+    assert.equal(engine.describeDataRate(3, 13), 'SF7 / 500 kHz, downlink only');
+    assert.equal(engine.describeDataRate(4, 0), 'SF12 / 125 kHz', 'AU 915');
+    assert.equal(engine.describeDataRate(4, 6), 'SF8 / 500 kHz');
+    assert.equal(engine.describeDataRate(2, 0), 'SF12 / 125 kHz', 'AS 923');
+    assert.equal(engine.describeDataRate(6, 0), 'SF12 / 812 kHz', 'WW 2.4 GHz');
+    assert.equal(engine.describeDataRate(10, 6), null, 'KR 920 stops at DR5');
+    assert.equal(engine.describeDataRate(99, 0), null, 'unknown region');
+    assert.equal(engine.describeDataRate(1, -1), null);
+    assert.equal(engine.describeDataRate(1, 'x'), null);
+
+    const eu = engine.dataRateOptions(1, 15);
+    assert.deepEqual(eu.map(o => o.value), [0, 1, 2, 3, 4, 5, 6, 7]);
+    assert.equal(eu[0].label, 'DR0 = SF12 / 125 kHz');
+    const us = engine.dataRateOptions(3, 15);
+    assert.deepEqual(us.map(o => o.value), [0, 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 12, 13], 'DR7 is skipped');
+    assert.deepEqual(engine.dataRateOptions(3, 4).map(o => o.value), [0, 1, 2, 3, 4], 'capped by the setting max');
+    assert.deepEqual(engine.dataRateOptions(99), []);
 });

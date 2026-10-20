@@ -152,16 +152,21 @@ device. It needs a local server and a Chromium binary (`CHROME=...`), see the he
 
 ## Guided settings (in progress)
 
-The settings list is being reworked into guided, task-oriented panels. Eleven panels sit
+The settings list is being reworked into guided, task-oriented panels. Fourteen panels sit
 above the settings list: Positioning (GPS), Data sending and storing (a message-type matrix
 over the LoRaWAN, satellite, LP0 and flash-store flags), Network (LoRaWAN), Device and
-security, Iridium satellite, VHF beacon, WiFi and BLE scanning, Tracker search (CMDQ),
-Fence monitor, External switch, and Sensors and diagnostics. The three schedules (GPS,
+security, Iridium satellite, S-Band satellite (its own panel, so the S-Band LoRa radio is not
+mixed up with the Iridium modem), VHF beacon, WiFi scanning, BLE scanning, CMDQ,
+Fence monitor, External switch, Air quality (its own panel), and Sensors (accelerometer; the
+Memfault diagnostics interval sits under Device and security). The three schedules (GPS,
 satellite, VHF) share one component: a switch, a schedule type (fixed or day/night),
 intervals, and a 24-hour bar. The panels sit inside one collapsible "Settings" card whose
 search box finds settings by label, help or key, and each panel can load the firmware
-defaults into the pending changes. The expert list below it is titled "All settings" so the
-two cards read differently when collapsed. The older
+defaults into the pending changes. Every panel is folded whenever the panels are mounted,
+on every connection and visit, so the Settings card reads as a short list of topics; a
+search or a jump from the Features card or the pending chip opens the panel it needs, and
+clearing the search folds them all again. The expert list below it is titled "All settings"
+so the two cards read differently when collapsed. The older
 feature cards (CMDQ, FenceEdge, WiFi scan, BLE scan) keep their actions and results; their
 settings blocks are hidden because the panels edit those settings now.
 
@@ -192,11 +197,21 @@ settings blocks are hidden because the panels edit those settings now.
 - Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
   input) as 0: doing so flipped switches and gate conditions and disabled the field under the
   person's finger. The field is brought back in line with the draft when focus leaves it.
-- Once the header scrolls out of view, a slim bar pins to the top with the device name,
-  a connection dot, firmware version, battery voltage, a pending-changes chip that jumps to
-  the first edited field, and a small Disconnect button. Tapping the name scrolls back to
-  the top. The bar hides on the DFU page and while disconnected; on narrow screens the
-  firmware version and then the battery are dropped.
+- A device card sits above the Status card and stays pinned to the top of the screen while
+  scrolling (`position: sticky`, drawn compact once it is stuck). It shows the collar's
+  animal icon and name, a connection dot, the type line ("Ranger · rangeredge v1.8"),
+  firmware version, battery voltage, a pending-changes chip that jumps to the first edited
+  field, and the Disconnect button. Tapping the name scrolls back to the top. The card
+  hides on the DFU page and while disconnected; on narrow screens the firmware version, the
+  type line (while stuck) and then the battery are dropped. The header's own Disconnect
+  button is shown only on the DFU page, where the card is hidden, so the button never
+  appears twice.
+- The icons come from the Smart Parks Connect mobile app (`src/assets/*Icon.tsx` in
+  SmartParksOrg/smartparks-connect-app, Copyright 2021 Vid Rajtmajer, Irnas d.o.o., GPL-3.0)
+  and live in `device-icons.js`. The mapping follows the Connect app: the firmware type picks
+  the animal when it reports one, the hardware type otherwise (rhino, elephant, wisent, cat,
+  ranger; rhinopuck and rhinopuck35 show the rhino, collaredge and freeedge the cat), and an
+  unknown type shows a plain collar outline.
 - The Features card (the at-a-glance list above the panels) has a "Motion-triggered GPS" row
   of its own, since that switch is easy to leave on by accident and the GPS row only reflects
   the schedule. Its detail follows the Positioning panel's wording and says when the switch has
@@ -210,6 +225,13 @@ settings blocks are hidden because the panels edit those settings now.
 - The HEX composer mounts the same panels above its settings list. Editing a value in a
   panel ticks that setting for inclusion in the payload; unticking it in the list leaves it
   out again. Panel values that are not included show the firmware default.
+- The Network panel's data rate (used with the Custom adaptive data rate profile) is a picker
+  that follows the selected region: each entry reads "DR0 = SF12 / 125 kHz" for EU 868 but
+  "DR0 = SF10 / 125 kHz" for US 915, following the LoRaWAN Regional Parameters (RP002)
+  uplink tables in `panels/panel-engine.js` (`describeDataRate`). Data rates the region does
+  not define are left out, a device value outside the table is shown as "not defined for this
+  region", and US 915 and AU 915 DR8 to DR13 are marked downlink only. The Network summary and
+  the helper under the raw number in the All settings list use the same translation.
 - Help text in `settings-meta.json` and the panel definitions only states what the firmware
   READMEs document (VHF beeps per burst, S-Band send modes, port bitmasks, satellite retry
   timing, air quality duty cycle, report-empty options). Settings the firmware does not

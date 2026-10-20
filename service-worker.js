@@ -1,4 +1,4 @@
-const CACHE_NAME = 'app-cache-v53';
+const CACHE_NAME = 'app-cache-v55';
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const DFU_MANIFEST_URL = toUrl('assets/dfu/manifest.json');
@@ -8,6 +8,7 @@ const STATIC_FILES = [
     toUrl('composer.html'),
     toUrl('style.css'),
     toUrl('hardware-types.js'),
+    toUrl('device-icons.js'),
     toUrl('functions.js'),
     toUrl('panels/panel-engine.js'),
     toUrl('panels/panel-definitions.js'),
