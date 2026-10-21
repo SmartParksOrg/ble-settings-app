@@ -701,9 +701,9 @@
         advanced: true,
         help: 'Keys this device uses for its own LP0 payloads. A station stores payloads encrypted and never needs them. Keep the provisioned values and record them with the device EUI in the backend, since the archives are decoded with them. Exported only when credentials are included.',
         fields: [
-          { key: 'lp0_dev_addr', control: 'hex', label: 'LP0 device address', help: '4 bytes that identify this device in its payload frames.' },
-          { key: 'lp0_app_key', control: 'hex', secret: true, label: 'LP0 app key', help: '16 bytes; encrypts this device\'s payloads.' },
-          { key: 'lp0_network_key', control: 'hex', secret: true, label: 'LP0 network key', help: '16 bytes; protects the integrity of this device\'s payloads.' },
+          { key: 'lp0_dev_addr', control: 'hex', copy: true, label: 'LP0 device address', help: '4 bytes that identify this device in its payload frames.' },
+          { key: 'lp0_app_key', control: 'hex', secret: true, copy: true, label: 'LP0 app key', help: '16 bytes; encrypts this device\'s payloads.' },
+          { key: 'lp0_network_key', control: 'hex', secret: true, copy: true, label: 'LP0 network key', help: '16 bytes; protects the integrity of this device\'s payloads.' },
         ],
       },
     ],

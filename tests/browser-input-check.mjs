@@ -507,6 +507,15 @@ async function lp0Offload(tag) {
   await sleep(80);
   const copied = await evaluate(`({ copied: window.__copied, toast: document.getElementById('toast').innerText, icon: Boolean(${q('#panel-lp0 .panel-field[data-keys~="lp0_master_key"] .panel-copy .icon.copy')}) })`);
   check(`${tag} LP0: the copy button puts the generated key on the clipboard`, copied.icon && copied.copied === generated.value && /copied/i.test(copied.toast), copied);
+  const credentialCopies = [];
+  for (const key of ['lp0_dev_addr', 'lp0_app_key', 'lp0_network_key']) {
+    const field = `#panel-lp0 .panel-field[data-keys~="${key}"]`;
+    await evaluate(`(() => { window.__copied = null; return true; })()`);
+    await evaluate(`${q(`${field} .panel-copy`)}.click()`);
+    await sleep(80);
+    credentialCopies.push(await evaluate(`({ key: '${key}', copied: window.__copied, value: ${q(`${field} input`)}.value, toast: document.getElementById('toast').innerText })`));
+  }
+  check(`${tag} LP0: the device address, app key and network key each have a copy button`, credentialCopies.every(c => c.copied !== null && c.copied === c.value && /copied/i.test(c.toast)), credentialCopies);
 
   const checks = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="3"] input';
   const master = '#panel-lp0 .panel-field[data-keys~="lp0_signal_checks"][data-byte="0"] select';

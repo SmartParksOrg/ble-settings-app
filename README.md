@@ -120,8 +120,10 @@ whenever the 8.1.0 schema is selected.
   Focus on offloading, the statistics interval (station only, warns under 60 s), the radio
   group (frequencies, spreading factor, bandwidth, coding rate, listen window, channel span),
   the six signal-check bytes (CAD, minimum RSSI entered as a positive magnitude, background
-  margin, each gated by the master switch) and the device payload keys follow. The send mask
-  stays in the Data matrix so no key has two editing paths. The panel summary reads
+  margin, each gated by the master switch) and the device payload keys (device address, app
+  key and network key, each with the same copy button as the master key, so they can be
+  recorded in the backend) follow. The send mask stays in the Data matrix so no key has two
+  editing paths. The panel summary reads
   "Offload station, ID 3 of 10 slots. Cluster master key set. Statistics every 1 hour."
 - **Features card** gets an "LP0 offload" row (Tracker / Station, ID n / Off) that jumps to
   the role field.
