@@ -3,3 +3,5 @@
 *.elf
 *.hex
 *.zip
+# Screenshots written by tests/browser-input-check.mjs into the directory it runs from
+shot-*.png
