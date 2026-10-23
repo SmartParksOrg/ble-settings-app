@@ -168,3 +168,30 @@ the Custom ADR profile the data rate list follows the region (EU 868: DR0 = SF12
 DR0 = SF10) and an applied value reads back; the S-Band panel edits send interval, mode and
 frequency and the Iridium panel no longer shows them; a v6 collar shows the S-Band
 credentials group; the two scanning panels still hide the old scan settings blocks.
+
+# Ideas for future investigation
+
+## Sequential multi-device DFU (fleet update) over Web Bluetooth (idea, 2026-10-23)
+
+The Android Smart Parks Connect app updates several collars one after another. Tim asked
+whether Web Bluetooth allows the same. Assessment:
+
+- Not possible: a scanned list the user ticks several collars in. The browser chooser is the
+  only scan in shipping Chrome and Edge and it is single-select; the scanning API that would
+  let the app list nearby collars is still behind a flag.
+- Possible: collecting the collars with one chooser tap each ("Add collar"), then running the
+  whole queue unattended. A chosen device object can be connected to at any time without a
+  gesture (the DFU page already reconnects to the rebooted collar this way), and Chrome keeps
+  the permission across page reloads and can hand the granted devices back.
+- Proposed flow: a Fleet update page with an Add collar button and a queue; optionally a short
+  connection per collar to read hardware type and firmware version so the bundled file is
+  matched before starting; one Start tap; the runner does connect, PIN, status, upload,
+  reset, wait for the swap, reconnect, verify the hash, disconnect, next collar; a results
+  table with done, failed and skipped, failures do not stop the queue.
+- Constraints: the tab must stay in the foreground on Android (a backgrounded tab loses
+  Bluetooth); each collar costs the upload time plus about a minute of swap and reboot; the DFU
+  code keeps single-device state in session storage and page variables, which a queue must key
+  per device; Bluefy on iOS is uncertain (retained objects likely work within a session,
+  persistent permissions probably not), so Chrome and Edge first.
+- First step when picked up: a prototype of the Add collar queue plus the sequential runner
+  reusing dfu/dfu.js, tested against two collars.
