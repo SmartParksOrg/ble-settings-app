@@ -24,7 +24,10 @@ Notes:
 
 Adding a new settings.json version:
 - upload settings.json file to settings folder
-- add settings.json version to functions.js (`SETTINGS_FILES`, newest first)
+- add settings.json version to functions.js (`SETTINGS_FILES`, newest first); a development
+  snapshot also goes into `BETA_SETTINGS_FILES`, which lists it in a "Beta" group at the bottom
+  of the schema dropdown on both pages, so a release stays the first choice and the composer's
+  default (the firmware match still picks the snapshot for a collar that reports its version)
 - add settings.json version to service-worker.js and bump `CACHE_NAME`
 - update the expected file in `tests/settings-protocol.test.cjs` ("schema selection")
 - add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
@@ -109,7 +112,8 @@ of the All settings list and as the LP0 column of the Data sending and storing m
 LP0 features below are only offered when the device reports firmware 8.1 or newer and the
 loaded schema carries the master key and the offload commands; they are hidden on 8.0.x, also
 when someone picks the 8.1.0 schema by hand for an 8.0 collar. The composer shows the panel
-whenever the 8.1.0 schema is selected.
+whenever the 8.1.0 schema is selected; the schema sits in the "Beta" group at the bottom of
+the dropdown and the composer opens with the latest release instead.
 
 - **LP0 offload panel** (beta tag, between S-Band and VHF): role, station ID, station count and
   discovery interval are the bytes of `lp0_node_params`, edited one byte at a time through
@@ -386,6 +390,16 @@ notice comes from the selected file's name (`...-v8.0.3.bin`), not from the MCUb
 header: OpenCollar builds leave the header version at 0.0.0, and the hash check already
 proves that the active image is the uploaded file. A header version is only used when it is
 not all zeros; the slot cards show "not set in header" otherwise.
+
+The DFU page shows only the header (its DFU tile reads "Back"), the DFU cards and the
+firmware notes, which move under the Connected device card while DFU is open. Everything
+else is hidden by one rule in `style.css`: every body-level `.page-section` other than the
+header and `#dfu-section` is hidden while `body` carries `dfu-active`. `toggleDfuView` keeps
+no list of cards to hide. A new card is kept off the DFU page by structure, so give it the
+`page-section` class as a direct child of `body` and nothing else needs registering; this
+list used to exist and the LP0 offload card was missed when it was added (fixed 2026-10-23).
+`tests/browser-input-check.mjs` checks that the DFU view hides every such card, the LP0 card
+included, and that leaving the DFU view brings them back.
 
 The built-in version list is grouped so the right pick is the obvious one: a "Recommended"
 group at the top holds the latest standard release (tagged "latest"), "Older standard firmware"

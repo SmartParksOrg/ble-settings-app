@@ -80,6 +80,10 @@ const customInputRenderers = {
 };
 
 // Static list of settings files
+// Newest first. Files named in BETA_SETTINGS_FILES are development snapshots: the dropdown lists
+// them in a "Beta" group at the bottom, after every release, so a release is always the first
+// choice and the composer's default; the firmware match (findSettingsFileForFirmware) still
+// selects them for a collar that reports that version.
 const SETTINGS_FILES = [
     "settings-v8.1.0.json", // development snapshot (LP0 offload beta), see README
     "settings-v8.0.3.json",
@@ -99,6 +103,10 @@ const SETTINGS_FILES = [
     "settings-v6.8.1.json",
     "settings-v4.4.2.json"
 ];
+const BETA_SETTINGS_FILES = new Set([
+    "settings-v8.1.0.json"
+]);
+const BETA_SETTINGS_GROUP_LABEL = "Beta: development firmware";
 const SETTINGS_META_FILE = "settings-meta.json";
 const APP_VERSION_FILE = "version.json";
 window.SETTINGS_FILES = SETTINGS_FILES;
@@ -165,12 +173,21 @@ function populateSettingsIntoPage(firstItem = null) {
         dropdown.appendChild(option);
     }
 
-    SETTINGS_FILES.forEach(file => {
+    const makeOption = (file, beta) => {
         const option = document.createElement('option');
         option.value = `./settings/${file}`;
-        option.textContent = file;
-        dropdown.appendChild(option);
-    });
+        option.textContent = beta ? `${file} (beta)` : file;
+        return option;
+    };
+    SETTINGS_FILES.filter(file => !BETA_SETTINGS_FILES.has(file))
+        .forEach(file => dropdown.appendChild(makeOption(file, false)));
+    const betaFiles = SETTINGS_FILES.filter(file => BETA_SETTINGS_FILES.has(file));
+    if (betaFiles.length) {
+        const group = document.createElement('optgroup');
+        group.label = BETA_SETTINGS_GROUP_LABEL;
+        betaFiles.forEach(file => group.appendChild(makeOption(file, true)));
+        dropdown.appendChild(group);
+    }
 }
 
 async function loadSettingsMeta() {

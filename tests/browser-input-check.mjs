@@ -556,6 +556,23 @@ async function lp0Offload(tag) {
     return { panel: Boolean(document.getElementById('panel-lp0')), card: !document.getElementById('lp0-area').classList.contains('hidden'), feature: Array.from(document.querySelectorAll('#features-list .feature-name')).map(n => n.textContent).includes('LP0 offload') }; })()`);
   check(`${tag} LP0: an 8.0 collar with the 8.1.0 schema picked by hand still gets no LP0 panel or card`, !older.panel && !older.card && !older.feature, older);
 }
+// The DFU page shows only the header, the DFU cards and the firmware notes. The cards are hidden
+// by structure (every other body-level page section), so a new card can never slip onto the DFU
+// page again; the LP0 offload card did once because the old id list did not name it.
+async function dfuPage(tag) {
+  await evaluate(`loadSettings('settings/settings-v8.1.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
+    displaySettings(); settingsDraft.reset(); mountSettingsPanels(); renderLp0Section(); renderFeatures(); return true; })`);
+  const visible = `(() => Array.from(document.querySelectorAll('body > .page-section')).filter(s => getComputedStyle(s).display !== 'none').map(s => s.id))()`;
+  const before = await evaluate(visible);
+  await evaluate(`(() => { toggleDfuView(true); return true; })()`);
+  const during = await evaluate(`({ visible: ${visible}, dfuActive: document.body.classList.contains('dfu-active'), lp0: getComputedStyle(document.getElementById('lp0-area')).display,
+    notesInDfu: Boolean(document.querySelector('#dfu-section #firmware-notes-area')), hiddenClasses: Array.from(document.querySelectorAll('body > .page-section')).filter(s => s.classList.contains('hidden')).map(s => s.id) })`);
+  await evaluate(`(() => { toggleDfuView(false); return true; })()`);
+  const after = await evaluate(visible);
+  check(`${tag} DFU page: the LP0 card is on the device page before DFU`, before.includes('lp0-area') && before.includes('status-area'), before);
+  check(`${tag} DFU page: only the header and the DFU section stay visible, the LP0 card included in what is hidden`, during.dfuActive && during.visible.join() === 'header-section,dfu-section' && during.lp0 === 'none' && during.notesInDfu, during);
+  check(`${tag} DFU page: leaving DFU brings every card back as it was`, after.join() === before.join(), { before, after });
+}
 async function noBluetoothNote(tag) {
   await evaluate(`(() => { delete navigator.bluetooth; Object.defineProperty(navigator, 'bluetooth', { value: undefined, configurable: true }); initBrowserSupportNote(); return true; })()`);
   const note = await evaluate(`(() => { const n = document.getElementById('browser-support-note'); return { hidden: n.classList.contains('hidden'), text: n.textContent, link: n.querySelector('a') ? n.querySelector('a').href : null }; })()`);
@@ -573,7 +590,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, dfuPage);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

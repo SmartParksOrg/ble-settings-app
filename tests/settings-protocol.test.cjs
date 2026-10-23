@@ -117,6 +117,26 @@ test('unknown addresses and wrong lengths do not desynchronize subsequent record
     assert.throws(() => ctx.decodeSettingRecords([6, 0, 4, 60], 'setting'), /Truncated/);
 });
 
+test('the schema dropdown lists releases first and development snapshots in a Beta group at the end', () => {
+    const ctx = app();
+    const node = tag => ({ tag, children: [], appendChild(child) { this.children.push(child); return child; } });
+    const dropdown = node('select');
+    ctx.document.getElementById = () => dropdown;
+    ctx.document.createElement = tag => node(tag);
+    ctx.populateSettingsIntoPage('Choose a settings file');
+    const [placeholder, ...rest] = dropdown.children;
+    assert.equal(placeholder.textContent, 'Choose a settings file');
+    const group = rest[rest.length - 1];
+    assert.equal(group.tag, 'optgroup', 'the Beta group is the last entry');
+    assert.match(group.label, /^Beta/);
+    assert.deepEqual(group.children.map(o => o.value), ['./settings/settings-v8.1.0.json']);
+    assert.equal(group.children[0].textContent, 'settings-v8.1.0.json (beta)');
+    const releases = rest.slice(0, -1);
+    assert.equal(releases[0].value, './settings/settings-v8.0.3.json', 'the latest release is the first real choice');
+    assert.ok(releases.every(o => o.tag === 'option' && !/beta/.test(o.textContent)));
+    assert.equal(releases.length + group.children.length, ctx.evaluate('SETTINGS_FILES.length'));
+});
+
 test('schema selection compares numeric major/minor versions', () => {
     const ctx = app();
     const files = ['settings-v8.10.0.json', 'settings-v8.0.0.json', 'settings-v7.2.0.json'];

@@ -357,9 +357,17 @@ body.map-fullscreen #map-area .map-frame {
     flex: 1 1 280px;
 }
 
+/* The composer's header holds only the schema dropdown. The .header-actions rule below
+   (the DFU tile on the main page) adds a 14 px bottom offset and the header its 18 px
+   padding; without these overrides the Instructions card sat 54 px under the dropdown. */
 .composer-page .header-actions {
     flex-direction: column;
     align-items: stretch;
+    padding-bottom: 0;
+}
+
+.composer-page #header-section {
+    padding-bottom: 0;
 }
 
 .composer-page .header-select {
@@ -2052,6 +2060,14 @@ body.dfu-active .dfu-only {
 }
 
 body.dfu-active .dfu-hide {
+    display: none !important;
+}
+
+/* The DFU page shows only the header, the DFU cards and the firmware notes (moved into
+   #dfu-section while DFU is open). Every other body-level page section is hidden here by
+   structure, so a new card never needs registering anywhere to stay off the DFU page: give
+   it the page-section class as a direct child of body and this rule covers it. */
+body.dfu-active > .page-section:not(#header-section):not(#dfu-section) {
     display: none !important;
 }
 

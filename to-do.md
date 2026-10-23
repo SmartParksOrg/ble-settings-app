@@ -9,7 +9,9 @@
 
 Additional changes completed:
 - Single source of truth for hardware types and versions via `hardware-types.js`.
-- DFU mode hides Logs, Messenger, Status, Actions cards; Firmware Notes moved under Connected device in DFU mode.
+- DFU mode hides every card but the DFU ones (one CSS rule on body-level page sections since
+  2026-10-23; the earlier id list missed the LP0 offload card); Firmware Notes moved under
+  Connected device in DFU mode.
 - DFU disconnect behavior: block only during active DFU upload; reload after disconnect in DFU mode.
 
 Notes:

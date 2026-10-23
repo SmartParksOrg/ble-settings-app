@@ -6966,22 +6966,10 @@
       }
     }
 
+    // The DFU page hides every card except the DFU ones through one CSS rule on body.dfu-active
+    // (style.css, "body.dfu-active > .page-section"), not through a list of ids here: a list
+    // had to be extended for every new card and the LP0 offload card was forgotten once.
     function toggleDfuView(showDfu) {
-      const sectionsToHide = [
-        document.getElementById('status-area'),
-        document.getElementById('features-area'),
-        document.getElementById('actions-area'),
-        document.getElementById('cmdq-area'),
-        document.getElementById('fence-area'),
-        document.getElementById('wifi-scan-area'),
-        document.getElementById('ble-scan-area'),
-        document.getElementById('settings-area'),
-        document.getElementById('panels-area'),
-        document.getElementById('logs-area'),
-        document.getElementById('messenger-area'),
-        document.getElementById('other-commands'),
-        document.getElementById('map-area'),
-      ];
       const container = document.getElementById('container');
       const dfuContainer = document.getElementById('dfu-container');
       const dfuSection = document.getElementById('dfu-section');
@@ -6990,7 +6978,6 @@
       const connectedCard = dfuSection ? dfuSection.querySelector('.dfu-card') : null;
       if (showDfu) {
         suspendMainBleActivityForDfu();
-        sectionsToHide.forEach(section => section && section.classList.add('hidden'));
         container && container.classList.add('hidden');
         dfuContainer && dfuContainer.classList.remove('hidden');
         dfuSection && dfuSection.classList.remove('hidden');
@@ -7004,7 +6991,6 @@
           }
         }
       } else {
-        sectionsToHide.forEach(section => section && section.classList.remove('hidden'));
         container && container.classList.remove('hidden');
         dfuContainer && dfuContainer.classList.add('hidden');
         dfuSection && dfuSection.classList.add('hidden');
