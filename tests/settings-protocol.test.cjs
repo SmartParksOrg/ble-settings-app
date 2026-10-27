@@ -153,10 +153,14 @@ test('the 8.1.0 development schema adds the LP0 offload settings, commands and s
     await ctx.loadSettingsMeta();
     await ctx.loadSettings('settings/settings-v8.1.0.json', { ver_fw_major: 8, ver_fw_minor: 1 });
     const data = ctx.evaluate('settingsData');
-    for (const key of ['lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval']) {
+    for (const key of ['lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval', 'lp0_gps_before_start', 'lr_enabled', 'ublox_require_time']) {
         assert.ok(data.settings[key], key);
     }
     assert.equal(ctx.getById('0x0527')[0], 'lp0_master_key');
+    assert.equal(ctx.getById('0x0528')[0], 'lr_enabled');
+    assert.equal(ctx.getById('0x0529')[0], 'lp0_gps_before_start');
+    assert.equal(ctx.getById('0x0619')[0], 'ublox_require_time');
+    assert.equal(ctx.getById('0xD3')[0], 'cmd_recover_sd');
     assert.equal(ctx.getById('0xCF')[0], 'cmd_offload_start');
     assert.equal(ctx.getById('0xD1')[0], 'cmd_offload_cancel');
     assert.equal(ctx.getById('0xD2')[0], 'cmd_flash_clear_confirmed');

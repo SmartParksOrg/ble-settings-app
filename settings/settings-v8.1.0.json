@@ -654,6 +654,24 @@
 			"conversion": "uint32",
 			"family": "0x05"
 		},
+		"lr_enabled": {
+			"id": "0x28",
+			"default": true,
+			"min": false,
+			"max": true,
+			"length": 1,
+			"conversion": "bool",
+			"family": "0x05"
+		},
+		"lp0_gps_before_start": {
+			"id": "0x29",
+			"default": false,
+			"min": false,
+			"max": true,
+			"length": 1,
+			"conversion": "bool",
+			"family": "0x05"
+		},
 		"ublox_send_interval": {
 			"id": "0x00",
 			"default": 0,
@@ -877,6 +895,15 @@
 			"max": 4320,
 			"length": 2,
 			"conversion": "uint16",
+			"family": "0x06"
+		},
+		"ublox_require_time": {
+			"id": "0x19",
+			"default": false,
+			"min": false,
+			"max": true,
+			"length": 1,
+			"conversion": "bool",
 			"family": "0x06"
 		},
 		"satellite_send_interval": {
@@ -1452,6 +1479,12 @@
 		"cmd_flash_clear_confirmed": {
 			"id": "0xD2",
 			"length": 1,
+			"conversion": "uint8",
+			"value": 0
+		},
+		"cmd_recover_sd": {
+			"id": "0xD3",
+			"length": 0,
 			"conversion": "uint8",
 			"value": 0
 		}

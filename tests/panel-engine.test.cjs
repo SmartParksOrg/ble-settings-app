@@ -355,7 +355,7 @@ test('settings-meta categories cover every setting in the v8.1.0 development sch
         assert.ok(entry && entry.settings.includes(key), `${key} is ordered inside ${category}`);
         assert.ok(meta.settings[key].display_name, `${key} has a display name`);
     }
-    for (const key of ['cmd_offload_start', 'cmd_offload_cancel', 'cmd_flash_clear_confirmed']) {
+    for (const key of ['cmd_offload_start', 'cmd_offload_cancel', 'cmd_flash_clear_confirmed', 'cmd_recover_sd']) {
         assert.ok(betaSchema.commands[key], `${key} in the 8.1.0 schema`);
         assert.ok(meta.commands[key] && meta.commands[key].description, `${key} described in the meta`);
     }
@@ -413,9 +413,14 @@ test('the LP0 panel is gated to the 8.1 schema and its byte fields fit the array
         }
         engine.conditionKeys(field.enabledWhen, keys);
     });
-    for (const key of ['lp0_node_params', 'lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval', 'lp0_communication_params', 'lp0_tx_frequency_hz', 'lp0_app_key']) {
+    for (const key of ['lp0_node_params', 'lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_gps_before_start', 'lp0_statistics_interval', 'lp0_communication_params', 'lp0_tx_frequency_hz', 'lp0_app_key']) {
         assert.ok(keys.has(key), `${key} edited in the LP0 panel`);
     }
+    // The 8.1 additions outside LP0 sit in the Network and Positioning panels, and only there.
+    const panelOf = key => definitions.panels.find(panel => { let found = false; engine.walkFields(panel.fields, field => { if (engine.fieldKeys(field).includes(key)) found = true; }); return found; });
+    assert.equal(panelOf('lr_enabled').id, 'network');
+    assert.equal(panelOf('ublox_require_time').id, 'positioning');
+    assert.ok(!schema.settings.lr_enabled && !schema.settings.ublox_require_time, 'absent from 8.0.x, so those fields are skipped there');
     assert.ok(!keys.has('lp0_send_flag'), 'the send mask stays in the Data matrix');
     const stationId = panel.fields.find(field => field.label === 'Station ID');
     assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '02000A013C' })[key]), true);
@@ -435,6 +440,10 @@ test('the LP0 summary reads as sentences for off, tracker and station', () => {
     assert.equal(describe({ lp0_node_params: '02030A013C', lp0_master_key: 'AB', lp0_statistics_interval: '0' }),
         'Offload station, ID 3 of 10 slots. Cluster master key set. Statistics off.');
     assert.equal(describe({ lp0_node_params: '02000A013C', lp0_statistics_interval: 7200 }),
+        'Offload station, ID 0 of 10 slots. Statistics every 2 hours.');
+    assert.equal(describe({ lp0_node_params: '02000A013C', lp0_gps_before_start: true, lp0_statistics_interval: 7200 }),
+        'Offload station, ID 0 of 10 slots. GPS fix before offloading. Statistics every 2 hours.');
+    assert.equal(describe({ lp0_node_params: '02000A013C', lp0_gps_before_start: 'false', lp0_statistics_interval: 7200 }),
         'Offload station, ID 0 of 10 slots. Statistics every 2 hours.');
     assert.equal(describe({}), '');
 });

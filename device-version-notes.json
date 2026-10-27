@@ -17,11 +17,11 @@
       "body": [
         "Beta: this firmware is under development and is flashed manually; the app offers no built-in DFU for it.",
         "Added: LP0 offload clusters. A tracker sends its saved records over LoRa to an offload station, which stores them on a microSD card. The LP0 offload panel and card in this app are only shown on this firmware.",
-        "Added settings: lp0_master_key (one random key per cluster), lp0_signal_checks, lp0_focus_offloading, lp0_statistics_interval.",
-        "Added commands: start offload (0xCF), cancel offload (0xD1), delete confirmed logs (0xD2).",
+        "Added settings: lp0_master_key (one random key per cluster), lp0_signal_checks, lp0_focus_offloading, lp0_statistics_interval, lp0_gps_before_start (a station takes a u-blox GPS fix before offloading so its clock is set), lr_enabled (LoRaWAN master switch) and ublox_require_time.",
+        "Added commands: start offload (0xCF), cancel offload (0xD1), delete confirmed logs (0xD2), recover SD card (0xD3).",
         "Added message: LP0 station statistics on port 23 (id 0x9D), decoded in the Logs card.",
         "Changed defaults: flash_store_flag and lp0_send_flag include port 23; a device updated from 8.0 keeps its saved masks.",
-        "Settings schema: scripts/settings/settings.json from branch fix/existing-lp0-implementation at commit 7bae042 (2026-10-20), bundled as settings-v8.1.0.json."
+        "Settings schema: settings_v8.1.0.json as received from the firmware team on 2026-10-27 (branch fix/existing-lp0-implementation after commit 7bae042), bundled as settings-v8.1.0.json."
       ]
     },
     {

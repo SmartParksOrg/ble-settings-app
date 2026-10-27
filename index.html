@@ -445,6 +445,15 @@
         <div class="log-actions">
           <button type="button" class="log-action-button erase-logs-button" onclick="requestLp0DeleteConfirmed()">Delete confirmed logs</button>
         </div>
+        <div id="lp0-recover-sd" class="hidden">
+          <div class="status-header">
+            <div class="status-item"><span class="icon file-arrow-down"></span>Station SD card</div>
+          </div>
+          <p class="lp0-note">A station whose SD card failed retries its storage test by itself. Recover runs that test now (write, close and read back a test file); only an offload station answers it.</p>
+          <div class="log-actions">
+            <button type="button" class="log-action-button" onclick="requestLp0RecoverSd()">Recover SD card</button>
+          </div>
+        </div>
       </div>
     </details>
   </div>
@@ -881,6 +890,7 @@
     const CMD_OFFLOAD_START = 0xCF;
     const CMD_OFFLOAD_CANCEL = 0xD1;
     const CMD_FLASH_CLEAR_CONFIRMED = 0xD2;
+    const CMD_RECOVER_SD = 0xD3;
     const TRACK_POINTS_LIMIT = 25;
     const VAL_UBLOX_TIME = 0xD8;
     const MSG_TIMESTAMP = 0x97;
@@ -2899,7 +2909,7 @@
         const version = `${status.ver_fw_major}.${status.ver_fw_minor}`;
         const hardware = `${status.ver_hw_major}.${status.ver_hw_minor}`;
         const resetLabel = `${decodeReset(status.reset)} (${status.reset})`;
-        const chargeLabel = status.chg ? 'charging' : 'discharging';
+        const chargeLabel = formatChargeLabel(status);
         const gpsLabel = status.ublox_busy ? 'busy' : 'idle';
         const lrLabel = status.err_lr_join ? 'join err' : `${status.lr_sat} sat`;
         const ageLabel = formatStatusLogAge(record.timestamp);
@@ -3981,6 +3991,17 @@
       };
     }
 
+    // The status byte carries the charger input voltage in 100 mV steps above 5 V, 0 when no
+    // charger is connected (status.c: (charge_mV - 5000) / 100); decodeStatusMessage turns it
+    // back into millivolts. Shown in volts with one decimal, which is the resolution the byte has.
+    function formatChargeLabel(status) {
+      const chargeMv = Number(status && status.chg);
+      if (!Number.isFinite(chargeMv) || chargeMv <= 0) {
+        return 'discharging';
+      }
+      return `charging ${(chargeMv / 1000).toFixed(1)} V`;
+    }
+
     function readStoredDfuDeviceInfo() {
       try {
         const raw = sessionStorage.getItem('dfuDeviceInfo');
@@ -4149,7 +4170,7 @@
           `<div class="status-item"><span class="icon hw-type"></span>${decodeHwFwType(statusMessage.ver_hw_type)}</div>`,
           `<div class="status-item"><span class="icon messages"></span>${statusMessage.msg}</div>`,
           `<div class="status-item"><span class="icon battery"></span>${statusMessage.bat}mV</div>`,
-          `<div class="status-item"><span class="icon charging"></span>${statusMessage.chg ? 'charging' : 'discharging'}</div>`,
+          `<div class="status-item"><span class="icon charging"></span>${formatChargeLabel(statusMessage)}</div>`,
           `<div class="status-item"><span class="icon accelerometer"></span>${statusMessage.acc_x.toFixed(1)}, ${statusMessage.acc_y.toFixed(1)}, ${statusMessage.acc_z.toFixed(1)}</div>`,
           `<div class="status-item"><span class="icon locked"></span>${statusMessage.locked ? 'PIN set' : 'PIN not set'}</div>`,
           `<div class="status-item"><span class="icon ublox-location"></span>${statusMessage.ublox_busy ? 'UBLOX busy' : 'UBLOX idle'}</div>`,
@@ -8063,6 +8084,12 @@
           } else {
             showToast('The device did not delete confirmed logs (busy, a download or offload is running, or a storage error).');
           }
+        } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_RECOVER_SD) {
+          if (data[4] === 0x01) {
+            showToast('SD card recovery started; watch the station LEDs and the next statistics report.');
+          } else {
+            showToast('The device did not start the SD card recovery (not an offload station, or a test is already running).');
+          }
         } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB) {
           if (data[4] === 0x01) {
             finishFlashLogCapture('device confirm');
@@ -8531,6 +8558,10 @@
           .map(([name, number]) => `<option value="${number}">${escapeHtml(labels[name] || name.replace(/^port_/, '').replace(/_/g, ' '))} (port ${number})</option>`);
         portSelect.innerHTML = `<option value="0">all message types</option>${options.join('')}`;
       }
+      const recover = document.getElementById('lp0-recover-sd');
+      if (recover) {
+        recover.classList.toggle('hidden', !(settingsData.commands && settingsData.commands.cmd_recover_sd));
+      }
       renderLp0JobStatus();
     }
 
@@ -8683,8 +8714,22 @@
       executeBleCommand([0x20, CMD_FLASH_CLEAR_CONFIRMED, 0x01, selector]);
     }
 
+    function requestLp0RecoverSd() {
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_recover_sd : null;
+      if (!command) {
+        showToast('SD card recovery is not available in this firmware.');
+        return;
+      }
+      if (lp0Busy()) {
+        return;
+      }
+      showToast('Asking the station to test its SD card...');
+      executeBleCommand([0x20, CMD_RECOVER_SD, 0x00]);
+    }
+
     window.startLp0Offload = startLp0Offload;
     window.cancelLp0Offload = cancelLp0Offload;
+    window.requestLp0RecoverSd = requestLp0RecoverSd;
     window.requestLp0DeleteConfirmed = requestLp0DeleteConfirmed;
     window.lp0DeleteConfirmed = lp0DeleteConfirmed;
     window.setLp0DeleteConfirmVisible = setLp0DeleteConfirmVisible;

@@ -309,12 +309,15 @@ async function autoLocationTime(tag) {
   await sleep(150);
   const after = await evaluate(`({ toast: document.getElementById('toast').innerText, toastVisible: document.getElementById('toast').style.visibility === 'visible',
     statusRequests: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xA4).length, button: Array.from(document.querySelectorAll('#main-commands button')).map(b => b.textContent).includes('Set location & time'), geoCalls: window.__geoCalls })`);
-  await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([4, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 0, 0]).buffer) } }); return true; })()`);
+  // The refresh reports a charger at 5.3 V (charge byte 3: 5000 mV + 3 * 100 mV).
+  await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([4, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 3, 0]).buffer) } }); return true; })()`);
   await sleep(150);
-  const again = await evaluate(`({ geoCalls: window.__geoCalls, sets: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xAF).length })`);
+  const again = await evaluate(`({ geoCalls: window.__geoCalls, sets: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xAF).length,
+    charge: (document.querySelector('#status-message .icon.charging') || {}).parentElement?.textContent || '' })`);
   check(`${tag} connecting sends the phone position and the current time without a button press`, sent.geoCalls === 1 && sent.length === 12 && sent.lat === 52.5 && sent.lon === 4.25 && sent.ageSeconds < 60 && sent.statusRequests === 0, sent);
   check(`${tag} the device's confirmation shows a toast, refreshes the status, and the button stays`, after.toastVisible && /time and location updated/.test(after.toast) && after.statusRequests === 1 && after.button, after);
   check(`${tag} a later status refresh does not send the time and location again`, again.geoCalls === 1 && again.sets === 1, again);
+  check(`${tag} the status card shows the charger voltage while charging`, again.charge.trim() === 'charging 5.3 V', again);
 }
 
 async function listInterval(tag, page) {
@@ -536,6 +539,20 @@ async function lp0Offload(tag) {
   await sleep(80);
   const answered = await evaluate(`({ status: document.getElementById('lp0-job-status').textContent, toast: document.getElementById('toast').innerText, state: document.querySelector('#lp0-job-status .lp0-job-state').textContent })`);
   check(`${tag} LP0: the device's job reply is decoded into the card`, /Start answered: discovering/.test(answered.state) && /in progress/.test(answered.status) && /Job 7/.test(answered.status) && /unconfirmed records over LP0/.test(answered.status) && /port 4/.test(answered.status) && /42 records confirmed saved/.test(answered.status) && /Offload job 7 discovering/.test(answered.toast), answered);
+  // 2026-10-27 schema: the GPS-fix-before-offloading toggle in the panel and the Recover SD card button.
+  const gpsToggle = '#panel-lp0 .panel-field[data-keys~="lp0_gps_before_start"] input';
+  await evaluate(`${q(gpsToggle)}.click()`);
+  await sleep(50);
+  const gpsBefore = await evaluate(`({ hidden: document.getElementById('new-value-' + settingsData.settings.lp0_gps_before_start.id).value, summary: document.querySelector('#panel-lp0 .panel-summary').textContent,
+    recoverShown: !document.getElementById('lp0-recover-sd').classList.contains('hidden'), networkSwitch: Boolean(document.querySelector('#panel-network .panel-field[data-keys~="lr_enabled"] input')), fixTime: Boolean(document.querySelector('#panel-positioning .panel-field[data-keys~="ublox_require_time"] input')) })`);
+  await evaluate(`(() => { window.__writes.length = 0; requestLp0RecoverSd(); return true; })()`);
+  await sleep(50);
+  const recover = await evaluate(`({ writes: window.__writes, toast: document.getElementById('toast').innerText })`);
+  await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([31, 0xF3, 2, 0xD3, 0x00]).buffer) } }); return true; })()`);
+  await sleep(50);
+  const refused = await evaluate(`document.getElementById('toast').innerText`);
+  check(`${tag} LP0: GPS fix before offloading is a panel toggle with a summary sentence; LoRaWAN and fix-time toggles exist`, gpsBefore.hidden === 'true' && /GPS fix before offloading\./.test(gpsBefore.summary) && gpsBefore.recoverShown && gpsBefore.networkSwitch && gpsBefore.fixTime, gpsBefore);
+  check(`${tag} LP0: Recover SD card sends 20 D3 00 and a refused reply shows a toast`, recover.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD3, 0x00])) && /test its SD card/.test(recover.toast) && /did not start the SD card recovery/.test(refused), { recover, refused });
   await evaluate(`(() => { document.getElementById('lp0-delete-selector').value = '8'; requestLp0DeleteConfirmed(); return true; })()`);
   const overlay = await evaluate(`({ hidden: document.getElementById('lp0-delete-confirm-overlay').classList.contains('hidden'), text: document.getElementById('lp0-delete-confirm-text').textContent })`);
   await evaluate(`lp0DeleteConfirmed()`);

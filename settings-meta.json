@@ -44,6 +44,7 @@
         "ublox_min_satellites",
         "ublox_min_satellites_timer",
         "ublox_min_fix_time",
+        "ublox_require_time",
         "ublox_leave_on",
         "gps_backoff_factor",
         "ublox_cold_fix_hour_interval",
@@ -65,6 +66,7 @@
       "title": "Network (LoRaWAN)",
       "order": 50,
       "settings": [
+        "lr_enabled",
         "lr_region",
         "lr_adr",
         "lr_adr_profile",
@@ -251,6 +253,7 @@
         "lp0_master_key",
         "lp0_signal_checks",
         "lp0_focus_offloading",
+        "lp0_gps_before_start",
         "lp0_statistics_interval"
       ]
     },
@@ -773,6 +776,24 @@
       "label": "LP0 focus on offloading",
       "description": "When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Enable it on both the tracker and the station for a dedicated offload session. Firmware 8.1 development builds.",
       "display_name": "LP0 focus on offloading"
+    },
+    "lp0_gps_before_start": {
+      "category": "lp0",
+      "label": "LP0 GPS fix before offloading",
+      "description": "Take a u-blox GPS fix before an LP0 offload session starts so the device's clock is set from the receiver. Meant for offload stations, which timestamp the records they store on the SD card. Off by default. Firmware 8.1 development builds.",
+      "display_name": "LP0 GPS fix before offloading"
+    },
+    "lr_enabled": {
+      "category": "lorawan",
+      "label": "LoRaWAN enabled",
+      "description": "Master switch for the LoRaWAN stack, on by default. Firmware 8.1 development builds; the firmware documentation does not describe the effect of switching it off yet, so leave it on unless the firmware team asks otherwise.",
+      "display_name": "LoRaWAN enabled"
+    },
+    "ublox_require_time": {
+      "category": "gps",
+      "label": "GPS fix requires valid time",
+      "description": "Firmware 8.1 development builds. Not yet described in the firmware documentation; leave it at the default (off) unless the firmware team asks for it.",
+      "display_name": "GPS fix requires valid time"
     },
     "lp0_statistics_interval": {
       "category": "lp0",
@@ -1739,6 +1760,12 @@
       "label": "single bt scan",
       "description": "Internal: initiate periodic single BT scan between threads.",
       "display_name": "single bt scan"
+    },
+    "cmd_recover_sd": {
+      "category": "commands",
+      "label": "recover SD card",
+      "description": "Ask an offload station to run its SD card recovery test now (write, close and read back a test file) instead of waiting for the automatic retry. Replies with cmd_confirm 1 (started) or 0 (refused). Firmware 8.1 development builds.",
+      "display_name": "recover SD card"
     }
   }
 }

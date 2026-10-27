@@ -74,7 +74,13 @@ the UI and the wire bytes. Verify on a manually flashed 8.1 tracker and station:
 6. Delete confirmed logs (LP0 station) after an offload: the toast confirms and the flash
    message count drops; with a download running it reports that the device did not delete.
 7. Export on 8.1, import on the same collar: zero changes, master key included only with the
-   credentials box ticked; import an 8.0.3 profile on 8.1: the four new settings are untouched.
+   credentials box ticked; import an 8.0.3 profile on 8.1: the seven new settings are untouched.
+8. Schema of 2026-10-27: on the station turn on "GPS fix before offloading" in the LP0 panel,
+   apply, read back true; after the next offload the station's timestamps and SD file times are
+   current. "Recover SD card" in the LP0 card: on a station the toast says started and the LEDs
+   run the storage test; on a tracker the toast says it was refused. Switch LoRaWAN off in the
+   Network panel only on a bench collar and note what the firmware does, so the help text can
+   say it; same for "Fix requires valid time" in Positioning.
 
 ## Firmware v8.0.3 (bundled 2026-10-07, hardware test pending)
 

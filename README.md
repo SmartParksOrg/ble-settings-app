@@ -100,12 +100,23 @@ Verification on a real iPhone with Bluefy is still open (see to-do.md).
 
 Firmware 8.1 is under development on the `fix/existing-lp0-implementation` branch of the
 private firmware repository and is flashed by hand; the app bundles no DFU file for it. Its
-settings schema, `settings/settings-v8.1.0.json`, is `scripts/settings/settings.json` from that
-branch at commit 7bae042 (fetched 2026-10-20). Replace the file when the branch changes the
-schema. Against 8.0.3 it adds four settings (`lp0_master_key`, `lp0_signal_checks`,
-`lp0_focus_offloading`, `lp0_statistics_interval`), three commands (`cmd_offload_start` 0xCF,
-`cmd_offload_cancel` 0xD1, `cmd_flash_clear_confirmed` 0xD2), the station statistics message
+settings schema, `settings/settings-v8.1.0.json`, is the `settings_v8.1.0.json` the firmware team
+sent on 2026-10-27 (the branch's `scripts/settings/settings.json` after commit 7bae042; the
+GitHub branch head still lacked these additions that day). Replace the file when the schema
+changes again. Against 8.0.3 it adds seven settings (`lp0_master_key`, `lp0_signal_checks`,
+`lp0_focus_offloading`, `lp0_statistics_interval`, `lp0_gps_before_start`, `lr_enabled`,
+`ublox_require_time`), four commands (`cmd_offload_start` 0xCF, `cmd_offload_cancel` 0xD1,
+`cmd_flash_clear_confirmed` 0xD2, `cmd_recover_sd` 0xD3), the station statistics message
 (port 23, id 0x9D) and new defaults for `flash_store_flag` and `lp0_send_flag` (port 23 set).
+
+The 2026-10-27 additions: `lp0_gps_before_start` is a toggle in the LP0 offload panel ("GPS fix
+before offloading"): a station takes a u-blox GPS fix before an offload session so its clock is
+set from the receiver. Its summary sentence is "GPS fix before offloading." `lr_enabled` is the
+first field of the Network panel, a master switch for the LoRaWAN stack that warns while off,
+and `ublox_require_time` sits in the Positioning panel's "Fix result and follow-up" group; the
+firmware documentation does not describe either yet, so their help says only that. The LP0
+offload card gets a "Station SD card" block with a "Recover SD card" button (`20 D3 00`) that is
+shown only when the schema has the command; the device's cmd_confirm answers with a toast.
 
 The eight LP0 settings that older schemas already have stay where they were: in the LP0 group
 of the All settings list and as the LP0 column of the Data sending and storing matrix. The
@@ -318,6 +329,14 @@ settings blocks are hidden because the panels edit those settings now.
   READMEs document (VHF beeps per burst, S-Band send modes, port bitmasks, satellite retry
   timing, air quality duty cycle, report-empty options). Settings the firmware does not
   document keep a plain label without claims about behaviour.
+
+## Status card
+
+The charging item shows the charger input voltage while a charger is connected ("charging 5.3 V")
+and "discharging" otherwise. The status message carries that voltage in one byte as 100 mV steps
+above 5 V (`(charge_mV - 5000) / 100` in the firmware's `status.c`, 0 without a charger), so the
+value has a resolution of 0.1 V. Until 2026-10-27 the app decoded the byte but only printed
+"charging". The recent status messages table in the Logs card shows the same label.
 
 ## Actions card
 

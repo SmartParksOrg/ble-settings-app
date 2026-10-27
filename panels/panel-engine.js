@@ -586,6 +586,7 @@
       sentences.push(key && !/^0+$/.test(key) ? 'Cluster master key set.' : 'Cluster master key is the all-zero default.');
     }
     if (has('lp0_focus_offloading') && toBool(getValue('lp0_focus_offloading'))) sentences.push('Focus on offloading.');
+    if (has('lp0_gps_before_start') && toBool(getValue('lp0_gps_before_start'))) sentences.push('GPS fix before offloading.');
     if (role === 2 && has('lp0_statistics_interval')) {
       const seconds = toNumber(getValue('lp0_statistics_interval'));
       sentences.push(seconds > 0 ? `Statistics every ${duration(seconds)}.` : 'Statistics off.');

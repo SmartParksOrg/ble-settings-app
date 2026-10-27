@@ -198,6 +198,8 @@
             fields: [
               { key: 'horizontal_accuracy', label: 'Horizontal accuracy', unit: 'm', help: 'Horizontal accuracy in metres.' },
               { key: 'ublox_min_fix_time', label: 'Minimum search time', control: 'duration', unit: 's', help: 'Minimum time the receiver keeps searching for GNSS satellites in order to make a fix.' },
+              { key: 'ublox_require_time', label: 'Fix requires valid time', control: 'toggle',
+                help: 'Firmware 8.1 development builds only. Not yet described in the firmware documentation; leave it off unless the firmware team asks for it.' },
               { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
               { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
             ],
@@ -286,6 +288,9 @@
     description: 'How the tracker joins and talks to the LoRaWAN network.',
     summary: 'network',
     fields: [
+      { key: 'lr_enabled', label: 'LoRaWAN', control: 'toggle',
+        help: 'Master switch for the LoRaWAN stack, on by default. Firmware 8.1 development builds only; the firmware documentation does not describe the effect of switching it off yet.',
+        warnings: [{ when: { key: 'lr_enabled', truthy: false }, text: 'LoRaWAN is switched off. The firmware documentation does not yet describe what the device does without it; keep it on unless the firmware team asks otherwise.' }] },
       { key: 'lr_region', label: 'Region', control: 'select', help: 'LoRaWAN frequency region. Changing it makes the device rejoin the network.' },
       { key: 'lr_adr_profile', label: 'Adaptive data rate', control: 'select',
         help: 'Network controlled suits static devices; the mobile profiles suit moving trackers; Custom uses the data rate below.' },
@@ -651,6 +656,8 @@
           text: 'All zeros is the public default key. Generate a random key for a real deployment and write it to every device in the cluster.' }] },
       { key: 'lp0_focus_offloading', control: 'toggle', label: 'Focus on offloading',
         help: 'When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Turn it on on both the tracker and the station for a dedicated offload session; the defaults are enough for ordinary use.' },
+      { key: 'lp0_gps_before_start', control: 'toggle', label: 'GPS fix before offloading',
+        help: 'Take a u-blox GPS fix before an offload session starts so the clock is set from the receiver. Meant for offload stations, which timestamp the records they store on the SD card; off by default.' },
       { key: 'lp0_statistics_interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, label: 'Station statistics report', enabledWhen: lp0Station, reason: 'Only an offload station sends statistics.',
         help: 'How often the station reports its counters and SD card state on port 23, 1 hour by default. Tick port 23 under Data sending and storing to send or store the report; a device updated from 8.0 keeps its old masks.',
         warnings: [{ when: { all: [{ key: 'lp0_statistics_interval', gt: 0 }, { key: 'lp0_statistics_interval', lt: 60 }] }, text: 'The firmware rejects intervals under 60 seconds.' }] },
