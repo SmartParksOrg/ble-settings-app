@@ -220,81 +220,6 @@
       });
     }
 
-    function setSwCacheBusy(isBusy) {
-      const indicator = document.getElementById('sw-cache-indicator');
-      if (!indicator) {
-        return;
-      }
-      indicator.classList.toggle('hidden', !isBusy);
-    }
-
-    function getRequiredCacheUrls() {
-      const urls = [
-        'settings-meta.json',
-        'device-version-notes.json'
-      ];
-      const settingsFiles = Array.isArray(window.SETTINGS_FILES)
-        ? window.SETTINGS_FILES.map(file => `settings/${file}`)
-        : [];
-      return Array.from(new Set([...urls, ...settingsFiles]));
-    }
-
-    async function getMissingCacheUrls(urls) {
-      if (!('caches' in window)) {
-        return [];
-      }
-      const missing = [];
-      for (const url of urls) {
-        try {
-          const match = await caches.match(url);
-          if (!match) {
-            missing.push(url);
-          }
-        } catch (error) {
-          missing.push(url);
-        }
-      }
-      return missing;
-    }
-
-    async function warmMissingUrls(urls) {
-      if (!navigator.onLine || !urls.length) {
-        return;
-      }
-      await Promise.all(
-        urls.map((url) =>
-          fetch(url, { cache: 'reload' }).catch(() => null)
-        )
-      );
-    }
-
-    let swCacheLoopId = null;
-    async function ensureCacheReadyLoop() {
-      const urls = getRequiredCacheUrls();
-      const missing = await getMissingCacheUrls(urls);
-      if (!missing.length) {
-        setSwCacheBusy(false);
-        if (swCacheLoopId) {
-          clearTimeout(swCacheLoopId);
-          swCacheLoopId = null;
-        }
-        return;
-      }
-      setSwCacheBusy(true);
-      await warmMissingUrls(missing);
-      swCacheLoopId = setTimeout(ensureCacheReadyLoop, 2000);
-    }
-
-    function initSwCacheIndicator() {
-      if (!('serviceWorker' in navigator)) {
-        return;
-      }
-      setSwCacheBusy(true);
-      navigator.serviceWorker.ready
-        .then(() => ensureCacheReadyLoop())
-        .catch(() => null);
-    }
-
     // ---------------------------------------------
     // Load and Display Settings
     // ---------------------------------------------
@@ -370,7 +295,7 @@
         return composerDeviceVersionNotesLoading;
       }
       composerDeviceVersionNotesError = null;
-      composerDeviceVersionNotesLoading = fetch('device-version-notes.json', { cache: 'no-store' })
+      composerDeviceVersionNotesLoading = fetch('device-version-notes.json')
         .then((response) => {
           if (!response.ok) {
             throw new Error(`Failed to load device-version-notes.json (${response.status})`);

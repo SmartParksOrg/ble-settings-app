@@ -20,14 +20,6 @@
           || Boolean(window.hasPendingSettingChanges && window.hasPendingSettingChanges());
       }
 
-      async function clearBrowserCaches() {
-        if (!('caches' in window)) {
-          return;
-        }
-        const cacheNames = await caches.keys();
-        await Promise.all(cacheNames.map(cacheName => caches.delete(cacheName)));
-      }
-
       function retryPendingAppRefresh() {
         if (!window.__pendingAppRefresh || isAppRefreshBlocked()) {
           return;
@@ -38,30 +30,31 @@
           clearInterval(appRefreshTimer);
           appRefreshTimer = null;
         }
-        window.requestAppRefresh(pending.reason, pending.options);
+        window.requestAppRefresh(pending.reason);
       }
 
-      window.requestAppRefresh = function requestAppRefresh(reason = 'app update', options = {}) {
+      // Reloads the page so a newly installed service worker serves the new app files. The
+      // reload waits while a collar is connected, a DFU runs or edits are pending.
+      window.requestAppRefresh = function requestAppRefresh(reason = 'app update') {
         if (appRefreshPending) {
           return;
         }
         if (isAppRefreshBlocked()) {
           console.log(`Deferring app refresh for ${reason}.`);
-          window.__pendingAppRefresh = { reason, options };
+          window.__pendingAppRefresh = { reason };
           if (!appRefreshTimer) {
             appRefreshTimer = setInterval(retryPendingAppRefresh, 5000);
           }
           return;
         }
         appRefreshPending = true;
-        Promise.resolve()
-          .then(() => options.clearCaches ? clearBrowserCaches() : null)
-          .catch(error => console.warn('Failed to clear app caches:', error))
-          .finally(() => {
-            window.location.reload();
-          });
+        window.location.reload();
       };
 
+      // version.json is served from the same cache as the app files, so it always names the
+      // version that is running. It is kept in local storage for troubleshooting; updates are
+      // delivered by the service worker (a new cache per deploy), never by wiping the cache,
+      // which until 2026-10-28 also threw away the DFU binaries after every deploy.
       window.handleAppVersionInfo = function handleAppVersionInfo(versionInfo) {
         if (!versionInfo) {
           return;
@@ -74,16 +67,10 @@
         if (!versionKey.trim()) {
           return;
         }
-        const storageKey = 'ble-settings-app-version';
-        let previousVersion = null;
         try {
-          previousVersion = localStorage.getItem(storageKey);
-          localStorage.setItem(storageKey, versionKey);
+          localStorage.setItem('ble-settings-app-version', versionKey);
         } catch (error) {
-          return;
-        }
-        if (previousVersion && previousVersion !== versionKey) {
-          window.requestAppRefresh('version change', { clearCaches: true });
+          // storage unavailable: nothing to remember
         }
       };
 
@@ -1615,14 +1602,6 @@
       });
     }
 
-    function setSwCacheBusy(isBusy) {
-      const indicator = document.getElementById('sw-cache-indicator');
-      if (!indicator) {
-        return;
-      }
-      indicator.classList.toggle('hidden', !isBusy);
-    }
-
     // Slim bar pinned to the top once the header scrolls out of view: device
     // identity, connection state, firmware, battery, pending edits, Disconnect.
     // The device card above Status: icon and name of the collar, firmware, battery, pending
@@ -1758,74 +1737,6 @@
       requestAnimationFrame(runInvalidate);
       setTimeout(runInvalidate, 120);
       setTimeout(runInvalidate, 320);
-    }
-
-    function getRequiredCacheUrls() {
-      const urls = [
-        'settings-meta.json',
-        'device-version-notes.json',
-        'assets/dfu/manifest.json'
-      ];
-      const settingsFiles = Array.isArray(window.SETTINGS_FILES)
-        ? window.SETTINGS_FILES.map(file => `settings/${file}`)
-        : [];
-      return Array.from(new Set([...urls, ...settingsFiles]));
-    }
-
-    async function getMissingCacheUrls(urls) {
-      if (!('caches' in window)) {
-        return [];
-      }
-      const missing = [];
-      for (const url of urls) {
-        try {
-          const match = await caches.match(url);
-          if (!match) {
-            missing.push(url);
-          }
-        } catch (error) {
-          missing.push(url);
-        }
-      }
-      return missing;
-    }
-
-    async function warmMissingUrls(urls) {
-      if (!navigator.onLine || !urls.length) {
-        return;
-      }
-      await Promise.all(
-        urls.map((url) =>
-          fetch(url, { cache: 'reload' }).catch(() => null)
-        )
-      );
-    }
-
-    let swCacheLoopId = null;
-    async function ensureCacheReadyLoop() {
-      const urls = getRequiredCacheUrls();
-      const missing = await getMissingCacheUrls(urls);
-      if (!missing.length) {
-        setSwCacheBusy(false);
-        if (swCacheLoopId) {
-          clearTimeout(swCacheLoopId);
-          swCacheLoopId = null;
-        }
-        return;
-      }
-      setSwCacheBusy(true);
-      await warmMissingUrls(missing);
-      swCacheLoopId = setTimeout(ensureCacheReadyLoop, 2000);
-    }
-
-    function initSwCacheIndicator() {
-      if (!('serviceWorker' in navigator)) {
-        return;
-      }
-      setSwCacheBusy(true);
-      navigator.serviceWorker.ready
-        .then(() => ensureCacheReadyLoop())
-        .catch(() => null);
     }
 
     function setMapTracksOverlayVisible(visible) {
@@ -3429,7 +3340,7 @@
         return deviceVersionNotesLoading;
       }
       deviceVersionNotesError = null;
-      deviceVersionNotesLoading = fetch('device-version-notes.json', { cache: 'no-store' })
+      deviceVersionNotesLoading = fetch('device-version-notes.json')
         .then((response) => {
           if (!response.ok) {
             throw new Error(`Failed to load device-version-notes.json (${response.status})`);

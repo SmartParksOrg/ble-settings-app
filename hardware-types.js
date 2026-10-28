@@ -42,7 +42,7 @@ async function loadDfuManifest() {
   if (cachedManifest) {
     return cachedManifest;
   }
-  const response = await fetch(HW_DFU_MANIFEST_URL, { cache: 'no-store' });
+  const response = await fetch(HW_DFU_MANIFEST_URL);
   if (!response.ok) {
     throw new Error(`Manifest fetch failed: ${response.status}`);
   }

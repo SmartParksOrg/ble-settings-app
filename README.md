@@ -21,6 +21,10 @@ Notes:
 
 - Use a Chromium-based browser such as Chrome or Edge, because the app uses Web Bluetooth / Web BLE.
 - `localhost` is required here because the app registers a service worker and fetches local JSON assets. Opening the files with a `file://` URL will not work correctly.
+- The service worker serves the app from its cache first (see "Offline use" below), so an
+  edited file does not show on a plain reload. While developing, tick "Bypass for network" (or
+  "Update on reload") under Application > Service workers in DevTools, or bump `CACHE_NAME` in
+  `service-worker.js`. The browser harness starts from a fresh profile and needs nothing.
 
 Adding a new settings.json version:
 - upload settings.json file to settings folder
@@ -28,9 +32,47 @@ Adding a new settings.json version:
   snapshot also goes into `BETA_SETTINGS_FILES`, which lists it in a "Beta" group at the bottom
   of the schema dropdown on both pages, so a release stays the first choice and the composer's
   default (the firmware match still picks the snapshot for a collar that reports its version)
-- add settings.json version to service-worker.js and bump `CACHE_NAME`
+- add settings.json version to service-worker.js (`STATIC_FILES`); the deploy stamps
+  `CACHE_NAME` with the commit, bump it by hand only to see the change locally
 - update the expected file in `tests/settings-protocol.test.cjs` ("schema selection")
 - add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
+
+## Offline use
+
+The app has to open and work with no internet or a bad connection (2G in the field), and a bad
+connection must never make it slower than no connection. Since 2026-10-28 the service worker is
+cache first: every app file (pages, scripts, styles, schemas, settings metadata, firmware
+notes, version.json, DFU manifest, the map library) is answered from the cache at once, and the
+network is only asked for a file that is not cached yet. Until then the worker was network
+first and only fell back to the cache when the network *failed*; a slow link that still
+delivered bytes was waited on for every one of the roughly 0.8 MB a page open needs. Map tiles
+are the only online-only content and are never cached.
+
+Updates travel through the worker, not through the pages: the deploy workflow stamps the
+commit into `CACHE_NAME`, so each deploy is a new worker. The browser installs it in the
+background (every app file fetched fresh, bypassing the HTTP cache), the main page tells it to
+take over and reloads once it has, unless a collar is connected, a DFU runs or edits are
+pending, in which case the reload waits. The composer picks the new version up on its next
+open. version.json is served from the same cache as the code, so the version badge always names
+the running version; it is no longer used to trigger a reload, and the old "clear every cache
+and reload on a version change" is gone: it threw away the DFU binaries after every deploy.
+
+The 34 MB of built-in DFU binaries are not part of the install. On install the new worker
+copies the binaries the previous cache already holds (their paths carry the firmware version,
+so a cached copy is never stale), and the pages ask the worker (`PRECACHE_DFU`) to fetch the
+missing ones one by one in the background, on every open and whenever the browser comes back
+online. A failed download costs one file and the next request resumes; a deploy downloads no
+binary twice. The worker reports the count to the pages (`DFU_CACHE_STATUS`, shown in the
+console and kept in `window.dfuCacheStatus`). The header spinner only covers the files the
+settings UI needs: `initSwCacheIndicator` in `functions.js` fetches missing ones one at a time
+with a backoff and gives up after five attempts, so it cannot spin forever.
+
+`tests/service-worker.test.cjs` runs the worker in Node against an in-memory cache: cache first
+without touching the network, fresh app files per install, DFU binaries carried over and filled
+one at a time, the cache-name pattern the deploy stamps. The browser harness has an offline
+scenario with a server of its own: a cached app must open within three seconds while the link
+hangs and while it is down, schemas, notes and a DFU file must load from the cache, and a
+simulated deploy must install the new worker without downloading a binary.
 
 ## Using the app on an iPhone or iPad
 
@@ -212,7 +254,7 @@ firmware change. Bundled DFU releases are managed separately from settings schem
 Run the dependency-free regression tests with Node.js:
 
 ```bash
-node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-engine.test.cjs
+node --test tests/settings-protocol.test.cjs tests/mcumgr.test.cjs tests/panel-engine.test.cjs tests/service-worker.test.cjs
 ```
 
 `tests/browser-input-check.mjs` drives both pages in headless Chromium with real key, mouse and
@@ -433,7 +475,9 @@ only offered to rangeredge collars.
 Adding a new bundled DFU firmware release:
 - upload `.bin` files to `assets/dfu/releases/<release-id>/...`
 - add release entries to `assets/dfu/manifest.json` (release id, firmware version, and file paths)
-- bump `CACHE_NAME` in `service-worker.js` so clients fetch the new bundle
+- the deploy stamps `CACHE_NAME` in `service-worker.js`, so the new worker fetches the new
+  manifest and the pages cache the new binaries in the background; bump it by hand only to see
+  the change locally
 - add firmware release notes to `device-version-notes.json` if you want notes shown in the UI
 
 App versioning shown in UI:

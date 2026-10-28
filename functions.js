@@ -131,7 +131,10 @@ async function updateAppVersionBadge() {
     }
 
     try {
-        const response = await fetch(APP_VERSION_FILE, { cache: 'no-store' });
+        // Served from the service worker's cache, so it names the running version at once; the
+        // timeout only matters on the very first, uncached open over a bad link.
+        const options = typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(8000) } : {};
+        const response = await fetch(APP_VERSION_FILE, options);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -152,6 +155,95 @@ async function updateAppVersionBadge() {
 document.addEventListener('DOMContentLoaded', () => {
     updateAppVersionBadge();
 });
+
+// Offline cache bootstrap, shared by both pages. The service worker precaches every app file
+// on install; this only covers the rare gap (an interrupted install, a cache the browser
+// evicted): the files the settings UI needs are fetched one at a time with a backoff while the
+// header spinner shows, and the worker is asked to fill the DFU binaries in the background
+// (PRECACHE_DFU), again on every reconnect to the internet. The spinner never shows for the
+// DFU binaries and gives up after a few attempts, so it can never hang the page.
+const SW_CACHE_RETRY_DELAYS_MS = [2000, 5000, 10000, 20000, 30000];
+
+function setSwCacheBusy(isBusy) {
+    const indicator = document.getElementById('sw-cache-indicator');
+    if (indicator) {
+        indicator.classList.toggle('hidden', !isBusy);
+    }
+}
+
+function getRequiredCacheUrls() {
+    const urls = ['settings-meta.json', 'device-version-notes.json', 'assets/dfu/manifest.json'];
+    return Array.from(new Set([...urls, ...SETTINGS_FILES.map(file => `settings/${file}`)]));
+}
+
+async function getMissingCacheUrls(urls) {
+    if (typeof caches === 'undefined') {
+        return [];
+    }
+    const missing = [];
+    for (const url of urls) {
+        try {
+            if (!await caches.match(url)) {
+                missing.push(url);
+            }
+        } catch (error) {
+            missing.push(url);
+        }
+    }
+    return missing;
+}
+
+function requestDfuPrecache(registration) {
+    const worker = navigator.serviceWorker.controller || (registration && registration.active);
+    if (worker && navigator.onLine) {
+        worker.postMessage({ type: 'PRECACHE_DFU' });
+    }
+}
+
+async function ensureCacheReady(registration) {
+    for (let attempt = 0; ; attempt += 1) {
+        const missing = await getMissingCacheUrls(getRequiredCacheUrls());
+        if (!missing.length) {
+            setSwCacheBusy(false);
+            return true;
+        }
+        if (attempt >= SW_CACHE_RETRY_DELAYS_MS.length) {
+            console.warn('Offline cache incomplete, giving up for this visit:', missing);
+            setSwCacheBusy(false);
+            return false;
+        }
+        setSwCacheBusy(true);
+        if (navigator.onLine) {
+            for (const url of missing) {
+                try {
+                    await fetch(url); // the worker keeps a good response
+                } catch (error) {
+                    break; // offline: wait for the next attempt
+                }
+            }
+        }
+        await new Promise(resolve => setTimeout(resolve, SW_CACHE_RETRY_DELAYS_MS[attempt]));
+    }
+}
+
+function initSwCacheIndicator() {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+        return;
+    }
+    navigator.serviceWorker.addEventListener('message', event => {
+        if (event.data && event.data.type === 'DFU_CACHE_STATUS') {
+            window.dfuCacheStatus = event.data;
+            console.log(`Built-in DFU files available offline: ${event.data.cached} of ${event.data.total}`);
+        }
+    });
+    navigator.serviceWorker.ready
+        .then(async registration => {
+            await ensureCacheReady(registration);
+            requestDfuPrecache(registration);
+            window.addEventListener('online', () => requestDfuPrecache(registration));
+        })
+        .catch(error => console.warn('Service worker not ready:', error));
+}
 
 const minMaxValues = {
     'uint8': { min: 0, max: 255 },

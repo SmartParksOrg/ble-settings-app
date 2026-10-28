@@ -23,10 +23,18 @@
 // Screenshots of the outcome dialog are written to the current directory. Exit code 1 = a
 // check failed. The LP0 scenario reloads the main page with the 8.1.0 development schema and
 // a status that says firmware 8.1, and checks the panel, the card and the job reply.
+//
+// The offline scenario serves the repository from a server of its own so it can stop answering
+// (a link that is up but crawling) and close (no internet) for real; DevTools throttling does
+// not reach service worker fetches. It checks that a cached app opens in under a few seconds
+// in both states, that the built-in DFU files are cached in the background and usable offline,
+// and that a deploy (new worker, new version.json) installs without downloading them again.
 import { spawn } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, extname, join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const base = process.argv[2];
 const ios = process.argv[3] === 'ios';
@@ -89,7 +97,7 @@ async function evaluate(expression) {
 }
 async function navigate(path) {
   events.length = 0;
-  await cmd('Page.navigate', { url: base + path });
+  await cmd('Page.navigate', { url: path.startsWith('http') ? path : base + path });
   for (let i = 0; i < 200 && !events.some(e => e.method === 'Page.loadEventFired'); i += 1) await sleep(50);
 }
 async function waitFor(expression, ms = 8000) {
@@ -603,11 +611,97 @@ async function noBluetoothNote(tag) {
   check(`${tag} Scan without Web Bluetooth shows a toast instead of throwing`, /not available/.test(toast) && toast !== toastBefore, { toast });
 }
 
+// A static server for the repository that the test can make stop answering or close.
+function staticServer() {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+  const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.ico': 'image/x-icon', '.bin': 'application/octet-stream' };
+  const state = { mode: 'online', requests: [], overrides: {}, held: new Set(), sockets: new Set() };
+  const server = createServer((req, res) => {
+    const pathname = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    state.requests.push(pathname);
+    if (state.mode === 'hold') { state.held.add(res); return; } // never answers: a link that is up but dead slow
+    const file = normalize(join(root, pathname === '/' ? 'index.html' : pathname));
+    if (state.overrides[pathname] !== undefined) { res.writeHead(200, { 'content-type': types[extname(pathname)] || 'text/plain', 'cache-control': 'no-store' }); res.end(state.overrides[pathname]); return; }
+    if (!file.startsWith(root) || !existsSync(file) || !statSync(file).isFile()) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { 'content-type': types[extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
+    createReadStream(file).pipe(res);
+  });
+  server.on('connection', socket => { state.sockets.add(socket); socket.on('close', () => state.sockets.delete(socket)); });
+  const listen = (port = 0) => new Promise(resolve => server.listen(port, '127.0.0.1', () => resolve(server.address().port)));
+  const close = () => new Promise(resolve => { state.held.forEach(r => r.destroy()); state.held.clear(); state.sockets.forEach(s => s.destroy()); server.close(() => resolve()); });
+  return { state, listen, close };
+}
+// Evaluates until the expression is true, tolerating the reloads the app triggers itself.
+async function waitForQuiet(expression, ms = 15000) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) { try { if (await evaluate(`Boolean(${expression})`)) return true; } catch {} await sleep(100); }
+  return false;
+}
+const appOpen = `typeof initSwCacheIndicator === 'function' && document.getElementById('panels-list') && /^Version: (?!unavailable)/.test(document.getElementById('app-version').textContent)`;
+async function offlineCache(tag) {
+  const srv = staticServer();
+  const port = await srv.listen();
+  const origin = `http://127.0.0.1:${port}`;
+  try {
+    // First visit online: the worker installs, claims the page (which reloads once), fills the
+    // settings files and then the DFU binaries in the background.
+    await navigate(`${origin}/index.html`);
+    const ready = await waitForQuiet(`navigator.serviceWorker.controller && ${appOpen}`);
+    const cached = await waitForQuiet(`getMissingCacheUrls(getRequiredCacheUrls()).then(m => m.length === 0)`);
+    const dfu = await waitForQuiet(`window.dfuCacheStatus && window.dfuCacheStatus.complete`, 90000);
+    const dfuStatus = await evaluate(`window.dfuCacheStatus`);
+    const binaries = await evaluate(`caches.keys().then(async names => { let n = 0; for (const name of names) n += (await (await caches.open(name)).keys()).filter(r => r.url.includes('/assets/dfu/releases/')).length; return n; })`);
+    const manifestFiles = await evaluate(`fetch('assets/dfu/manifest.json').then(r => r.json()).then(m => m.releases.flatMap(r => r.files).length)`);
+    const spinnerHidden = await evaluate(`document.getElementById('sw-cache-indicator').classList.contains('hidden')`);
+    check(`${tag} offline: the first online visit installs the worker and caches the settings files and every built-in DFU file`, ready && cached && dfu && binaries === manifestFiles && dfuStatus.cached === manifestFiles && spinnerHidden, { ready, cached, dfu, dfuStatus, binaries, manifestFiles, spinnerHidden });
+    // A link that is up but never answers: the app must open from the cache at once.
+    srv.state.mode = 'hold';
+    srv.state.requests.length = 0;
+    let started = Date.now();
+    await navigate(`${origin}/index.html`);
+    const slowOpen = await waitForQuiet(appOpen, 10000);
+    const slowMs = Date.now() - started;
+    const slowSchema = await waitForQuiet(`loadSettings('settings/settings-v8.0.1.json').then(() => Boolean(settingsData))`, 5000);
+    const slowDfu = await evaluate(`Promise.race([loadDfuManifest().then(m => fetch(m.releases[0].files[0].path)).then(r => r.ok), new Promise(r => setTimeout(() => r('timeout'), 5000))])`);
+    const slowVersionShown = await waitForQuiet(`/^Version: (?!unavailable)/.test(document.getElementById('app-version').textContent)`, 2000);
+    check(`${tag} offline: with a link that never answers, the cached app opens within 3 seconds`, slowOpen && slowMs < 3000 && slowVersionShown, { slowOpen, slowMs, slowVersionShown, requests: srv.state.requests.slice(0, 5) });
+    check(`${tag} offline: a settings schema and a built-in DFU file load from the cache while the link hangs`, slowSchema && slowDfu === true, { slowSchema, slowDfu });
+    // No internet at all.
+    await srv.close();
+    started = Date.now();
+    await navigate(`${origin}/index.html`);
+    const offlineOpen = await waitForQuiet(appOpen, 10000);
+    const offlineMs = Date.now() - started;
+    const offlineSchema = await waitForQuiet(`loadSettings('settings/settings-v8.1.0.json').then(() => Boolean(settingsData))`, 5000);
+    const offlineNotes = await evaluate(`loadDeviceVersionNotes().then(d => d.notes.length > 0)`);
+    check(`${tag} offline: without any connection the cached app opens within 3 seconds with its schemas and firmware notes`, offlineOpen && offlineMs < 3000 && offlineSchema && offlineNotes, { offlineOpen, offlineMs, offlineSchema, offlineNotes });
+    // A deploy: a worker with a new cache name and a new version.json. The new worker installs
+    // the app files fresh, carries the DFU binaries over without downloading them, and the page
+    // reloads into the new version by itself.
+    const port2 = await srv.listen(port);
+    if (port2 !== port) throw new Error(`server came back on port ${port2}, expected ${port}`);
+    const workerSource = await (await import('node:fs/promises')).readFile(join(dirname(fileURLToPath(import.meta.url)), '..', 'service-worker.js'), 'utf8');
+    srv.state.overrides['/service-worker.js'] = workerSource.replace(/^const CACHE_NAME = '[^']*';/m, "const CACHE_NAME = 'app-cache-deploy2';");
+    srv.state.overrides['/version.json'] = JSON.stringify({ version: 'deploy-2', commit: 'deadbeef', built_at: '2026-10-28T00:00:00Z' });
+    srv.state.mode = 'online';
+    srv.state.requests.length = 0;
+    await evaluate(`navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true)`);
+    const updated = await waitForQuiet(`/deploy-2/.test(document.getElementById('app-version').textContent) && navigator.serviceWorker.controller`, 30000);
+    const afterDeploy = await evaluate(`caches.keys().then(async names => ({ names, binaries: names.length ? (await (await caches.open(names[0])).keys()).filter(r => r.url.includes('/assets/dfu/releases/')).length : 0 }))`);
+    const downloaded = srv.state.requests.filter(p => p.includes('/assets/dfu/releases/')).length;
+    const appFilesFetched = ['/index.html', '/functions.js', '/style.css', '/settings/settings-v8.1.0.json'].every(p => srv.state.requests.includes(p));
+    check(`${tag} offline: a deploy installs a new cache with fresh app files and the page reloads into the new version`, updated && afterDeploy.names.length === 1 && afterDeploy.names[0] === 'app-cache-deploy2' && appFilesFetched, { updated, afterDeploy, appFilesFetched });
+    check(`${tag} offline: the deploy carries every built-in DFU file over without downloading it again`, afterDeploy.binaries === manifestFiles && downloaded === 0, { binaries: afterDeploy.binaries, manifestFiles, downloaded });
+  } finally {
+    await srv.close().catch(() => null);
+  }
+}
+
 try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, dfuPage);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

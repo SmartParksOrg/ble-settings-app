@@ -16,7 +16,7 @@ Additional changes completed:
 
 Notes:
 - Bundled files live in `assets/dfu/releases/` and the manifest is `assets/dfu/manifest.json`.
-- Service worker cache is currently `app-cache-v44`.
+- The deploy stamps the service worker cache name with the commit (`app-cache-<sha>`).
 
 Firmware v8 support completed:
 - Bundled the official v8.0.0 settings schema.
@@ -49,6 +49,27 @@ settings-UI change must be checked against them. Open items:
 9. One-tap Apply (2026-09-26): on hardware, apply a single panel edit and confirm the bar shows
    progress, a toast confirms, and no dialog opens; then apply an edit the device rejects and
    confirm the outcome dialog opens and its Close button is reachable on a phone.
+
+## Offline first (added 2026-10-28, field test pending)
+
+Tim reported that the app took very long to open offline or on a bad connection in Namibia.
+Cause: the service worker was network first and only used the cache when the network failed,
+so a slow link that still delivered bytes was waited on for every file; a version change also
+wiped the cache (DFU binaries included) after every deploy. The worker is now cache first, a
+deploy is a new worker (the workflow stamps the commit into CACHE_NAME), DFU binaries are
+carried over between workers and filled one by one in the background. Node and headless checks
+pass; verify in the field, on a phone that has opened the app online once:
+
+1. Flight mode, open the app: it opens within a few seconds, the version badge shows a
+   version, a collar connects and its settings load; the DFU page lists the built-in updates
+   and a DFU runs from the cached binary.
+2. On a 2G or congested link: the same, no slower than in flight mode; the map tiles may stay
+   blank, nothing else waits for them.
+3. After a deploy, open the app on a good link: it reloads once by itself (not while a collar
+   is connected), the badge names the new version, and the console line "Built-in DFU files
+   available offline: n of n" is complete without a long download.
+4. Open the app on a good link right after a deploy and switch the link off while the new
+   worker is still installing: the old version keeps opening until the install completes.
 
 ## Firmware 8.1 development builds, LP0 offload beta (added 2026-10-20, hardware test pending)
 
