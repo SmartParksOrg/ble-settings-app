@@ -67,6 +67,17 @@ console and kept in `window.dfuCacheStatus`). The header spinner only covers the
 settings UI needs: `initSwCacheIndicator` in `functions.js` fetches missing ones one at a time
 with a backoff and gives up after five attempts, so it cannot spin forever.
 
+The page stays as it is: no update status is shown. Every open checks for a new worker
+silently and writes the outcome to the Debug log ("Update check: up to date", "new version
+found, installing", or "Update check failed: ..."), next to the count of built-in DFU files
+cached offline. A tap on the version line in the footer runs the check again and answers with
+a toast, so a check that fails on a particular mobile network, which is why an update never
+arrived there, can be seen on request. When an update has installed while a collar is
+connected, one toast says the app reloads after the disconnect. The install fetches a few
+files at a time and retries each up to three times, so one dropped request on a lossy link
+does not fail the whole install; a file that keeps failing does, and the previous worker keeps
+serving until the next open tries again.
+
 `tests/service-worker.test.cjs` runs the worker in Node against an in-memory cache: cache first
 without touching the network, fresh app files per install, DFU binaries carried over and filled
 one at a time, the cache-name pattern the deploy stamps. The browser harness has an offline
@@ -103,8 +114,9 @@ Things that work differently on an iPhone:
 - Bluefy does not install the app on the home screen or keep an offline copy; it needs an
   internet connection to load the page.
 
-If something does not work, open the app menu, turn on **Debug** and send the log along with
-the iPhone model, iOS version and Bluefy version (Bluefy settings show it).
+If something does not work, tap the floating **Debug** button that appears while a collar is
+connected and send the log along with the iPhone model, iOS version and Bluefy version
+(Bluefy settings show it).
 
 ## Browser support details
 

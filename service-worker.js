@@ -145,13 +145,51 @@ async function broadcast(message) {
     clients.forEach(client => client.postMessage(message));
 }
 
-// Install: every app file fresh from the network (bypassing the HTTP cache, so a new worker
-// never installs a stale page), then the DFU binaries the previous cache already had.
+const INSTALL_ATTEMPTS = 3;
+const INSTALL_PARALLEL = 4;
+const INSTALL_RETRY_DELAY_MS = 1500;
+
+// Fetches one app file fresh (bypassing the HTTP cache, so a new worker never installs a stale
+// page), retrying a few times so one dropped request on a lossy link does not fail the install.
+async function fetchFresh(url) {
+    let lastError = null;
+    for (let attempt = 1; attempt <= INSTALL_ATTEMPTS; attempt += 1) {
+        try {
+            const response = await fetch(new Request(url, { cache: 'reload' }));
+            if (response && response.ok) {
+                return response;
+            }
+            lastError = new Error(`HTTP ${response ? response.status : 'no response'}`);
+        } catch (error) {
+            lastError = error;
+        }
+        if (attempt < INSTALL_ATTEMPTS) {
+            await new Promise(resolve => setTimeout(resolve, INSTALL_RETRY_DELAY_MS));
+        }
+    }
+    throw new Error(`${url}: ${lastError && lastError.message}`);
+}
+
+// A few files at a time: a 2G link is better served by a short queue than by 45 parallel
+// requests. Every file must arrive, or the install fails and the previous worker keeps serving.
+async function cacheAppFiles(cache) {
+    const queue = STATIC_FILES.slice();
+    const workers = Array.from({ length: INSTALL_PARALLEL }, async () => {
+        while (queue.length) {
+            const url = queue.shift();
+            await cache.put(url, await fetchFresh(url));
+        }
+    });
+    await Promise.all(workers);
+}
+
+// Install: every app file fresh from the network, then the DFU binaries the previous cache
+// already had.
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME).then(async cache => {
             console.log(`Caching app files into ${CACHE_NAME}`);
-            await cache.addAll(STATIC_FILES.map(url => new Request(url, { cache: 'reload' })));
+            await cacheAppFiles(cache);
             try {
                 const copied = await copyDfuFilesFromOldCaches(cache);
                 if (copied) {

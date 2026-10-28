@@ -41,6 +41,9 @@
         }
         if (isAppRefreshBlocked()) {
           console.log(`Deferring app refresh for ${reason}.`);
+          if (!window.__pendingAppRefresh && typeof window.showToast === 'function') {
+            window.showToast('Update installed. The app reloads after you disconnect.');
+          }
           window.__pendingAppRefresh = { reason };
           if (!appRefreshTimer) {
             appRefreshTimer = setInterval(retryPendingAppRefresh, 5000);
@@ -77,13 +80,68 @@
       window.flushPendingAppRefresh = retryPendingAppRefresh;
     }());
 
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('service-worker.js')
+    // Update checks. Every open checks silently and writes the outcome to the Debug log; a tap
+    // on the version line in the footer checks again and answers with a toast, so a check that
+    // fails on a bad network (the reason an update never arrived) can be seen on request.
+    (function () {
+      const pendingLog = [];
+      window.appLog = function appLog(message, isError = false) {
+        if (typeof window.log === 'function' && document.getElementById('log')) {
+          window.log(message, isError);
+        } else {
+          pendingLog.push([message, isError]);
+          (isError ? console.warn : console.log)(message);
+        }
+      };
+      document.addEventListener('DOMContentLoaded', () => {
+        pendingLog.splice(0).forEach(([message, isError]) => window.appLog(message, isError));
+      });
+      const toast = message => { if (typeof window.showToast === 'function') window.showToast(message); };
+      const describeError = error => String((error && error.message) || error || 'unknown error').replace(/^Failed to update a ServiceWorker[^:]*: /, '');
+
+      window.checkForAppUpdate = async function checkForAppUpdate({ manual = false } = {}) {
+        if (!('serviceWorker' in navigator)) {
+          if (manual) toast('This browser cannot install updates.');
+          return 'unsupported';
+        }
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+          if (manual) toast('The app is still installing. Try again in a moment.');
+          return 'not-registered';
+        }
+        if (registration.installing || registration.waiting) {
+          if (manual) toast('An update is installing.');
+          return 'installing';
+        }
+        try {
+          await registration.update();
+        } catch (error) {
+          window.appLog(`Update check failed: ${describeError(error)}`, true);
+          if (manual) toast(`Update check failed: ${describeError(error)}`);
+          return 'failed';
+        }
+        const worker = registration.installing;
+        if (!worker) {
+          window.appLog('Update check: up to date.');
+          if (manual) toast('Up to date.');
+          return 'up-to-date';
+        }
+        window.appLog('Update check: new version found, installing.');
+        if (manual) toast('Update found, installing...');
+        let installed = false;
+        worker.addEventListener('statechange', () => {
+          if (worker.state === 'installed') installed = true;
+          if (worker.state === 'redundant' && !installed) {
+            window.appLog('Update install failed; the next open tries again.', true);
+            if (manual) toast('Update could not be installed. Try again on a better connection.');
+          }
+        });
+        return 'found';
+      };
+
+      navigator.serviceWorker && navigator.serviceWorker.register('service-worker.js')
         .then(reg => {
           console.log('Service Worker registered:', reg);
-          if (typeof reg.update === 'function') {
-            reg.update();
-          }
           if (reg.waiting) {
             reg.waiting.postMessage({ type: 'SKIP_WAITING' });
           }
@@ -101,9 +159,17 @@
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             window.requestAppRefresh('service worker update');
           });
+          return window.checkForAppUpdate();
         })
         .catch(err => console.error('Service Worker registration failed:', err));
-    }
+      document.addEventListener('DOMContentLoaded', () => {
+        const badge = document.getElementById('app-version');
+        if (badge) {
+          badge.addEventListener('click', () => window.checkForAppUpdate({ manual: true }));
+          badge.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.checkForAppUpdate({ manual: true }); } });
+        }
+      });
+    }());
   </script>
   <link rel="stylesheet" href="style.css" />
   <link rel="icon" href="favicon.ico" sizes="any">
@@ -857,7 +923,7 @@
       </a>
       <a class="app-footer-link" href="https://www.smartparks.org" target="_blank" rel="noopener noreferrer">www.smartparks.org</a>
     </div>
-    <span class="app-version" id="app-version">Version: loading...</span>
+    <span class="app-version" id="app-version" role="button" tabindex="0" title="Tap to check for an update">Version: loading...</span>
   </footer>
 
   <script>

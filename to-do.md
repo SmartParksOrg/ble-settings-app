@@ -66,10 +66,16 @@ pass; verify in the field, on a phone that has opened the app online once:
 2. On a 2G or congested link: the same, no slower than in flight mode; the map tiles may stay
    blank, nothing else waits for them.
 3. After a deploy, open the app on a good link: it reloads once by itself (not while a collar
-   is connected), the badge names the new version, and the console line "Built-in DFU files
-   available offline: n of n" is complete without a long download.
+   is connected; then a toast announces the reload), the badge names the new version, and the
+   Debug log line "Built-in DFU files available offline: n of n" is complete without a long
+   download.
 4. Open the app on a good link right after a deploy and switch the link off while the new
    worker is still installing: the old version keeps opening until the install completes.
+5. On the MTC network (where updates only arrived over a VPN): tap the version line in the
+   footer. "Up to date" or "Update found" means the network is fine and the old install (which
+   waited for 34 MB of DFU binaries) was the cause; "Update check failed: ..." names what MTC
+   does to the connection. Note the text; a QUIC block is one candidate (test with QUIC off
+   under chrome://flags).
 
 ## Firmware 8.1 development builds, LP0 offload beta (added 2026-10-20, hardware test pending)
 

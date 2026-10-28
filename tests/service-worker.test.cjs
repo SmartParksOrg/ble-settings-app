@@ -57,7 +57,9 @@ function worker({ network = {}, oldCaches = {} } = {}) {
         const answer = network[url] === undefined ? network['*'] : network[url];
         if (answer instanceof Error) throw answer;
         if (answer === undefined) throw new TypeError('offline');
-        return answer instanceof FakeResponse ? answer : new FakeResponse(answer);
+        const value = typeof answer === 'function' ? answer() : answer;
+        if (value instanceof Error) throw value;
+        return value instanceof FakeResponse ? value : new FakeResponse(value);
     };
     const cacheStorage = {
         async open(name) { if (!caches.has(name)) { const c = new FakeCache(); c.fetch = fetch; caches.set(name, c); } return caches.get(name); },
@@ -81,7 +83,7 @@ function worker({ network = {}, oldCaches = {} } = {}) {
         skipWaiting: async () => { self.skipped = true; },
         addEventListener: (name, fn) => { listeners[name] = fn; },
     };
-    const context = vm.createContext({ self, caches: cacheStorage, fetch, Request: FakeRequest, Response: FakeResponse, URL, console: { log() {}, warn() {} } });
+    const context = vm.createContext({ self, caches: cacheStorage, fetch, Request: FakeRequest, Response: FakeResponse, URL, console: { log() {}, warn() {} }, setTimeout: fn => fn() });
     vm.runInContext(fs.readFileSync(path.join(root, 'service-worker.js'), 'utf8'), context);
     const cacheName = vm.runInContext('CACHE_NAME', context);
     const dispatch = async (name, extra = {}) => {
@@ -133,9 +135,23 @@ test('install copies the DFU binaries the previous cache holds, dropping ones no
     assert.ok(w.self.claimed);
 });
 
-test('a failed app file fails the install, so the previous worker keeps serving', async () => {
+test('a file that keeps failing fails the install, so the previous worker keeps serving', async () => {
     const w = worker({ network: { '*': 'file', [`${SCOPE}style.css`]: new FakeResponse('', { ok: false, status: 404 }) } });
-    await assert.rejects(w.dispatch('install'), /addAll failed/);
+    await assert.rejects(w.dispatch('install'), /style\.css: HTTP 404/);
+    assert.equal(w.fetched.filter(f => f.url.endsWith('/style.css')).length, 3, 'three attempts per file');
+});
+
+test('a dropped request is retried and the install succeeds, a few files at a time', async () => {
+    let drops = 2;
+    let inFlight = 0, peak = 0;
+    const network = { '*': () => { inFlight += 1; peak = Math.max(peak, inFlight); inFlight -= 1; return 'file'; },
+        [`${SCOPE}functions.js`]: () => { if (drops > 0) { drops -= 1; return new TypeError('network dropped'); } return 'file'; } };
+    const w = worker({ network });
+    network[`${SCOPE}assets/dfu/manifest.json`] = JSON.stringify(MANIFEST);
+    await w.dispatch('install');
+    assert.equal((await w.caches.get(w.cacheName).match(`${SCOPE}functions.js`)).body, 'file');
+    assert.equal(w.fetched.filter(f => f.url.endsWith('/functions.js')).length, 3);
+    assert.ok(peak <= 4, `at most four requests in flight, saw ${peak}`);
 });
 
 test('the DFU fill fetches missing binaries one at a time, stops at a network failure and resumes later', async () => {

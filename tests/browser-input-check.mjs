@@ -654,6 +654,11 @@ async function offlineCache(tag) {
     const manifestFiles = await evaluate(`fetch('assets/dfu/manifest.json').then(r => r.json()).then(m => m.releases.flatMap(r => r.files).length)`);
     const spinnerHidden = await evaluate(`document.getElementById('sw-cache-indicator').classList.contains('hidden')`);
     check(`${tag} offline: the first online visit installs the worker and caches the settings files and every built-in DFU file`, ready && cached && dfu && binaries === manifestFiles && dfuStatus.cached === manifestFiles && spinnerHidden, { ready, cached, dfu, dfuStatus, binaries, manifestFiles, spinnerHidden });
+    await waitForQuiet(`/Update check: up to date/.test(document.getElementById('log').textContent)`, 15000); // the silent check ends after the register and script fetch
+    const debugLog = await evaluate(`document.getElementById('log').textContent`);
+    await evaluate(`(() => { document.getElementById('toast').innerText = ''; document.getElementById('app-version').click(); return true; })()`);
+    const upToDate = await waitForQuiet(`/Up to date/.test(document.getElementById('toast').innerText)`, 5000);
+    check(`${tag} offline: the Debug log records the silent update check and the DFU cache count; a tap on the version line answers "Up to date"`, /Update check: up to date/.test(debugLog) && debugLog.includes(`Built-in DFU files available offline: ${manifestFiles} of ${manifestFiles}`) && upToDate, { debugLog: debugLog.slice(-300), upToDate });
     // A link that is up but never answers: the app must open from the cache at once.
     srv.state.mode = 'hold';
     srv.state.requests.length = 0;
@@ -675,6 +680,10 @@ async function offlineCache(tag) {
     const offlineSchema = await waitForQuiet(`loadSettings('settings/settings-v8.1.0.json').then(() => Boolean(settingsData))`, 5000);
     const offlineNotes = await evaluate(`loadDeviceVersionNotes().then(d => d.notes.length > 0)`);
     check(`${tag} offline: without any connection the cached app opens within 3 seconds with its schemas and firmware notes`, offlineOpen && offlineMs < 3000 && offlineSchema && offlineNotes, { offlineOpen, offlineMs, offlineSchema, offlineNotes });
+    await evaluate(`(() => { document.getElementById('toast').innerText = ''; document.getElementById('app-version').click(); return true; })()`);
+    const failedCheck = await waitForQuiet(`/Update check failed/.test(document.getElementById('toast').innerText)`, 10000);
+    const failedLogged = await evaluate(`/Update check failed/.test(document.getElementById('log').textContent)`);
+    check(`${tag} offline: a tap on the version line while offline says the update check failed and why`, failedCheck && failedLogged, { failedCheck, failedLogged, toast: await evaluate(`document.getElementById('toast').innerText`) });
     // A deploy: a worker with a new cache name and a new version.json. The new worker installs
     // the app files fresh, carries the DFU binaries over without downloading them, and the page
     // reloads into the new version by itself.
@@ -685,7 +694,14 @@ async function offlineCache(tag) {
     srv.state.overrides['/version.json'] = JSON.stringify({ version: 'deploy-2', commit: 'deadbeef', built_at: '2026-10-28T00:00:00Z' });
     srv.state.mode = 'online';
     srv.state.requests.length = 0;
-    await evaluate(`navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true)`);
+    // The check is started from the version line while a collar is "connected": the new worker
+    // installs, the reload is announced and waits, and runs once the collar is disconnected.
+    await evaluate(`(() => { document.body.classList.add('connected'); document.getElementById('toast').innerText = ''; document.getElementById('app-version').click(); return true; })()`);
+    const found = await waitForQuiet(`/Update found, installing/.test(document.getElementById('toast').innerText)`, 10000);
+    const deferred = await waitForQuiet(`/reloads after you disconnect/.test(document.getElementById('toast').innerText)`, 30000);
+    const stillOld = await evaluate(`!/deploy-2/.test(document.getElementById('app-version').textContent)`);
+    check(`${tag} offline: a deploy found from the version line installs while connected and announces the deferred reload`, found && deferred && stillOld, { found, deferred, stillOld });
+    await evaluate(`(() => { document.body.classList.remove('connected'); return true; })()`);
     const updated = await waitForQuiet(`/deploy-2/.test(document.getElementById('app-version').textContent) && navigator.serviceWorker.controller`, 30000);
     const afterDeploy = await evaluate(`caches.keys().then(async names => ({ names, binaries: names.length ? (await (await caches.open(names[0])).keys()).filter(r => r.url.includes('/assets/dfu/releases/')).length : 0 }))`);
     const downloaded = srv.state.requests.filter(p => p.includes('/assets/dfu/releases/')).length;

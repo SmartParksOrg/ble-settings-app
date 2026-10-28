@@ -1635,6 +1635,11 @@ h2 {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
+/* A tap on the version line checks for an update (main page); it looks the same as before. */
+.app-version[role="button"] {
+    cursor: pointer;
+}
+
 .app-version-footer {
     display: flex;
     flex-direction: column;

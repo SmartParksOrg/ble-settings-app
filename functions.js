@@ -233,7 +233,12 @@ function initSwCacheIndicator() {
     navigator.serviceWorker.addEventListener('message', event => {
         if (event.data && event.data.type === 'DFU_CACHE_STATUS') {
             window.dfuCacheStatus = event.data;
-            console.log(`Built-in DFU files available offline: ${event.data.cached} of ${event.data.total}`);
+            const message = `Built-in DFU files available offline: ${event.data.cached} of ${event.data.total}`;
+            if (typeof window.appLog === 'function') {
+                window.appLog(message);
+            } else {
+                console.log(message);
+            }
         }
     });
     navigator.serviceWorker.ready
