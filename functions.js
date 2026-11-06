@@ -2828,19 +2828,42 @@ function summarizeLp0Statistics(decoded) {
 const LP0_OFFLOAD_STATES = ['idle', 'preparing', 'waiting', 'discovering', 'sending', 'cancelling', 'done', 'failed'];
 const LP0_OFFLOAD_MEDIA = ['LP0', 'LoRaWAN', 'satellite', 'Bluetooth'];
 const LP0_OFFLOAD_SELECTIONS = ['all records', 'confirmed records', 'unconfirmed records'];
-// Zephyr errno values the firmware documents for the offload job reply.
+// errno values in the offload job reply. The firmware is built with newlib
+// (CONFIG_NEWLIB_LIBC), whose numbers differ from Linux's: EINPROGRESS is 119 there, not 115.
+// Until 2026-11-06 this table used the Linux numbers, so a started transfer (-119) read as a
+// failure and the first field test of "Download new logs" aborted a running stream.
+const OFFLOAD_ERRNO = {
+    ENXIO: -6,
+    EBUSY: -16,
+    EINVAL: -22,
+    EOPNOTSUPP: -95,
+    ESHUTDOWN: -110,
+    ENETDOWN: -115,
+    ETIMEDOUT: -116,
+    EINPROGRESS: -119,
+    EMSGSIZE: -122,
+    ENOTCONN: -128,
+    ESTALE: -133,
+    ENOTSUP: -134,
+    EOVERFLOW: -139,
+    ECANCELED: -140
+};
 const LP0_OFFLOAD_ERRNO = {
     0: 'ok',
-    '-6': 'no station offered within three discovery attempts (ENXIO)',
-    '-16': 'another offload still owns the radio or flash (EBUSY)',
-    '-22': 'invalid medium, selection or port (EINVAL)',
-    '-90': 'a selected message is too large for LP0 (EMSGSIZE)',
-    '-95': 'medium not supported by this build (ENOTSUP)',
-    '-100': 'satellite modem not detected or disabled (ENETDOWN)',
-    '-107': 'Bluetooth connection no longer valid (ENOTCONN)',
-    '-115': 'in progress (EINPROGRESS)',
-    '-116': 'job ID does not match the current job (ESTALE)',
-    '-125': 'cancelled (ECANCELED)'
+    [OFFLOAD_ERRNO.ENXIO]: 'no station offered within three discovery attempts (ENXIO)',
+    [OFFLOAD_ERRNO.EBUSY]: 'another offload still owns the radio or flash (EBUSY)',
+    [OFFLOAD_ERRNO.EINVAL]: 'invalid medium, selection or port (EINVAL)',
+    [OFFLOAD_ERRNO.EOPNOTSUPP]: 'operation not supported (EOPNOTSUPP)',
+    [OFFLOAD_ERRNO.ESHUTDOWN]: 'not an active offload station (ESHUTDOWN)',
+    [OFFLOAD_ERRNO.ENETDOWN]: 'LP0 unavailable, no LoRaWAN session, or satellite modem not detected or disabled (ENETDOWN)',
+    [OFFLOAD_ERRNO.ETIMEDOUT]: 'timed out (ETIMEDOUT)',
+    [OFFLOAD_ERRNO.EINPROGRESS]: 'in progress (EINPROGRESS)',
+    [OFFLOAD_ERRNO.EMSGSIZE]: 'a selected message is too large for LP0 (EMSGSIZE)',
+    [OFFLOAD_ERRNO.ENOTCONN]: 'Bluetooth connection no longer valid (ENOTCONN)',
+    [OFFLOAD_ERRNO.ESTALE]: 'job ID does not match the current job (ESTALE)',
+    [OFFLOAD_ERRNO.ENOTSUP]: 'medium not supported by this build (ENOTSUP)',
+    [OFFLOAD_ERRNO.EOVERFLOW]: 'job IDs exhausted until reboot (EOVERFLOW)',
+    [OFFLOAD_ERRNO.ECANCELED]: 'cancelled (ECANCELED)'
 };
 
 // `body` is the 17 bytes after the command id and the length byte 17.

@@ -554,7 +554,7 @@ async function lp0Offload(tag) {
   await sleep(120);
   const sent = await evaluate(`({ writes: window.__writes, status: document.getElementById('lp0-job-status').textContent })`);
   check(`${tag} LP0: Start offload sends the start command with medium, selection and port`, sent.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xCF, 0x03, 0, 2, 4])) && /Waiting for the device/.test(sent.status), sent);
-  const reply = [0x20, 0xCF, 17, 7, 0, 0, 0, 3, 0, 2, 4, 1, 0x8D, 0xFF, 0xFF, 0xFF, 42, 0, 0, 0]; // job 7, discovering, LP0, unconfirmed, port 4, 1 attempt, -115, 42 confirmed
+  const reply = [0x20, 0xCF, 17, 7, 0, 0, 0, 3, 0, 2, 4, 1, 0x89, 0xFF, 0xFF, 0xFF, 42, 0, 0, 0]; // job 7, discovering, LP0, unconfirmed, port 4, 1 attempt, -119 (EINPROGRESS in newlib), 42 confirmed
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(reply)}).buffer) } })`);
   await sleep(80);
   const answered = await evaluate(`({ status: document.getElementById('lp0-job-status').textContent, toast: document.getElementById('toast').innerText, state: document.querySelector('#lp0-job-status .lp0-job-state').textContent })`);
@@ -606,7 +606,7 @@ async function lp0Offload(tag) {
   await evaluate(`(() => { window.__writes.length = 0; refreshLp0Status(); return true; })()`);
   await sleep(50);
   const probe = await evaluate(`({ writes: window.__writes, status: document.getElementById('lp0-job-status').textContent })`);
-  const stateReply = [0x20, 0xD1, 17, 0, 0, 0, 0, 4, 0, 2, 0, 1, 0x8C, 0xFF, 0xFF, 0xFF, 5, 0, 0, 0]; // automatic job, sending, LP0, unconfirmed, all ports, -116 (stale probe), 5 confirmed
+  const stateReply = [0x20, 0xD1, 17, 0, 0, 0, 0, 4, 0, 2, 0, 1, 0x7B, 0xFF, 0xFF, 0xFF, 5, 0, 0, 0]; // automatic job, sending, LP0, unconfirmed, all ports, -133 (ESTALE, stale probe), 5 confirmed
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply)}).buffer) } })`);
   await sleep(60);
   const stateShown = await evaluate(`({ state: document.querySelector('#lp0-job-status .lp0-job-state').textContent, status: document.getElementById('lp0-job-status').textContent, toast: document.getElementById('toast').innerText })`);
@@ -649,8 +649,8 @@ async function newLogsDownload(tag) {
   await sleep(60);
   const started = await overlay();
   const startReply = (job, state, result, confirmed) => [0x20, 0xCF, 17, job, 0, 0, 0, state, 3, 2, 0, 0, result & 0xFF, (result >> 8) & 0xFF, (result >> 16) & 0xFF, (result >> 24) & 0xFF, confirmed, 0, 0, 0];
-  const stateReply = (job, state, confirmed) => [0x20, 0xD1, 17, job, 0, 0, 0, state, 3, 2, 0, 0, 0x8C, 0xFF, 0xFF, 0xFF, confirmed, 0, 0, 0];
-  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(9, 4, -115, 0))}).buffer) } })`);
+  const stateReply = (job, state, confirmed) => [0x20, 0xD1, 17, job, 0, 0, 0, state, 3, 2, 0, 0, 0x7B, 0xFF, 0xFF, 0xFF, confirmed, 0, 0, 0]; // -133 ESTALE
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(9, 4, -119, 0))}).buffer) } })`);
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([29, 4, 0xF4, 14, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 1, 0, 0, 0]).buffer) } })`);
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([29, 18, 0x97, 4, 1, 2, 3, 4, 2, 0, 0, 0]).buffer) } })`);
   await sleep(100);
@@ -665,7 +665,7 @@ async function newLogsDownload(tag) {
   // Nothing new: the probe answers done with no records.
   await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);
-  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -115, 0))}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -119, 0))}).buffer) } })`);
   await sleep(3300);
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply(10, 6, 0))}).buffer) } })`);
   await sleep(100);
@@ -681,12 +681,12 @@ async function newLogsDownload(tag) {
   // Cancel: the device is asked to cancel the job, the reply stays out of the LP0 card.
   await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);
-  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(11, 4, -115, 0))}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(11, 4, -119, 0))}).buffer) } })`);
   await sleep(60);
   const lp0Before = await evaluate(`document.getElementById('lp0-job-status').textContent`);
   await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); return true; })()`);
   await sleep(60);
-  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([0x20, 0xD1, 17, 11, 0, 0, 0, 5, 3, 2, 0, 0, 0x83, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0])}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([0x20, 0xD1, 17, 11, 0, 0, 0, 5, 3, 2, 0, 0, 0x74, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0])}).buffer) } })`);
   await sleep(60);
   const cancelled = await evaluate(`({ writes: window.__writes, hidden: document.getElementById('flash-log-overlay').classList.contains('hidden'), active: flashLogState.active, lp0: document.getElementById('lp0-job-status').textContent })`);
   check(`${tag} new logs: Cancel asks the device to cancel the job and its reply does not touch the LP0 card`, cancelled.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 11, 0, 0, 0])) && cancelled.hidden && !cancelled.active && cancelled.lp0 === lp0Before, cancelled);

@@ -2317,7 +2317,7 @@
     // Replies to the transfer start and to the state probes while a "new logs" download runs.
     function handleOffloadDownloadReply(command, decoded) {
       if (command === CMD_OFFLOAD_START) {
-        if (decoded.result !== 0 && decoded.result !== -115) {
+        if (decoded.result !== 0 && decoded.result !== OFFLOAD_ERRNO.EINPROGRESS) {
           showFlashLogFailure(`The device did not start the transfer: ${decoded.resultLabel}.`);
           return;
         }
@@ -8990,11 +8990,11 @@
       if (refresh) {
         showToast(decoded.jobId === 0 && decoded.state === 0 ? 'No offload has run since the device started.' : `Offload state: ${decoded.stateLabel}.`);
       } else if (data[1] === CMD_OFFLOAD_START) {
-        showToast(decoded.result === 0 || decoded.result === -115
+        showToast(decoded.result === 0 || decoded.result === OFFLOAD_ERRNO.EINPROGRESS
           ? `Offload job ${decoded.jobId} ${decoded.stateLabel}.`
           : `Offload not started: ${decoded.resultLabel}.`);
       } else {
-        showToast(decoded.result === -125 || decoded.result === 0
+        showToast(decoded.result === OFFLOAD_ERRNO.ECANCELED || decoded.result === 0
           ? 'Offload cancelled.'
           : `Cancel answered: ${decoded.resultLabel}.`);
       }

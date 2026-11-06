@@ -195,7 +195,11 @@ first boot of this firmware clears every stored log because of the new record fo
   that cannot exist, which the firmware refuses with ESTALE while still answering with the
   current job's state and confirmed count, and which cancels nothing (`offload_job_cancel` in
   the firmware source; the firmware documentation says there is no state query, so this is a
-  source-verified workaround, see to-do.md). "done" completes the download, "failed" interrupts
+  source-verified workaround, see to-do.md). The errno in the reply uses newlib's numbering
+  (the firmware builds with `CONFIG_NEWLIB_LIBC`): EINPROGRESS is -119, ESTALE -133, ECANCELED
+  -140, ENOTSUP -134, ENOTCONN -128, ENETDOWN -115; `OFFLOAD_ERRNO` in `functions.js` holds the
+  table. Until 2026-11-06 the app used Linux's numbers and read a started transfer (-119) as a
+  failure, which aborted the first field test on SP051307 one second into a running stream. "done" completes the download, "failed" interrupts
   it, a job still sending is probed again (up to 30 seconds without data). An empty transfer
   ends as "No new logs". Cancel sends the real cancel for the job; Retry asks again for the
   records still unconfirmed, so a partial download continues where it stopped. The file is

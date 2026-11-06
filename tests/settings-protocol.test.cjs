@@ -281,7 +281,7 @@ test('the offload job reply decodes the state, medium, selection, errno and conf
     reply[6] = 2;                     // unconfirmed
     reply[7] = 0;                     // all ports
     reply[8] = 1;                     // attempts
-    view.setInt32(9, -115, true);     // EINPROGRESS
+    view.setInt32(9, -119, true);     // EINPROGRESS (newlib numbering, not Linux's 115)
     view.setUint32(13, 42, true);     // confirmed
     const decoded = ctx.decodeOffloadJobReply(reply);
     assert.equal(decoded.jobId, 7);
@@ -290,13 +290,13 @@ test('the offload job reply decodes the state, medium, selection, errno and conf
     assert.equal(decoded.selectionLabel, 'unconfirmed records');
     assert.equal(decoded.port, 0);
     assert.equal(decoded.attempts, 1);
-    assert.equal(decoded.result, -115);
+    assert.equal(decoded.result, -119);
     assert.match(decoded.resultLabel, /in progress/);
     assert.equal(decoded.confirmed, 42);
 
     view.setUint32(0, 0, true);
     reply[4] = 7; reply[5] = 2; reply[6] = 0; reply[7] = 4;
-    view.setInt32(9, -100, true);
+    view.setInt32(9, -115, true);     // ENETDOWN
     const failed = ctx.decodeOffloadJobReply(reply);
     assert.equal(failed.stateLabel, 'failed');
     assert.equal(failed.mediumLabel, 'satellite');
@@ -319,13 +319,35 @@ test('transfer commands encode the firmware bytes and the state probe is a cance
     assert.equal(ctx.evaluate('OFFLOAD_STATUS_PROBE_JOB_ID'), 0xFFFFFFFF);
     assert.deepEqual(plain(ctx.encodeOffloadCancel(ctx.evaluate('OFFLOAD_STATUS_PROBE_JOB_ID'))), [0x20, 0xD1, 0x04, 0xFF, 0xFF, 0xFF, 0xFF]);
     // The probe's reply: refused with ESTALE, job fields of the current job.
-    const reply = ctx.decodeOffloadJobReply([9, 0, 0, 0, 4, 3, 2, 0, 0, 0x8C, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0]);
+    const reply = ctx.decodeOffloadJobReply([9, 0, 0, 0, 4, 3, 2, 0, 0, 0x7B, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0]);
     assert.equal(reply.jobId, 9);
     assert.equal(reply.stateLabel, 'sending');
     assert.equal(reply.mediumLabel, 'Bluetooth');
-    assert.equal(reply.result, -116);
+    assert.equal(reply.result, -133);
     assert.match(reply.resultLabel, /does not match/);
     assert.equal(reply.confirmed, 2);
+});
+
+test('errno values in the job reply follow newlib (the firmware libc), not Linux', () => {
+    const ctx = app();
+    // The reply SP051307 gave on 2026-11-06 to 20 CF 03 03 02 00 while it was already streaming:
+    // job 2, waiting, Bluetooth, unconfirmed, all ports, result 0xFFFFFF89 = -119.
+    const field = ctx.decodeOffloadJobReply([2, 0, 0, 0, 2, 3, 2, 0, 0, 0x89, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]);
+    assert.equal(field.result, -119);
+    assert.equal(field.stateLabel, 'waiting');
+    assert.match(field.resultLabel, /^in progress/);
+    const errno = JSON.parse(JSON.stringify(ctx.evaluate('OFFLOAD_ERRNO')));
+    assert.equal(errno.EINPROGRESS, -119);
+    assert.equal(errno.ESTALE, -133);
+    assert.equal(errno.ECANCELED, -140);
+    assert.equal(errno.ENOTSUP, -134);
+    assert.equal(errno.ENOTCONN, -128);
+    assert.equal(errno.ENETDOWN, -115);
+    assert.equal(errno.EMSGSIZE, -122);
+    assert.equal(errno.EBUSY, -16);
+    assert.match(ctx.decodeOffloadJobReply([0, 0, 0, 0, 7, 3, 2, 0, 0, 0x74, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]).resultLabel, /cancelled/);
+    assert.match(ctx.decodeOffloadJobReply([0, 0, 0, 0, 7, 0, 2, 0, 3, 0xFA, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]).resultLabel, /no station offered/);
+    assert.match(ctx.decodeOffloadJobReply([0, 0, 0, 0, 7, 3, 2, 0, 0, 0x8D, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0]).resultLabel, /^firmware error -115|ENETDOWN/, 'the old Linux EINPROGRESS value is not in progress any more');
 });
 
 test('the station status rows read the SD card, reader and radio state and never call unknown healthy', () => {
