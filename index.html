@@ -2557,25 +2557,35 @@
       const ports = settingsData && settingsData.ports ? settingsData.ports : {};
       const labels = (window.PanelDefinitions && PanelDefinitions.portLabels) || {};
       const nameOfPort = Object.fromEntries(Object.entries(ports).map(([name, number]) => [number, labels[name] || name.replace(/^port_/, '').replace(/_/g, ' ')]));
+      const isNew = flashLogState.requestMode === 'offload';
+      const n = stats.records;
+      const one = n === 1;
       const seconds = flashLogState.startedAt ? Math.max(1, Math.round((Date.now() - flashLogState.startedAt.getTime()) / 1000)) : null;
-      const size = stats.bytes >= 10240 ? `${(stats.bytes / 1024).toFixed(1)} KB` : `${stats.bytes} bytes`;
+      const when = unix => {
+        const text = formatLocalDateTimeDisplay(new Date(unix * 1000));
+        const space = text.lastIndexOf(' ');
+        return space > 0 ? `${text.slice(0, space)} at ${text.slice(space + 1)}` : text;
+      };
       const lines = [];
-      lines.push(`${stats.records} record${stats.records === 1 ? '' : 's'} in ${stats.packets} packet${stats.packets === 1 ? '' : 's'} (${size})${seconds ? `, ${formatDurationCompact(seconds)}` : ''}.`);
+      lines.push(`${n === 0 ? 'No' : n} ${isNew ? 'new ' : ''}message${one ? '' : 's'} downloaded${seconds ? ` in ${formatDurationCompact(seconds)}` : ''}.`);
       if (stats.oldest !== null) {
-        lines.push(stats.oldest === stats.newest || stats.records === 1
-          ? `Stored ${formatLocalDateTimeDisplay(new Date(stats.newest * 1000))} by the device clock.`
-          : `Stored between ${formatLocalDateTimeDisplay(new Date(stats.oldest * 1000))} and ${formatLocalDateTimeDisplay(new Date(stats.newest * 1000))} by the device clock.`);
+        lines.push(one || stats.oldest === stats.newest
+          ? `The collar stored ${one ? 'it' : 'them'} on ${when(stats.newest)} (its own clock).`
+          : `The collar stored them between ${when(stats.oldest)} and ${when(stats.newest)} (its own clock).`);
       }
-      if (flashLogState.requestMode === 'offload' && stats.deviceConfirmed !== null) {
-        lines.push(stats.deviceConfirmed === stats.records
-          ? `The device confirmed all ${stats.deviceConfirmed} as delivered.`
-          : `The device confirmed ${stats.deviceConfirmed} as delivered, the app received ${stats.records}.`);
+      if (isNew && stats.deviceConfirmed !== null) {
+        if (stats.deviceConfirmed >= n) {
+          lines.push(`The collar has ticked ${one ? 'it' : 'them'} off as delivered, so the next download of new logs continues after ${one ? 'it' : 'them'}.`);
+        } else {
+          lines.push(`The collar ticked off ${stats.deviceConfirmed} of ${n} as delivered; the rest will be sent again next time.`);
+        }
       }
       const byType = Array.from(stats.byPort.entries())
         .sort((a, b) => b[1] - a[1])
         .map(([port, count]) => `<li><span>${escapeHtml(nameOfPort[port] || `port ${port}`)}</span><span>${count}</span></li>`)
         .join('');
-      return `<div class="flash-log-report">${lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}${byType ? `<ul class="flash-log-report-types">${byType}</ul>` : ''}</div>`;
+      const size = stats.bytes >= 10240 ? `${(stats.bytes / 1024).toFixed(1)} KB` : `${stats.bytes} bytes`;
+      return `<div class="flash-log-report">${lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}${byType ? `<div class="flash-log-report-heading">What ${one ? 'it is' : 'they are'}</div><ul class="flash-log-report-types">${byType}</ul>` : ''}<div class="flash-log-report-meta">${escapeHtml(`${size} in ${stats.packets} Bluetooth packet${stats.packets === 1 ? '' : 's'}`)}</div></div>`;
     }
 
     function showFlashLogSuccess(filename) {
@@ -2600,8 +2610,7 @@
       progressEl.classList.remove('indeterminate');
       barEl.style.width = '100%';
       messageEl.innerHTML = `${describeFlashLogCapture()}
-        Use the <a href="https://smartparksorg.github.io/raw_logs_decoder/" target="_blank" rel="noopener noreferrer">Smart Parks - Log File Decoder</a>
-        to decode this log file.${flashLogState.requestMode === 'offload' ? ' The device has marked these records as downloaded over Bluetooth; the next download of new logs skips them.' : ''}
+        Open the file with the <a href="https://smartparksorg.github.io/raw_logs_decoder/" target="_blank" rel="noopener noreferrer">Smart Parks Log File Decoder</a> to read it.
       `;
       messageEl.classList.remove('hidden');
       messageEl.classList.remove('warning');
@@ -2644,8 +2653,10 @@
         ? `${flashLogState.requestedPort ? `for "${flashLogState.typeLabel}" ` : ''}that were not yet downloaded over Bluetooth`
         : isAll ? 'for this device' : `for "${flashLogState.logTypeLabel}"`;
       spinner.classList.add('hidden');
-      titleEl.textContent = isNew ? 'No new logs' : 'No logs available';
-      detailEl.textContent = `The device has no stored log messages ${scopeLabel}.`;
+      titleEl.textContent = isNew ? 'Nothing new to download' : 'No logs available';
+      detailEl.textContent = isNew
+        ? `Every stored message${flashLogState.requestedPort ? ` of type "${flashLogState.typeLabel}"` : ''} has already been downloaded over Bluetooth.`
+        : `The device has no stored log messages ${scopeLabel}.`;
       progressEl.classList.add('hidden');
       messageEl.textContent = 'No file was downloaded.';
       messageEl.classList.remove('hidden');

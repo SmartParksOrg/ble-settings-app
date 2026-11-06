@@ -661,9 +661,9 @@ async function newLogsDownload(tag) {
   await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply(9, 6, 2))}).buffer) } })`);
   await sleep(100);
   const done = await overlay();
-  check(`${tag} new logs: after 3 s of silence the app probes the job state (cancel 0xFFFFFFFF) and a "done" state completes the download`, probed.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 255, 255, 255, 255])) && !probed.hidden && /Downloading/.test(probed.title) && done.title === 'Log download complete' && /raw_logs-new-/.test(done.detail) && /marked these records as downloaded/.test(done.message) && (ios || done.downloads.some(d => /raw_logs-new-/.test(d.name))), { probed: probed.writes, done });
+  check(`${tag} new logs: after 3 s of silence the app probes the job state (cancel 0xFFFFFFFF) and a "done" state completes the download`, probed.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 255, 255, 255, 255])) && !probed.hidden && /Downloading/.test(probed.title) && done.title === 'Log download complete' && /raw_logs-new-/.test(done.detail) && /ticked them off as delivered/.test(done.message) && (ios || done.downloads.some(d => /raw_logs-new-/.test(d.name))), { probed: probed.writes, done });
   const doneButtons = await evaluate(`({ erase: document.getElementById('flash-log-erase').classList.contains('hidden'), ok: document.getElementById('flash-log-ok').classList.contains('hidden') })`);
-  check(`${tag} new logs: the completion dialog reports what was downloaded and offers no erase`, /2 records in 2 packets/.test(done.message) && /confirmed all 2 as delivered/.test(done.message) && /Statusreport1/.test(done.message.replace(/\s+/g, '')) && /Timestamp1/.test(done.message.replace(/\s+/g, '')) && doneButtons.erase && !doneButtons.ok, { message: done.message, doneButtons });
+  check(`${tag} new logs: the completion dialog reports what was downloaded and offers no erase`, /2 new messages downloaded in/.test(done.message) && /ticked them off as delivered/.test(done.message) && /34 bytes in 2 Bluetooth packets/.test(done.message) && /Statusreport1/.test(done.message.replace(/\s+/g, '')) && /Timestamp1/.test(done.message.replace(/\s+/g, '')) && doneButtons.erase && !doneButtons.ok, { message: done.message, doneButtons });
   // Nothing new: the probe answers done with no records.
   await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);
@@ -673,7 +673,7 @@ async function newLogsDownload(tag) {
   await sleep(100);
   const empty = await overlay();
   const emptyErase = await evaluate(`document.getElementById('flash-log-erase').classList.contains('hidden')`);
-  check(`${tag} new logs: a transfer with no records ends as "No new logs" without an erase button`, empty.title === 'No new logs' && /not yet downloaded over Bluetooth/.test(empty.detail) && emptyErase, { empty, emptyErase });
+  check(`${tag} new logs: a transfer with no records ends as "No new logs" without an erase button`, empty.title === 'Nothing new to download' && /already been downloaded over Bluetooth/.test(empty.detail) && emptyErase, { empty, emptyErase });
   // Busy device: the start reply carries EBUSY.
   await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);
