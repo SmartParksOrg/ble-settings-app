@@ -21,8 +21,9 @@
 // CHROME defaults to the Playwright Chromium under ~/.cache/ms-playwright. ONLY=index or
 // ONLY=composer limits the run to one page; VERBOSE=1 prints where a failed tap landed.
 // Screenshots of the outcome dialog are written to the current directory. Exit code 1 = a
-// check failed. The LP0 scenario reloads the main page with the 8.1.0 development schema and
-// a status that says firmware 8.1, and checks the panel, the card and the job reply.
+// check failed. The LP0 scenario reloads the main page with the 8.2.0 beta schema and a status
+// that says firmware 8.1, and checks the panel, the card, the job reply, the state refresh and the
+// station status; the new-logs scenario checks the Bluetooth transfer of unconfirmed records.
 //
 // The offline scenario serves the repository from a server of its own so it can stop answering
 // (a link that is up but crawling) and close (no internet) for real; DevTools throttling does
@@ -147,6 +148,7 @@ async function focus(sel) {
   const hit = await evaluate(`(() => { const el = document.elementFromPoint(${rect.x}, ${rect.y}); return el ? (el.id || el.className || el.tagName) : null; })()`);
   const ok = await evaluate(`document.activeElement === ${q(sel)}`);
   if (!ok && process.env.VERBOSE) console.log('  (tap on', sel, 'hit', JSON.stringify(hit), 'active:', await evaluate(`document.activeElement.id || document.activeElement.tagName`), ')');
+  if (!ok && process.env.VERBOSE && hit === 'toast') console.log('  (toast covering the tap:', await evaluate(`JSON.stringify({ text: document.getElementById('toast').innerText, visible: document.getElementById('toast').style.visibility, rect: document.getElementById('toast').getBoundingClientRect(), target: ${q(sel)}.getBoundingClientRect(), innerHeight })`), ')');
   return ok;
 }
 const state = (sel, key) => evaluate(`(() => { const el = ${q(sel)}; const row = el.closest('.panel-field');
@@ -165,6 +167,16 @@ const check = (name, ok, detail) => { results.push({ name, ok }); console.log(`$
 
 async function loadPage(page) {
   await navigate(page);
+  // The service worker installs on the first visit and the page reloads itself once the worker
+  // takes control. Wait for that here: otherwise the reload lands in the middle of the first
+  // scenario, or, once the page is marked connected, the deferred-reload toast covers the first
+  // field on a phone viewport (the toast is centred on the screen).
+  const until = Date.now() + 30000;
+  while (Date.now() < until) {
+    const controlled = await evaluate(`Boolean(navigator.serviceWorker && navigator.serviceWorker.controller && typeof loadSettings === 'function' && document.getElementById('toast') && document.getElementById('toast').style.visibility !== 'visible')`).catch(() => false);
+    if (controlled) break;
+    await sleep(100);
+  }
   if (page === '/index.html') {
     await waitFor(`typeof loadSettings === 'function' && document.getElementById('panels-list')`);
     const seeded = await evaluate(`loadSettings('settings/settings-v8.0.1.json').then(() => { document.body.classList.add('connected','has-status','has-settings'); displaySettings();
@@ -468,7 +480,7 @@ async function dfuVersion(tag) {
   check(`${tag} DFU version: a 0.0.0 header version counts as unknown, a real one is kept`,
     got.zero === null && got.zeroShort === null && got.real === '8.0.3' && got.missing === null, got);
 }
-// LP0 offload (beta): only on 8.1 development firmware. The panel edits single bytes of the
+// LP0 offload (beta): only on 8.1+ firmware (8.2.0 beta schema). The panel edits single bytes of the
 // node parameters through the shared hidden input, Generate fills a random master key, the
 // card sends the start command and renders the device's job reply, and nothing of this is
 // shown with the 8.0.1 schema or an 8.0 status.
@@ -476,13 +488,13 @@ async function lp0Offload(tag) {
   const before = await evaluate(`({ panel: Boolean(document.getElementById('panel-lp0')), card: !document.getElementById('lp0-area').classList.contains('hidden'),
     feature: Array.from(document.querySelectorAll('#features-list .feature-name')).map(n => n.textContent).includes('LP0 offload') })`);
   check(`${tag} LP0: nothing offered on the 8.0.1 schema`, !before.panel && !before.card && !before.feature, before);
-  // Reload with the 8.1.0 schema and an 8.1 status, as a connected 8.1 collar would give.
-  const seeded = await evaluate(`loadSettings('settings/settings-v8.1.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
+  // Reload with the 8.2.0 schema and an 8.1 status, as a connected pre-release collar would give.
+  const seeded = await evaluate(`loadSettings('settings/settings-v8.2.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
     displaySettings(); const errors = [];
     Object.entries(settingsData.settings).forEach(([k, s]) => { try { const v = s.conversion === 'byte_array' ? stripBytes(normalizeRenderableValue(s.default)) : normalizeRenderableValue(s.default); currentSettingValues.set(String(s.id), v); setInputValue(s.id, v); } catch (e) { errors.push(k + ': ' + e.message); } });
     document.querySelectorAll('.setting.disabled').forEach(row => row.classList.remove('disabled'));
     settingsDraft.reset(); mountSettingsPanels(); renderLp0Section(); renderFeatures(); return errors; })`);
-  if (seeded.length) console.log('seeding 8.1.0 values raised errors:', seeded);
+  if (seeded.length) console.log('seeding 8.2.0 values raised errors:', seeded);
   const shown = await evaluate(`({ panel: Boolean(document.getElementById('panel-lp0')), beta: Boolean(document.querySelector('#panel-lp0 .panel-beta-tag')), card: !document.getElementById('lp0-area').classList.contains('hidden'),
     summary: document.querySelector('#panel-lp0 .panel-summary').textContent, feature: Array.from(document.querySelectorAll('#features-list .feature-item')).map(n => n.querySelector('.feature-name').textContent + ':' + n.querySelector('.feature-status').textContent).find(t => /LP0/.test(t)),
     ports: Array.from(document.getElementById('lp0-offload-port').options).map(o => o.textContent) })`);
@@ -534,7 +546,7 @@ async function lp0Offload(tag) {
   await evaluate(`(() => { const s = ${q(master)}; s.value = '0'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
   await sleep(60);
   const rssiAfter = await evaluate(`({ disabled: ${q(checks)}.disabled, hidden: document.getElementById('new-value-' + settingsData.settings.lp0_signal_checks.id).value })`);
-  check(`${tag} LP0: the signal-check master switch gates the RSSI threshold (default 100 = -100 dBm)`, rssiBefore.value === '100' && !rssiBefore.disabled && rssiAfter.disabled && rssiAfter.hidden === '000101640114', { rssiBefore, rssiAfter });
+  check(`${tag} LP0: the signal-check master switch gates the RSSI threshold (default 100 = -100 dBm, margin check off by default)`, rssiBefore.value === '100' && !rssiBefore.disabled && rssiAfter.disabled && rssiAfter.hidden === '000101640014', { rssiBefore, rssiAfter });
 
   // The card: start sends 20 CF 03 <medium> <selection> <port>; the reply renders the job.
   await evaluate(FAKE_DEVICE);
@@ -552,15 +564,53 @@ async function lp0Offload(tag) {
   await evaluate(`${q(gpsToggle)}.click()`);
   await sleep(50);
   const gpsBefore = await evaluate(`({ hidden: document.getElementById('new-value-' + settingsData.settings.lp0_gps_before_start.id).value, summary: document.querySelector('#panel-lp0 .panel-summary').textContent,
-    recoverShown: !document.getElementById('lp0-recover-sd').classList.contains('hidden'), networkSwitch: Boolean(document.querySelector('#panel-network .panel-field[data-keys~="lr_enabled"] input')), fixTime: Boolean(document.querySelector('#panel-positioning .panel-field[data-keys~="ublox_require_time"] input')) })`);
+    stationHidden: document.getElementById('lp0-station-status').classList.contains('hidden'), networkSwitch: Boolean(document.querySelector('#panel-network .panel-field[data-keys~="lr_enabled"] input')), fixTime: Boolean(document.querySelector('#panel-positioning .panel-field[data-keys~="ublox_require_time"] input')),
+    retries: Boolean(document.querySelector('#panel-lp0 .panel-field[data-keys~="lp0_discovery_retry_count"] input')) })`);
+  check(`${tag} LP0: GPS fix before offloading is a panel toggle with a summary sentence; LoRaWAN, fix-time and discovery-retry fields exist; no station block while the device reports no station role`, gpsBefore.hidden === 'true' && /GPS fix before offloading\./.test(gpsBefore.summary) && gpsBefore.stationHidden && gpsBefore.networkSwitch && gpsBefore.fixTime && gpsBefore.retries, gpsBefore);
+  // Station status: shown once the device reports the station role; the newest stored port-23
+  // report is read with flash_get_from_head (port 23, start 0, count 1).
+  await evaluate(`(() => { currentSettingValues.set(String(settingsData.settings.lp0_node_params.id), '02030A013C'); renderLp0StationBlock(); window.__writes.length = 0; requestLatestStationReport(); return true; })()`);
+  await sleep(60);
+  const asked = await evaluate(`({ shown: !document.getElementById('lp0-station-status').classList.contains('hidden'), recoverShown: !document.getElementById('lp0-recover-sd').classList.contains('hidden'), writes: window.__writes, text: document.getElementById('lp0-station-report').textContent })`);
+  // Flags: detected, writable, enabled, listening, flash available; all 13 flags known; up 3600 s; 5 visits, 12 packets, 1000 bytes, 7580 MB with 93% free.
+  const statsBody = new Array(102).fill(0); statsBody[0] = 3; statsBody[1] = 0x63; statsBody[2] = 0x04; statsBody[3] = 0xFF; statsBody[4] = 0x1F; statsBody[5] = 0x10; statsBody[6] = 0x0E; statsBody[13 + 0 * 4] = 5; statsBody[13 + 6 * 4] = 12; statsBody[13 + 9 * 4] = 0xE8; statsBody[13 + 9 * 4 + 1] = 0x03; statsBody[97] = 0x9C; statsBody[98] = 0x1D; statsBody[101] = 93;
+  const stamp = Math.floor(Date.now() / 1000) - 120;
+  const stampBytes = [stamp & 0xFF, (stamp >>> 8) & 0xFF, (stamp >>> 16) & 0xFF, (stamp >>> 24) & 0xFF];
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([29, 23, 0x9D, 102, ...statsBody, ...stampBytes])}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([31, 0xF3, 2, 0xBC, 1]).buffer) } })`);
+  await sleep(60);
+  const report = await evaluate(`({ text: document.getElementById('lp0-station-report').textContent, rows: document.querySelectorAll('#lp0-station-report .lp0-station-row').length, warn: document.querySelectorAll('#lp0-station-report .lp0-station-row.is-warn').length })`);
+  check(`${tag} LP0: the station block appears for the station role and loads the newest stored report with flash_get_from_head on port 23`, asked.shown && asked.recoverShown && asked.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xBC, 12, 23, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0])) && /Loading the latest/.test(asked.text), asked);
+  check(`${tag} LP0: the stored report renders as station status rows`, /present and writable/.test(report.text) && /listening for trackers/.test(report.text) && /5 complete/.test(report.text) && /12 packets, 1000 bytes/.test(report.text) && /7580 MB, 93% free/.test(report.text) && /Report v3, stored/.test(report.text) && /minutes ago/.test(report.text) && report.rows >= 9 && report.warn === 0, report);
+  // Check SD card: 20 D3 00, no reply on success, then the fresh report is fetched; a refusal is a toast.
   await evaluate(`(() => { window.__writes.length = 0; requestLp0RecoverSd(); return true; })()`);
   await sleep(50);
   const recover = await evaluate(`({ writes: window.__writes, toast: document.getElementById('toast').innerText })`);
   await evaluate(`(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([31, 0xF3, 2, 0xD3, 0x00]).buffer) } }); return true; })()`);
   await sleep(50);
   const refused = await evaluate(`document.getElementById('toast').innerText`);
-  check(`${tag} LP0: GPS fix before offloading is a panel toggle with a summary sentence; LoRaWAN and fix-time toggles exist`, gpsBefore.hidden === 'true' && /GPS fix before offloading\./.test(gpsBefore.summary) && gpsBefore.recoverShown && gpsBefore.networkSwitch && gpsBefore.fixTime, gpsBefore);
-  check(`${tag} LP0: Recover SD card sends 20 D3 00 and a refused reply shows a toast`, recover.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD3, 0x00])) && /test its SD card/.test(recover.toast) && /did not start the SD card recovery/.test(refused), { recover, refused });
+  await sleep(3100);
+  const noFetch = await evaluate(`({ writes: window.__writes.filter(w => w[1] === 0xBC).length, active: stationReportState.active })`);
+  check(`${tag} LP0: Check SD card sends 20 D3 00, a refusal shows a toast and stops the report fetch`, recover.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD3, 0x00])) && /SD card check requested/.test(recover.toast) && /refused the SD card check/.test(refused) && noFetch.writes === 0 && !noFetch.active, { recover, refused, noFetch });
+  await evaluate(`(() => { window.__writes.length = 0; requestLp0RecoverSd(); return true; })()`);
+  await sleep(3200);
+  const fetched = await evaluate(`({ writes: window.__writes, text: document.getElementById('lp0-station-report').textContent })`);
+  const fresh = statsBody.slice(); fresh[5] = 0x20; fresh[6] = 0x1C; fresh[13 + 0 * 4] = 6; // uptime 7200 s, one more visit
+  const stamp2 = stamp + 130; const stamp2Bytes = [stamp2 & 0xFF, (stamp2 >>> 8) & 0xFF, (stamp2 >>> 16) & 0xFF, (stamp2 >>> 24) & 0xFF];
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([29, 23, 0x9D, 102, ...fresh, ...stamp2Bytes])}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([31, 0xF3, 2, 0xBC, 1]).buffer) } })`);
+  await sleep(60);
+  const refreshed = await evaluate(`({ text: document.getElementById('lp0-station-report').textContent, toast: document.getElementById('toast').innerText })`);
+  check(`${tag} LP0: after an accepted SD card check the app fetches the fresh report and shows it`, fetched.writes.some(w => w[1] === 0xBC) && /Checking for the fresh report/.test(fetched.text) && /6 complete/.test(refreshed.text) && /Fresh station report received/.test(refreshed.toast), { fetched: fetched.writes, refreshed });
+  // Refresh state: a cancel of job 0xFFFFFFFF, answered with the current (automatic) job's state.
+  await evaluate(`(() => { window.__writes.length = 0; refreshLp0Status(); return true; })()`);
+  await sleep(50);
+  const probe = await evaluate(`({ writes: window.__writes, status: document.getElementById('lp0-job-status').textContent })`);
+  const stateReply = [0x20, 0xD1, 17, 0, 0, 0, 0, 4, 0, 2, 0, 1, 0x8C, 0xFF, 0xFF, 0xFF, 5, 0, 0, 0]; // automatic job, sending, LP0, unconfirmed, all ports, -116 (stale probe), 5 confirmed
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply)}).buffer) } })`);
+  await sleep(60);
+  const stateShown = await evaluate(`({ state: document.querySelector('#lp0-job-status .lp0-job-state').textContent, status: document.getElementById('lp0-job-status').textContent, toast: document.getElementById('toast').innerText })`);
+  check(`${tag} LP0: Refresh state probes with cancel 0xFFFFFFFF and renders the current automatic job without a result line`, probe.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 255, 255, 255, 255])) && /State requested/.test(probe.status) && stateShown.state === 'Current state: sending' && /Job automatic/.test(stateShown.status) && /not reported by a state refresh/.test(stateShown.status) && /5 records confirmed saved/.test(stateShown.status) && /Offload state: sending/.test(stateShown.toast), { probe, stateShown });
   await evaluate(`(() => { document.getElementById('lp0-delete-selector').value = '8'; requestLp0DeleteConfirmed(); return true; })()`);
   const overlay = await evaluate(`({ hidden: document.getElementById('lp0-delete-confirm-overlay').classList.contains('hidden'), text: document.getElementById('lp0-delete-confirm-text').textContent })`);
   await evaluate(`lp0DeleteConfirmed()`);
@@ -581,11 +631,80 @@ async function lp0Offload(tag) {
     return { panel: Boolean(document.getElementById('panel-lp0')), card: !document.getElementById('lp0-area').classList.contains('hidden'), feature: Array.from(document.querySelectorAll('#features-list .feature-name')).map(n => n.textContent).includes('LP0 offload') }; })()`);
   check(`${tag} LP0: an 8.0 collar with the 8.1.0 schema picked by hand still gets no LP0 panel or card`, !older.panel && !older.card && !older.feature, older);
 }
+// Logs card on 8.1+ firmware: "Download new logs" starts a Bluetooth transfer of the records not
+// yet confirmed over Bluetooth (20 CF 03 03 02 port). The records arrive on port 29 as before;
+// the end is found by probing the job state after a short silence, since the firmware sends no
+// closing message for these transfers.
+async function newLogsDownload(tag) {
+  await evaluate(`loadSettings('settings/settings-v8.2.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
+    displaySettings(); settingsDraft.reset(); mountSettingsPanels(); renderLp0Section(); renderFeatures(); return true; })`);
+  await evaluate(FAKE_DEVICE);
+  await evaluate(SAVE_PROBE);
+  await evaluate(`(() => { document.body.classList.add('connected'); return true; })()`);
+  const offered = await evaluate(`({ rowShown: !document.getElementById('flash-log-new-only-row').classList.contains('hidden'), checked: document.getElementById('flash-log-new-only').checked,
+    all: document.getElementById('flash-log-download-button').textContent, byType: document.getElementById('flash-log-type-download-button').textContent })`);
+  check(`${tag} new logs: the toggle is offered and on by default, the buttons say "new"`, offered.rowShown && offered.checked && offered.all === 'Download new logs' && offered.byType === 'Download new messages of this type', offered);
+  const overlay = () => evaluate(`({ hidden: document.getElementById('flash-log-overlay').classList.contains('hidden'), title: document.getElementById('flash-log-overlay-title').textContent, detail: document.getElementById('flash-log-overlay-progress-text').textContent, message: document.getElementById('flash-log-overlay-message').textContent, writes: window.__writes.slice(), downloads: window.__downloads.slice() })`);
+  await evaluate(`(() => { window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  const started = await overlay();
+  const startReply = (job, state, result, confirmed) => [0x20, 0xCF, 17, job, 0, 0, 0, state, 3, 2, 0, 0, result & 0xFF, (result >> 8) & 0xFF, (result >> 16) & 0xFF, (result >> 24) & 0xFF, confirmed, 0, 0, 0];
+  const stateReply = (job, state, confirmed) => [0x20, 0xD1, 17, job, 0, 0, 0, state, 3, 2, 0, 0, 0x8C, 0xFF, 0xFF, 0xFF, confirmed, 0, 0, 0];
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(9, 4, -115, 0))}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([29, 4, 0xF4, 14, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, 0x55, 1, 0, 0, 0]).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array([29, 18, 0x97, 4, 1, 2, 3, 4, 2, 0, 0, 0]).buffer) } })`);
+  await sleep(100);
+  const streaming = await overlay();
+  check(`${tag} new logs: the download sends 20 CF 03 03 02 00 and shows the records as they arrive`, started.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xCF, 3, 3, 2, 0])) && !started.hidden && /Downloading logs \(new\)/.test(started.title) && /Received 2 messages/.test(streaming.detail), { started, streaming });
+  await sleep(3300);
+  const probed = await overlay();
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply(9, 6, 2))}).buffer) } })`);
+  await sleep(100);
+  const done = await overlay();
+  check(`${tag} new logs: after 3 s of silence the app probes the job state (cancel 0xFFFFFFFF) and a "done" state completes the download`, probed.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 255, 255, 255, 255])) && !probed.hidden && /Downloading/.test(probed.title) && done.title === 'Log download complete' && /raw_logs-new-/.test(done.detail) && /marked these records as downloaded/.test(done.message) && (ios || done.downloads.some(d => /raw_logs-new-/.test(d.name))), { probed: probed.writes, done });
+  // Nothing new: the probe answers done with no records.
+  await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -115, 0))}).buffer) } })`);
+  await sleep(3300);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply(10, 6, 0))}).buffer) } })`);
+  await sleep(100);
+  const empty = await overlay();
+  check(`${tag} new logs: a transfer with no records ends as "No new logs"`, empty.title === 'No new logs' && /not yet downloaded over Bluetooth/.test(empty.detail), empty);
+  // Busy device: the start reply carries EBUSY.
+  await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -16, 0))}).buffer) } })`);
+  await sleep(100);
+  const busy = await overlay();
+  check(`${tag} new logs: a refused start shows why`, busy.title === 'Log download interrupted' && /did not start the transfer: another offload/.test(busy.detail), busy);
+  // Cancel: the device is asked to cancel the job, the reply stays out of the LP0 card.
+  await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(11, 4, -115, 0))}).buffer) } })`);
+  await sleep(60);
+  const lp0Before = await evaluate(`document.getElementById('lp0-job-status').textContent`);
+  await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); return true; })()`);
+  await sleep(60);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([0x20, 0xD1, 17, 11, 0, 0, 0, 5, 3, 2, 0, 0, 0x83, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0])}).buffer) } })`);
+  await sleep(60);
+  const cancelled = await evaluate(`({ writes: window.__writes, hidden: document.getElementById('flash-log-overlay').classList.contains('hidden'), active: flashLogState.active, lp0: document.getElementById('lp0-job-status').textContent })`);
+  check(`${tag} new logs: Cancel asks the device to cancel the job and its reply does not touch the LP0 card`, cancelled.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xD1, 4, 11, 0, 0, 0])) && cancelled.hidden && !cancelled.active && cancelled.lp0 === lp0Before, cancelled);
+  // Toggle off: the legacy flash_get_all download.
+  await evaluate(`(() => { document.getElementById('flash-log-new-only').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  const legacy = await evaluate(`({ label: document.getElementById('flash-log-download-button').textContent, byType: document.getElementById('flash-log-type-download-button').textContent, writes: window.__writes, title: document.getElementById('flash-log-overlay-title').textContent })`);
+  await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); return true; })()`);
+  check(`${tag} new logs: with the toggle off the buttons say "all" and the download uses flash_get_all`, legacy.label === 'Download all logs' && legacy.byType === 'Download all messages of this type' && legacy.writes.some(w => JSON.stringify(w) === JSON.stringify([0x20, 0xBB, 1, 0])) && /Downloading logs \(all\)/.test(legacy.title), legacy);
+  // An 8.0 device: no toggle, plain labels.
+  const older = await evaluate(`(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 0 }; renderLp0Section(); return { rowShown: !document.getElementById('flash-log-new-only-row').classList.contains('hidden'), label: document.getElementById('flash-log-download-button').textContent }; })()`);
+  check(`${tag} new logs: an 8.0 device gets no toggle and the plain "Download all logs"`, !older.rowShown && older.label === 'Download all logs', older);
+}
 // The DFU page shows only the header, the DFU cards and the firmware notes. The cards are hidden
 // by structure (every other body-level page section), so a new card can never slip onto the DFU
 // page again; the LP0 offload card did once because the old id list did not name it.
 async function dfuPage(tag) {
-  await evaluate(`loadSettings('settings/settings-v8.1.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
+  await evaluate(`loadSettings('settings/settings-v8.2.0.json').then(() => { lastStatusInfo = { ver_fw_major: 8, ver_fw_minor: 1, fwVersion: '8.1', hwVersion: '1.8', fwType: 0, hwType: 5 };
     displaySettings(); settingsDraft.reset(); mountSettingsPanels(); renderLp0Section(); renderFeatures(); return true; })`);
   const visible = `(() => Array.from(document.querySelectorAll('body > .page-section')).filter(s => getComputedStyle(s).display !== 'none').map(s => s.id))()`;
   const before = await evaluate(visible);
@@ -677,7 +796,7 @@ async function offlineCache(tag) {
     await navigate(`${origin}/index.html`);
     const offlineOpen = await waitForQuiet(appOpen, 10000);
     const offlineMs = Date.now() - started;
-    const offlineSchema = await waitForQuiet(`loadSettings('settings/settings-v8.1.0.json').then(() => Boolean(settingsData))`, 5000);
+    const offlineSchema = await waitForQuiet(`loadSettings('settings/settings-v8.2.0.json').then(() => Boolean(settingsData))`, 5000);
     const offlineNotes = await evaluate(`loadDeviceVersionNotes().then(d => d.notes.length > 0)`);
     check(`${tag} offline: without any connection the cached app opens within 3 seconds with its schemas and firmware notes`, offlineOpen && offlineMs < 3000 && offlineSchema && offlineNotes, { offlineOpen, offlineMs, offlineSchema, offlineNotes });
     await evaluate(`(() => { document.getElementById('toast').innerText = ''; document.getElementById('app-version').click(); return true; })()`);
@@ -705,7 +824,7 @@ async function offlineCache(tag) {
     const updated = await waitForQuiet(`/deploy-2/.test(document.getElementById('app-version').textContent) && navigator.serviceWorker.controller`, 30000);
     const afterDeploy = await evaluate(`caches.keys().then(async names => ({ names, binaries: names.length ? (await (await caches.open(names[0])).keys()).filter(r => r.url.includes('/assets/dfu/releases/')).length : 0 }))`);
     const downloaded = srv.state.requests.filter(p => p.includes('/assets/dfu/releases/')).length;
-    const appFilesFetched = ['/index.html', '/functions.js', '/style.css', '/settings/settings-v8.1.0.json'].every(p => srv.state.requests.includes(p));
+    const appFilesFetched = ['/index.html', '/functions.js', '/style.css', '/settings/settings-v8.2.0.json'].every(p => srv.state.requests.includes(p));
     check(`${tag} offline: a deploy installs a new cache with fresh app files and the page reloads into the new version`, updated && afterDeploy.names.length === 1 && afterDeploy.names[0] === 'app-cache-deploy2' && appFilesFetched, { updated, afterDeploy, appFilesFetched });
     check(`${tag} offline: the deploy carries every built-in DFU file over without downloading it again`, afterDeploy.binaries === manifestFiles && downloaded === 0, { binaries: afterDeploy.binaries, manifestFiles, downloaded });
   } finally {
@@ -717,7 +836,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

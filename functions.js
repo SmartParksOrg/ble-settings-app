@@ -85,7 +85,7 @@ const customInputRenderers = {
 // choice and the composer's default; the firmware match (findSettingsFileForFirmware) still
 // selects them for a collar that reports that version.
 const SETTINGS_FILES = [
-    "settings-v8.1.0.json", // development snapshot (LP0 offload beta), see README
+    "settings-v8.2.0.json", // beta: 8.2.0 pre-release schema (LP0 offload), see README
     "settings-v8.0.3.json",
     "settings-v8.0.2.json",
     "settings-v8.0.1.json",
@@ -104,7 +104,7 @@ const SETTINGS_FILES = [
     "settings-v4.4.2.json"
 ];
 const BETA_SETTINGS_FILES = new Set([
-    "settings-v8.1.0.json"
+    "settings-v8.2.0.json"
 ]);
 const BETA_SETTINGS_GROUP_LABEL = "Beta: development firmware";
 const SETTINGS_META_FILE = "settings-meta.json";
@@ -1323,7 +1323,7 @@ function renderLp0CommunicationParams(setting, value) {
     `;
 }
 
-// LP0 signal checks (firmware 8.1 development builds): six bytes
+// LP0 signal checks (firmware 8.2 beta): six bytes
 // [master, CAD, RSSI enabled, RSSI magnitude, margin enabled, margin dB]. The RSSI byte is a
 // positive magnitude (100 means -100 dBm); zero is a real threshold, not off.
 const LP0_SIGNAL_CHECK_FIELDS = [
@@ -2502,7 +2502,7 @@ function getSettingConstraintDetails(key, setting) {
 }
 
 // Byte-array bounds. Most schemas give byte arrays an all-zero max, meaning "not checked";
-// where the max carries real limits (lp0_signal_checks since firmware 8.1) each byte is
+// where the max carries real limits (lp0_signal_checks since firmware 8.2) each byte is
 // checked against its own min and max, as the firmware does before saving.
 function parseByteArrayBound(bound, expectedLength) {
     if (typeof bound !== 'string') {
@@ -2704,7 +2704,7 @@ if (typeof window !== 'undefined') {
     window.saveTextFileCompat = saveTextFileCompat;
 }
 
-// ---- LP0 offload (firmware 8.1 development builds) -------------------------------------
+// ---- LP0 offload (firmware 8.2 beta) -------------------------------------
 // Pure decoders for the station statistics message (port 23, id 0x9D) and the reply to the
 // offload start and cancel commands (0xCF, 0xD1). Layouts follow app/src/lp0/README.md
 // ("Statistics wire layout", "Explicit saved-record actions") in the firmware repository.
@@ -2868,6 +2868,355 @@ function decodeOffloadJobReply(body) {
         resultLabel: LP0_OFFLOAD_ERRNO[String(result)] || `firmware error ${result}`,
         confirmed: view.getUint32(13, true)
     };
+}
+
+// Explicit saved-record transfers (cmd_offload_start 0xCF / cmd_offload_cancel 0xD1, firmware
+// 8.2 beta). The Bluetooth medium streams the records on port 29 like flash_get_all, but the
+// firmware releases the transfer without a closing message. A cancel with a job ID that cannot
+// exist is refused with ESTALE and still answers with the current job's state and confirmed
+// count, and cancels nothing (offload_job_cancel in the firmware source); the app uses that as
+// its state query since the firmware has no dedicated one.
+const OFFLOAD_STATUS_PROBE_JOB_ID = 0xFFFFFFFF;
+const OFFLOAD_MEDIUM_BLUETOOTH = 3;
+const OFFLOAD_SELECTION_UNCONFIRMED = 2;
+
+function encodeOffloadStart(medium, selection, port) {
+    return [0x20, 0xCF, 0x03, medium & 0xFF, selection & 0xFF, port & 0xFF];
+}
+
+function encodeOffloadCancel(jobId) {
+    const id = Number(jobId) >>> 0;
+    return [0x20, 0xD1, 0x04, id & 0xFF, (id >>> 8) & 0xFF, (id >>> 16) & 0xFF, (id >>> 24) & 0xFF];
+}
+
+// Rows for the station status block of the LP0 card, from a decoded statistics report: what a
+// person checks on an offload station (card, reader, radio, visits, saved data, space, errors).
+// Unknown flags are never shown as healthy. level: ok | warn | muted.
+function describeStationReport(decoded) {
+    const flag = key => {
+        const entry = decoded.status.find(item => item.key === key);
+        return entry ? entry.value : null;
+    };
+    const rows = [];
+    const missing = flag('sd_card_missing');
+    const fault = flag('sdfs_error');
+    const detected = flag('card_detected');
+    const writable = flag('card_writable');
+    if (missing === true) {
+        rows.push({ label: 'SD card', value: 'missing', level: 'warn' });
+    } else if (fault === true) {
+        rows.push({ label: 'SD card', value: 'storage fault, no offloads until recovered', level: 'warn' });
+    } else if (detected === true && writable === true) {
+        rows.push({ label: 'SD card', value: 'present and writable', level: 'ok' });
+    } else if (detected === true) {
+        rows.push({ label: 'SD card', value: writable === false ? 'present, last write failed' : 'present, write not yet verified', level: writable === false ? 'warn' : 'muted' });
+    } else if (detected === false) {
+        rows.push({ label: 'SD card', value: 'not detected', level: 'warn' });
+    } else {
+        rows.push({ label: 'SD card', value: 'unknown', level: 'muted' });
+    }
+    const unresponsive = flag('sdfs_unresponsive');
+    const resync = flag('sdfs_recovery_required');
+    rows.push({
+        label: 'SD reader',
+        value: unresponsive === true ? 'not responding' : resync === true ? 'needs resynchronisation' : unresponsive === false ? 'responding' : 'unknown',
+        level: unresponsive === true || resync === true ? 'warn' : unresponsive === false ? 'ok' : 'muted'
+    });
+    const enabled = flag('enabled');
+    const listening = flag('listening');
+    const visit = flag('session_active');
+    const radioFault = flag('radio_fault');
+    rows.push({
+        label: 'LP0 radio',
+        value: radioFault === true ? 'radio fault' : visit === true ? 'offload visit in progress' : listening === true ? 'listening for trackers'
+            : enabled === true ? 'enabled, idle' : enabled === false ? 'disabled or suspended' : 'unknown',
+        level: radioFault === true || enabled === false ? 'warn' : enabled === null ? 'muted' : 'ok'
+    });
+    if (flag('storage_queue_full') === true) {
+        rows.push({ label: 'Storage queue', value: 'full', level: 'warn' });
+    }
+    if (flag('flash_available') === false) {
+        rows.push({ label: 'Flash logging', value: 'disabled', level: 'warn' });
+    }
+    const c = decoded.counters;
+    rows.push({ label: 'Up since boot', value: formatDurationCompact(decoded.uptimeSeconds), level: 'muted' });
+    const notCompleted = c.visits_failed + c.visits_timed_out + c.visits_cancelled;
+    rows.push({
+        label: 'Tracker visits',
+        value: `${c.visits_complete} complete, ${c.visits_partial} partial, ${notCompleted} not completed`,
+        level: notCompleted > 0 && notCompleted >= c.visits_complete ? 'warn' : 'muted'
+    });
+    rows.push({
+        label: 'Records saved to SD',
+        value: `${c.data_saved} packets, ${c.data_saved_bytes} bytes${c.data_failed || c.data_dropped ? `; ${c.data_failed} failed, ${c.data_dropped} dropped` : ''}`,
+        level: c.data_failed || c.data_dropped ? 'warn' : 'muted'
+    });
+    if (decoded.sdCapacityMb !== null || decoded.sdFreePercent !== null) {
+        rows.push({
+            label: 'SD space',
+            value: `${decoded.sdCapacityMb !== null ? `${decoded.sdCapacityMb} MB` : 'size unknown'}${decoded.sdFreePercent !== null ? `, ${decoded.sdFreePercent}% free` : ''}`,
+            level: decoded.sdFreePercent !== null && decoded.sdFreePercent < 10 ? 'warn' : 'muted'
+        });
+    } else {
+        rows.push({ label: 'SD space', value: 'unknown (reader units not qualified yet)', level: 'muted' });
+    }
+    const storageErrors = c.sd_media_errors + c.sdfs_errors;
+    rows.push({
+        label: 'Storage errors since boot',
+        value: storageErrors ? `${c.sd_media_errors} media, ${c.sdfs_errors} reader` : 'none',
+        level: storageErrors ? 'warn' : 'ok'
+    });
+    rows.push({ label: 'Reports', value: `${c.reports_generated} generated, ${c.report_tx_failed} failed to send`, level: 'muted' });
+    const unknown = decoded.status.filter(entry => !entry.known).length;
+    if (unknown) {
+        rows.push({ label: 'Unknown status flags', value: String(unknown), level: 'muted' });
+    }
+    return rows;
+}
+
+// ---- Message decoders shared by the Logs card and the Debug log -----------------------------
+// Rule (Tim, 2026-11-06): every message type the firmware's TTN decoder (scripts/ttn_decoder.js
+// in the firmware repo) decodes for a bundled release must decode in the app too. The decoders
+// below take the message body (the bytes after the id and the length byte) and mirror that
+// decoder's field layout; the Node test "every message in every bundled schema has a decoder"
+// fails when a schema adds a message that is in none of the lists.
+
+function readLe32(bytes, offset) {
+    return ((bytes[offset] || 0) | ((bytes[offset + 1] || 0) << 8) | ((bytes[offset + 2] || 0) << 16) | ((bytes[offset + 3] || 0) << 24)) >>> 0;
+}
+
+function readLeFloat(bytes, offset) {
+    return new DataView(new Uint8Array([bytes[offset] || 0, bytes[offset + 1] || 0, bytes[offset + 2] || 0, bytes[offset + 3] || 0]).buffer).getFloat32(0, true);
+}
+
+function formatDecimal(value, decimals = 1) {
+    return Number.isFinite(value) ? Number(value.toFixed(decimals)).toString() : 'n/a';
+}
+
+// Port 14, id 0x94: `% used, message count u32`. The firmware is adding confirmed and
+// unconfirmed counts to this message (announced 2026-11-06); extend here when the layout lands.
+function decodeFlashStatusMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    if (bytes.length < 5) {
+        throw new Error(`Flash status body is ${bytes.length} bytes, expected 5`);
+    }
+    return { usedPercent: bytes[0], messageCount: readLe32(bytes, 1) };
+}
+
+function summarizeFlashStatus(decoded) {
+    return `Flash ${decoded.usedPercent}% used, ${decoded.messageCount} message${decoded.messageCount === 1 ? '' : 's'} stored`;
+}
+
+// Port 5, id 0xF5: LR1110 satellites seen: count, then (id, C/N0) pairs.
+function decodeLrSatellitesMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    const count = bytes.length ? bytes[0] : 0;
+    const satellites = [];
+    for (let index = 0; index < count && 1 + index * 2 + 1 < bytes.length; index += 1) {
+        satellites.push({ id: bytes[1 + index * 2], cnr: bytes[2 + index * 2] });
+    }
+    return { count, satellites };
+}
+
+const GNSS_CONSTELLATIONS = { 1: 'GPS', 2: 'GLONASS', 3: 'combined', 4: 'Galileo', 5: 'BeiDou' };
+
+// Port 9, id 0xF6: u-blox satellites: count, then 6 bytes each (id, C/N0, elevation, azimuth
+// u16, constellation).
+function decodeUbloxSatellitesMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    const count = bytes.length ? bytes[0] : 0;
+    const satellites = [];
+    for (let index = 0; index < count && 1 + index * 6 + 5 < bytes.length; index += 1) {
+        const at = 1 + index * 6;
+        satellites.push({
+            id: bytes[at],
+            cn0: bytes[at + 1],
+            elevation: bytes[at + 2],
+            azimuth: bytes[at + 3] | (bytes[at + 4] << 8),
+            constellation: GNSS_CONSTELLATIONS[bytes[at + 5]] || `constellation ${bytes[at + 5]}`
+        });
+    }
+    return { count, satellites };
+}
+
+function summarizeSatellites(decoded, describe) {
+    const shown = decoded.satellites.slice(0, 6).map(describe).join('; ');
+    const more = decoded.satellites.length > 6 ? '; ...' : '';
+    return `${decoded.count} satellite${decoded.count === 1 ? '' : 's'} seen${decoded.satellites.length !== decoded.count ? ` (${decoded.satellites.length} reported)` : ''}${shown ? `: ${shown}${more}` : ''}`;
+}
+
+// Port 1, id 0xF1: LR1110 GNSS scan result; the NAV payload is forwarded as hex to the
+// LoRa Cloud solver (the first body byte is skipped, as in the TTN decoder).
+function decodeGnssMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    return { navPayload: bytesToHex(bytes.slice(1)).toLowerCase() };
+}
+
+// Port 19, id 0x98: external switch detection: activity byte, duration in ms (u32).
+function decodeExternalSwitchMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    if (bytes.length < 5) {
+        throw new Error(`External switch body is ${bytes.length} bytes, expected 5`);
+    }
+    return { activity: bytes[0], durationMs: readLe32(bytes, 1) };
+}
+
+// Port 20, id 0x99: external switch status: a first byte of 2 means an impulse count follows,
+// otherwise the activity byte and the number of active detections.
+function decodeExternalSwitchStatusMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    if (bytes.length < 5) {
+        throw new Error(`External switch status body is ${bytes.length} bytes, expected 5`);
+    }
+    if (bytes[0] === 2) {
+        return { impulseCount: readLe32(bytes, 1) };
+    }
+    return { activity: bytes[0], activeDetections: readLe32(bytes, 1) };
+}
+
+// Port 21, id 0x9A: air quality. Body of 20 bytes = BME690 only, 25 = BMV080 only, 45 = BMV080
+// then BME690 (the firmware's 2026 fix; the 8.0.x schema still says 47). Floats, little-endian.
+function decodeAirQualityMessage(body) {
+    const bytes = body instanceof Uint8Array ? body : new Uint8Array(body);
+    const bme = offset => ({
+        iaq: readLeFloat(bytes, offset),
+        temperature: readLeFloat(bytes, offset + 4),
+        pressure: readLeFloat(bytes, offset + 8),
+        humidity: readLeFloat(bytes, offset + 12),
+        rawGas: readLeFloat(bytes, offset + 16)
+    });
+    const bmv = offset => ({
+        pm2_5Mass: readLeFloat(bytes, offset),
+        pm1Mass: readLeFloat(bytes, offset + 4),
+        pm10Mass: readLeFloat(bytes, offset + 8),
+        pm2_5Count: readLeFloat(bytes, offset + 12),
+        pm1Count: readLeFloat(bytes, offset + 16),
+        pm10Count: readLeFloat(bytes, offset + 20),
+        obstructed: bytes[offset + 24] !== 0
+    });
+    if (bytes.length === 20) {
+        return { bme690: bme(0), bmv080: null };
+    }
+    if (bytes.length === 25) {
+        return { bme690: null, bmv080: bmv(0) };
+    }
+    if (bytes.length === 45) {
+        return { bme690: bme(25), bmv080: bmv(0) };
+    }
+    throw new Error(`Air quality body is ${bytes.length} bytes, expected 20, 25 or 45`);
+}
+
+function summarizeAirQuality(decoded) {
+    const parts = [];
+    if (decoded.bme690) {
+        const b = decoded.bme690;
+        parts.push(`IAQ ${formatDecimal(b.iaq, 0)}, ${formatDecimal(b.temperature)} °C, ${formatDecimal(b.humidity)} % RH, ${formatDecimal(b.pressure)} hPa, raw gas ${formatDecimal(b.rawGas, 0)}`);
+    }
+    if (decoded.bmv080) {
+        const p = decoded.bmv080;
+        parts.push(`PM1/PM2.5/PM10 ${formatDecimal(p.pm1Mass)}/${formatDecimal(p.pm2_5Mass)}/${formatDecimal(p.pm10Mass)} µg/m³, ${formatDecimal(p.pm1Count, 0)}/${formatDecimal(p.pm2_5Count, 0)}/${formatDecimal(p.pm10Count, 0)} particles/cm³${p.obstructed ? ', sensor obstructed' : ''}`);
+    }
+    return parts.length ? `Air quality: ${parts.join('; ')}` : 'Air quality: no sensor data';
+}
+
+// One-line summaries per message key, plus optional detail rows for the fold in the Logs card.
+const MESSAGE_SUMMARIZERS = {
+    msg_flash_status: {
+        summarize: body => summarizeFlashStatus(decodeFlashStatusMessage(body))
+    },
+    msg_lr_satellites: {
+        summarize: body => summarizeSatellites(decodeLrSatellitesMessage(body), sat => `id ${sat.id} (C/N0 ${sat.cnr})`),
+        rows: body => decodeLrSatellitesMessage(body).satellites.map(sat => ({ label: `Satellite ${sat.id}`, value: `C/N0 ${sat.cnr}` }))
+    },
+    msg_ublox_satellites: {
+        summarize: body => summarizeSatellites(decodeUbloxSatellitesMessage(body), sat => `${sat.constellation} ${sat.id} (C/N0 ${sat.cn0}, elevation ${sat.elevation}°, azimuth ${sat.azimuth}°)`),
+        rows: body => decodeUbloxSatellitesMessage(body).satellites.map(sat => ({ label: `${sat.constellation} ${sat.id}`, value: `C/N0 ${sat.cn0}, elevation ${sat.elevation}°, azimuth ${sat.azimuth}°` }))
+    },
+    msg_gnss: {
+        summarize: body => {
+            const { navPayload } = decodeGnssMessage(body);
+            return navPayload
+                ? `LR1110 GNSS scan, ${navPayload.length / 2}-byte NAV payload for the LoRa Cloud solver: ${navPayload.slice(0, 48)}${navPayload.length > 48 ? '...' : ''}`
+                : 'LR1110 GNSS scan without a NAV payload';
+        }
+    },
+    msg_external_switch_detection: {
+        summarize: body => {
+            const d = decodeExternalSwitchMessage(body);
+            return `External switch ${d.activity ? 'active' : 'inactive'} (activity ${d.activity}) for ${formatDurationCompact(Math.round(d.durationMs / 1000))} (${d.durationMs} ms)`;
+        }
+    },
+    msg_external_switch_detection_status: {
+        summarize: body => {
+            const d = decodeExternalSwitchStatusMessage(body);
+            return d.impulseCount !== undefined
+                ? `External switch: ${d.impulseCount} impulse${d.impulseCount === 1 ? '' : 's'} counted`
+                : `External switch ${d.activity ? 'active' : 'inactive'} (activity ${d.activity}), ${d.activeDetections} active detection${d.activeDetections === 1 ? '' : 's'}`;
+        }
+    },
+    msg_air_quality: {
+        summarize: body => summarizeAirQuality(decodeAirQualityMessage(body)),
+        rows: body => {
+            const d = decodeAirQualityMessage(body);
+            const rows = [];
+            if (d.bme690) {
+                rows.push({ label: 'IAQ', value: formatDecimal(d.bme690.iaq, 1) }, { label: 'Temperature', value: `${formatDecimal(d.bme690.temperature, 2)} °C` },
+                    { label: 'Pressure', value: `${formatDecimal(d.bme690.pressure, 2)} hPa` }, { label: 'Humidity', value: `${formatDecimal(d.bme690.humidity, 2)} % RH` }, { label: 'Raw gas', value: formatDecimal(d.bme690.rawGas, 0) });
+            }
+            if (d.bmv080) {
+                rows.push({ label: 'PM1 mass', value: `${formatDecimal(d.bmv080.pm1Mass, 2)} µg/m³` }, { label: 'PM2.5 mass', value: `${formatDecimal(d.bmv080.pm2_5Mass, 2)} µg/m³` }, { label: 'PM10 mass', value: `${formatDecimal(d.bmv080.pm10Mass, 2)} µg/m³` },
+                    { label: 'PM1 count', value: `${formatDecimal(d.bmv080.pm1Count, 1)} /cm³` }, { label: 'PM2.5 count', value: `${formatDecimal(d.bmv080.pm2_5Count, 1)} /cm³` }, { label: 'PM10 count', value: `${formatDecimal(d.bmv080.pm10Count, 1)} /cm³` },
+                    { label: 'Sensor obstructed', value: d.bmv080.obstructed ? 'yes' : 'no' });
+            }
+            return rows;
+        }
+    },
+    msg_memfault_chunks: {
+        summarize: body => `Memfault diagnostics chunk, ${body.length} byte${body.length === 1 ? '' : 's'} (decoded by the Memfault backend, not here)`
+    },
+    msg_lp0_statistics: {
+        summarize: body => summarizeLp0Statistics(decodeLp0StatisticsMessage(body))
+    }
+};
+
+// Messages that the firmware's TTN decoder does not decode either: containers, replies and
+// messages removed from the firmware. Everything else must have a summarizer here or a decoder
+// on the main page (see the parity test).
+const MESSAGES_WITHOUT_DECODER = [
+    'msg_read_flash',      // port 29 container of stored records, unpacked by parseFlashLogRecords
+    'msg_cmd_confirm',     // command reply, handled where the command was sent
+    'msg_mac_id',          // reply to cmd_get_mac, 6 raw bytes
+    'msg_lp0_commands',    // opaque LP0 peer command frames (custom port 33)
+    'msg_lp0_ping',        // never sent by the firmware (see lp0-port-22 note); decoded as a short position if it were
+    'msg_rf_scan',         // RF scanner, removed in firmware 7.1
+    'msg_rf_open_sky_detection', // RF open sky detection, removed in firmware 7.1
+    'msg_v5_update_status' // LR update firmware (v5 migration) only
+];
+
+// Summary text for a message body, or null when no shared summarizer exists.
+function describeMessageBody(key, body) {
+    const entry = MESSAGE_SUMMARIZERS[key];
+    if (!entry) {
+        return null;
+    }
+    try {
+        return entry.summarize(body instanceof Uint8Array ? body : new Uint8Array(body));
+    } catch (error) {
+        return `Could not decode: ${error.message}`;
+    }
+}
+
+// Detail rows for the fold under a summary, or an empty list.
+function describeMessageRows(key, body) {
+    const entry = MESSAGE_SUMMARIZERS[key];
+    if (!entry || !entry.rows) {
+        return [];
+    }
+    try {
+        return entry.rows(body instanceof Uint8Array ? body : new Uint8Array(body));
+    } catch (error) {
+        return [];
+    }
 }
 
 let toastTimeout;

@@ -129,8 +129,8 @@ test('the schema dropdown lists releases first and development snapshots in a Be
     const group = rest[rest.length - 1];
     assert.equal(group.tag, 'optgroup', 'the Beta group is the last entry');
     assert.match(group.label, /^Beta/);
-    assert.deepEqual(group.children.map(o => o.value), ['./settings/settings-v8.1.0.json']);
-    assert.equal(group.children[0].textContent, 'settings-v8.1.0.json (beta)');
+    assert.deepEqual(group.children.map(o => o.value), ['./settings/settings-v8.2.0.json']);
+    assert.equal(group.children[0].textContent, 'settings-v8.2.0.json (beta)');
     const releases = rest.slice(0, -1);
     assert.equal(releases[0].value, './settings/settings-v8.0.3.json', 'the latest release is the first real choice');
     assert.ok(releases.every(o => o.tag === 'option' && !/beta/.test(o.textContent)));
@@ -144,19 +144,25 @@ test('schema selection compares numeric major/minor versions', () => {
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 1 }, files), null);
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 9, ver_fw_minor: 0 }, files), null);
     assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 0 }), 'settings-v8.0.3.json');
-    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 1 }), 'settings-v8.1.0.json', 'the 8.1 development schema');
-    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 2 }), null);
+    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 2 }), 'settings-v8.2.0.json', 'the 8.2.0 beta schema');
+    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 1 }), null, 'no 8.1 schema is bundled any more');
+    assert.equal(ctx.findSettingsFileForFirmware({ ver_fw_major: 8, ver_fw_minor: 3 }), null);
 });
 
-test('the 8.1.0 development schema adds the LP0 offload settings, commands and statistics message', async () => {
+test('the 8.2.0 beta schema adds the LP0 offload settings, commands and statistics message', async () => {
     const ctx = app();
     await ctx.loadSettingsMeta();
-    await ctx.loadSettings('settings/settings-v8.1.0.json', { ver_fw_major: 8, ver_fw_minor: 1 });
+    await ctx.loadSettings('settings/settings-v8.2.0.json', { ver_fw_major: 8, ver_fw_minor: 2 });
     const data = ctx.evaluate('settingsData');
-    for (const key of ['lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval', 'lp0_gps_before_start', 'lr_enabled', 'ublox_require_time']) {
+    for (const key of ['lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_statistics_interval', 'lp0_gps_before_start', 'lp0_discovery_retry_count', 'lr_enabled', 'ublox_require_time']) {
         assert.ok(data.settings[key], key);
+        assert.ok(ctx.evaluate(`settingsMeta.settings.${key}`), `${key} named in the meta`);
     }
     assert.equal(ctx.getById('0x0527')[0], 'lp0_master_key');
+    assert.equal(ctx.getById('0x052A')[0], 'lp0_discovery_retry_count');
+    assert.equal(data.settings.lp0_discovery_retry_count.default, 0);
+    assert.equal(data.settings.lp0_discovery_retry_count.max, 255);
+    assert.equal(data.settings.lp0_signal_checks.default, '{0x01,0x01,0x01,0x64,0x00,0x14}', 'the background margin check is off by default since 2026-11-03');
     assert.equal(ctx.getById('0x0528')[0], 'lr_enabled');
     assert.equal(ctx.getById('0x0529')[0], 'lp0_gps_before_start');
     assert.equal(ctx.getById('0x0619')[0], 'ublox_require_time');
@@ -178,9 +184,10 @@ test('the 8.1.0 development schema adds the LP0 offload settings, commands and s
 test('LP0 signal checks are validated byte by byte against the schema bounds', async () => {
     const ctx = app();
     await ctx.loadSettingsMeta();
-    await ctx.loadSettings('settings/settings-v8.1.0.json');
+    await ctx.loadSettings('settings/settings-v8.2.0.json');
     const checks = ctx.evaluate('settingsData.settings.lp0_signal_checks');
-    assert.doesNotThrow(() => ctx.validateInput('lp0_signal_checks', checks, '010101640114'), 'the firmware default');
+    assert.doesNotThrow(() => ctx.validateInput('lp0_signal_checks', checks, '010101640014'), 'the firmware default');
+    assert.doesNotThrow(() => ctx.validateInput('lp0_signal_checks', checks, '010101640114'), 'the pre-2026-11-03 default');
     assert.doesNotThrow(() => ctx.validateInput('lp0_signal_checks', checks, '0000007D017F'), 'at the maxima');
     assert.throws(() => ctx.validateInput('lp0_signal_checks', checks, '020101640114'), /Byte 1 must be between 0 and 1/);
     assert.throws(() => ctx.validateInput('lp0_signal_checks', checks, '0101017E0114'), /Byte 4 must be between 0 and 125/);
@@ -299,6 +306,143 @@ test('the offload job reply decodes the state, medium, selection, errno and conf
     view.setInt32(9, -9999, true);
     assert.equal(ctx.decodeOffloadJobReply(reply).resultLabel, 'firmware error -9999');
     assert.throws(() => ctx.decodeOffloadJobReply(reply.slice(0, 10)), /expected 17/);
+});
+
+test('transfer commands encode the firmware bytes and the state probe is a cancel of an impossible job', () => {
+    const ctx = app();
+    const plain = value => JSON.parse(JSON.stringify(value));
+    assert.deepEqual(plain(ctx.encodeOffloadStart(3, 2, 0)), [0x20, 0xCF, 0x03, 3, 2, 0], 'Bluetooth, unconfirmed, all ports');
+    assert.deepEqual(plain(ctx.encodeOffloadStart(0, 2, 4)), [0x20, 0xCF, 0x03, 0, 2, 4]);
+    assert.deepEqual(plain(ctx.encodeOffloadCancel(7)), [0x20, 0xD1, 0x04, 7, 0, 0, 0], 'little-endian job ID');
+    assert.deepEqual(plain(ctx.encodeOffloadCancel(0x01020304)), [0x20, 0xD1, 0x04, 4, 3, 2, 1]);
+    assert.deepEqual(plain(ctx.encodeOffloadCancel(0)), [0x20, 0xD1, 0x04, 0, 0, 0, 0], 'job 0 stops whatever runs');
+    assert.equal(ctx.evaluate('OFFLOAD_STATUS_PROBE_JOB_ID'), 0xFFFFFFFF);
+    assert.deepEqual(plain(ctx.encodeOffloadCancel(ctx.evaluate('OFFLOAD_STATUS_PROBE_JOB_ID'))), [0x20, 0xD1, 0x04, 0xFF, 0xFF, 0xFF, 0xFF]);
+    // The probe's reply: refused with ESTALE, job fields of the current job.
+    const reply = ctx.decodeOffloadJobReply([9, 0, 0, 0, 4, 3, 2, 0, 0, 0x8C, 0xFF, 0xFF, 0xFF, 2, 0, 0, 0]);
+    assert.equal(reply.jobId, 9);
+    assert.equal(reply.stateLabel, 'sending');
+    assert.equal(reply.mediumLabel, 'Bluetooth');
+    assert.equal(reply.result, -116);
+    assert.match(reply.resultLabel, /does not match/);
+    assert.equal(reply.confirmed, 2);
+});
+
+test('the station status rows read the SD card, reader and radio state and never call unknown healthy', () => {
+    const ctx = app();
+    const plain = value => JSON.parse(JSON.stringify(value));
+    const counters = Array.from({ length: 21 }, () => 0);
+    counters[0] = 5; counters[1] = 1; counters[6] = 12; counters[9] = 1000; counters[16] = 3;
+    const healthy = ctx.decodeLp0StatisticsMessage(statisticsBody({ latest: 0b0000010001100011, known: 0b0001111111111111, uptime: 3600, counters, capacity: 7580, free: 93 }));
+    const rows = ctx.describeStationReport(healthy);
+    const row = label => plain(rows.find(entry => entry.label === label) || null);
+    assert.deepEqual(row('SD card'), { label: 'SD card', value: 'present and writable', level: 'ok' });
+    assert.deepEqual(row('SD reader'), { label: 'SD reader', value: 'responding', level: 'ok' });
+    assert.deepEqual(row('LP0 radio'), { label: 'LP0 radio', value: 'listening for trackers', level: 'ok' });
+    assert.equal(row('Up since boot').value, '1 hour');
+    assert.deepEqual(row('Tracker visits'), { label: 'Tracker visits', value: '5 complete, 1 partial, 0 not completed', level: 'muted' });
+    assert.deepEqual(row('Records saved to SD'), { label: 'Records saved to SD', value: '12 packets, 1000 bytes', level: 'muted' });
+    assert.deepEqual(row('SD space'), { label: 'SD space', value: '7580 MB, 93% free', level: 'muted' });
+    assert.deepEqual(row('Storage errors since boot'), { label: 'Storage errors since boot', value: 'none', level: 'ok' });
+    assert.equal(row('Reports').value, '3 generated, 0 failed to send');
+    assert.ok(!row('Unknown status flags') && !row('Storage queue') && !row('Flash logging'));
+
+    // Card missing, storage fault latched, reader unresponsive, radio fault, queue full, flash off, errors.
+    counters[10] = 2; counters[11] = 1; counters[7] = 1; counters[2] = 3;
+    const latest = (1 << 11) | (1 << 12) | (1 << 2) | (1 << 8) | (1 << 9) | (1 << 5);
+    const known = 0b0001111111111111;
+    const faulted = ctx.decodeLp0StatisticsMessage(statisticsBody({ latest, known, uptime: 90, counters, capacity: 7580, free: 4 }));
+    const faultRows = ctx.describeStationReport(faulted);
+    const faultRow = label => plain(faultRows.find(entry => entry.label === label) || null);
+    assert.deepEqual(faultRow('SD card'), { label: 'SD card', value: 'missing', level: 'warn' });
+    assert.deepEqual(faultRow('SD reader'), { label: 'SD reader', value: 'not responding', level: 'warn' });
+    assert.deepEqual(faultRow('LP0 radio'), { label: 'LP0 radio', value: 'radio fault', level: 'warn' });
+    assert.deepEqual(faultRow('Storage queue'), { label: 'Storage queue', value: 'full', level: 'warn' });
+    assert.deepEqual(faultRow('Flash logging'), { label: 'Flash logging', value: 'disabled', level: 'warn' });
+    assert.deepEqual(faultRow('Tracker visits'), { label: 'Tracker visits', value: '5 complete, 1 partial, 3 not completed', level: 'muted' });
+    assert.deepEqual(faultRow('Records saved to SD'), { label: 'Records saved to SD', value: '12 packets, 1000 bytes; 1 failed, 0 dropped', level: 'warn' });
+    assert.equal(faultRow('SD space').level, 'warn', 'under 10% free');
+    assert.deepEqual(faultRow('Storage errors since boot'), { label: 'Storage errors since boot', value: '2 media, 1 reader', level: 'warn' });
+
+    // Unknown bits: the version 2 report leaves the card-missing and fault bits unknown; nothing known is a muted "unknown".
+    const unknown = ctx.decodeLp0StatisticsMessage(statisticsBody({ version: 2, latest: 0, known: 0, counters }));
+    const unknownRows = ctx.describeStationReport(unknown);
+    const unknownRow = label => plain(unknownRows.find(entry => entry.label === label) || null);
+    assert.deepEqual(unknownRow('SD card'), { label: 'SD card', value: 'unknown', level: 'muted' });
+    assert.deepEqual(unknownRow('SD reader'), { label: 'SD reader', value: 'unknown', level: 'muted' });
+    assert.deepEqual(unknownRow('LP0 radio'), { label: 'LP0 radio', value: 'unknown', level: 'muted' });
+    assert.deepEqual(unknownRow('SD space'), { label: 'SD space', value: 'unknown (reader units not qualified yet)', level: 'muted' });
+    assert.equal(unknownRow('Unknown status flags').value, '11');
+    // A card that is detected but whose write was not checked yet is not called writable.
+    const detectedOnly = ctx.decodeLp0StatisticsMessage(statisticsBody({ latest: 0b1, known: 0b1, counters }));
+    assert.deepEqual(plain(ctx.describeStationReport(detectedOnly)[0]), { label: 'SD card', value: 'present, write not yet verified', level: 'muted' });
+});
+
+// Message keys decoded on the main page (index.html) rather than in functions.js: positions,
+// scans, CMDQ, fence, messenger, status and the device timestamp have cards of their own.
+const PAGE_DECODED_MESSAGES = ['msg_status', 'msg_ublox_location', 'msg_ublox_location_short', 'msg_ublox_resend_location', 'msg_last_position', 'msg_timestamp',
+    'msg_lr_messaging', 'msg_lr_messaging_timestamp', 'msg_ble_cmdq', 'msg_fence', 'msg_wifi_scan', 'msg_wifi_scan_aggregated', 'msg_ble_scan', 'msg_ble_scan_aggregated'];
+
+test('every message in every bundled schema has a decoder, or is on the documented raw-only list', () => {
+    const ctx = app();
+    const shared = Object.keys(ctx.evaluate('MESSAGE_SUMMARIZERS'));
+    const rawOnly = JSON.parse(JSON.stringify(ctx.evaluate('MESSAGES_WITHOUT_DECODER')));
+    const covered = new Set([...shared, ...rawOnly, ...PAGE_DECODED_MESSAGES]);
+    for (const file of ctx.evaluate('SETTINGS_FILES')) {
+        const schema = JSON.parse(fs.readFileSync(path.join(root, 'settings', file), 'utf8'));
+        for (const key of Object.keys(schema.messages || {})) {
+            assert.ok(covered.has(key), `${key} in ${file} has no decoder: port it from the release's ttn_decoder.js into MESSAGE_SUMMARIZERS (functions.js)`);
+        }
+    }
+    // The raw-only list stays honest: nothing on it has a summarizer, and nothing decoded on the page is listed twice.
+    for (const key of rawOnly) {
+        assert.ok(!shared.includes(key) && !PAGE_DECODED_MESSAGES.includes(key), `${key} is listed as raw-only but has a decoder`);
+    }
+});
+
+test('the shared message decoders mirror the firmware TTN decoder layouts', () => {
+    const ctx = app();
+    const plain = value => JSON.parse(JSON.stringify(value));
+    const describe = (key, body) => ctx.describeMessageBody(key, Uint8Array.from(body));
+    // Flash status: % used, count u32 LE.
+    assert.deepEqual(plain(ctx.decodeFlashStatusMessage([42, 0x10, 0x27, 0, 0])), { usedPercent: 42, messageCount: 10000 });
+    assert.equal(describe('msg_flash_status', [42, 0x10, 0x27, 0, 0]), 'Flash 42% used, 10000 messages stored');
+    assert.equal(describe('msg_flash_status', [0, 1, 0, 0, 0]), 'Flash 0% used, 1 message stored');
+    assert.match(describe('msg_flash_status', [1, 2]), /^Could not decode: Flash status body is 2 bytes/);
+    // LR satellites: count, then id/C/N0 pairs.
+    assert.deepEqual(plain(ctx.decodeLrSatellitesMessage([3, 12, 34, 7, 20, 25, 41])), { count: 3, satellites: [{ id: 12, cnr: 34 }, { id: 7, cnr: 20 }, { id: 25, cnr: 41 }] });
+    assert.equal(describe('msg_lr_satellites', [2, 12, 34, 7, 20]), '2 satellites seen: id 12 (C/N0 34); id 7 (C/N0 20)');
+    assert.equal(describe('msg_lr_satellites', [5, 12, 34]), '5 satellites seen (1 reported): id 12 (C/N0 34)', 'a truncated body reports fewer than announced');
+    assert.equal(describe('msg_lr_satellites', [0]), '0 satellites seen');
+    // u-blox satellites: count, then id, C/N0, elevation, azimuth u16, constellation.
+    const ublox = [2, 12, 34, 45, 0x7B, 0x00, 1, 20, 30, 60, 0x2C, 0x01, 4];
+    assert.deepEqual(plain(ctx.decodeUbloxSatellitesMessage(ublox)), { count: 2, satellites: [
+        { id: 12, cn0: 34, elevation: 45, azimuth: 123, constellation: 'GPS' }, { id: 20, cn0: 30, elevation: 60, azimuth: 300, constellation: 'Galileo' }] });
+    assert.equal(describe('msg_ublox_satellites', ublox), '2 satellites seen: GPS 12 (C/N0 34, elevation 45°, azimuth 123°); Galileo 20 (C/N0 30, elevation 60°, azimuth 300°)');
+    assert.deepEqual(plain(ctx.describeMessageRows('msg_ublox_satellites', Uint8Array.from(ublox)))[1], { label: 'Galileo 20', value: 'C/N0 30, elevation 60°, azimuth 300°' });
+    // GNSS: the NAV payload as hex, first body byte skipped (as in the TTN decoder).
+    assert.deepEqual(plain(ctx.decodeGnssMessage([0x01, 0xAB, 0xCD, 0xEF])), { navPayload: 'abcdef' });
+    assert.equal(describe('msg_gnss', [0x01, 0xAB, 0xCD, 0xEF]), 'LR1110 GNSS scan, 3-byte NAV payload for the LoRa Cloud solver: abcdef');
+    assert.equal(describe('msg_gnss', [0x01]), 'LR1110 GNSS scan without a NAV payload');
+    // External switch: activity + duration; status: impulse count when the first byte is 2.
+    assert.equal(describe('msg_external_switch_detection', [1, 0xD0, 0x07, 0, 0]), 'External switch active (activity 1) for 2 seconds (2000 ms)');
+    assert.equal(describe('msg_external_switch_detection_status', [2, 0x39, 0x30, 0, 0]), 'External switch: 12345 impulses counted');
+    assert.equal(describe('msg_external_switch_detection_status', [0, 3, 0, 0, 0]), 'External switch inactive (activity 0), 3 active detections');
+    // Air quality: 20 = BME690 only, 25 = BMV080 only, 45 = both (BMV080 first).
+    const f32 = value => { const b = new Uint8Array(4); new DataView(b.buffer).setFloat32(0, value, true); return Array.from(b); };
+    const bme = [...f32(52), ...f32(24.3), ...f32(1012.4), ...f32(41.2), ...f32(123456)];
+    const bmv = [...f32(3.2), ...f32(1.1), ...f32(4), ...f32(12), ...f32(10), ...f32(13), 1];
+    assert.equal(describe('msg_air_quality', bme), 'Air quality: IAQ 52, 24.3 °C, 41.2 % RH, 1012.4 hPa, raw gas 123456');
+    assert.equal(describe('msg_air_quality', bmv), 'Air quality: PM1/PM2.5/PM10 1.1/3.2/4 µg/m³, 10/12/13 particles/cm³, sensor obstructed');
+    const both = ctx.decodeAirQualityMessage(Uint8Array.from([...bmv, ...bme]));
+    assert.equal(plain(both).bme690.humidity.toFixed(1), '41.2');
+    assert.equal(plain(both).bmv080.pm10Mass, 4);
+    assert.equal(ctx.describeMessageRows('msg_air_quality', Uint8Array.from([...bmv, ...bme])).length, 12);
+    assert.match(describe('msg_air_quality', [1, 2, 3]), /^Could not decode: Air quality body is 3 bytes/);
+    // Memfault chunks are opaque; the LP0 statistics summary is shared too; unknown keys give null.
+    assert.match(describe('msg_memfault_chunks', new Array(40).fill(7)), /^Memfault diagnostics chunk, 40 bytes/);
+    assert.match(describe('msg_lp0_statistics', Array.from(statisticsBody({ uptime: 60, counters: new Array(21).fill(0) }))), /^Station statistics v3; up 1 minute/);
+    assert.equal(ctx.describeMessageBody('msg_status', [1, 2, 3]), null);
 });
 
 test('incompatible manually selected schemas fail before registering data', async () => {

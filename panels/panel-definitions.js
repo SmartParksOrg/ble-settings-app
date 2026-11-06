@@ -199,7 +199,7 @@
               { key: 'horizontal_accuracy', label: 'Horizontal accuracy', unit: 'm', help: 'Horizontal accuracy in metres.' },
               { key: 'ublox_min_fix_time', label: 'Minimum search time', control: 'duration', unit: 's', help: 'Minimum time the receiver keeps searching for GNSS satellites in order to make a fix.' },
               { key: 'ublox_require_time', label: 'Fix requires valid time', control: 'toggle',
-                help: 'Firmware 8.1 development builds only. Not yet described in the firmware documentation; leave it off unless the firmware team asks for it.' },
+                help: 'Firmware 8.2 (beta) only. Not yet described in the firmware documentation; leave it off unless the firmware team asks for it.' },
               { key: 'ublox_leave_on', label: 'Receiver stays on after a fix', control: 'duration', unit: 's', help: 'How long the receiver stays on after a fix completes.' },
               { key: 'gps_backoff_factor', label: 'Backoff after failed fix', help: 'Delay applied to the next fix after an unsuccessful attempt.' },
             ],
@@ -289,7 +289,7 @@
     summary: 'network',
     fields: [
       { key: 'lr_enabled', label: 'LoRaWAN', control: 'toggle',
-        help: 'Master switch for the LoRaWAN stack, on by default. Firmware 8.1 development builds only; the firmware documentation does not describe the effect of switching it off yet.',
+        help: 'Master switch for the LoRaWAN stack, on by default. Firmware 8.2 (beta) only; the firmware documentation does not describe the effect of switching it off yet.',
         warnings: [{ when: { key: 'lr_enabled', truthy: false }, text: 'LoRaWAN is switched off. The firmware documentation does not yet describe what the device does without it; keep it on unless the firmware team asks otherwise.' }] },
       { key: 'lr_region', label: 'Region', control: 'select', help: 'LoRaWAN frequency region. Changing it makes the device rejoin the network.' },
       { key: 'lr_adr_profile', label: 'Adaptive data rate', control: 'select',
@@ -618,7 +618,7 @@
     ],
   };
 
-  // LP0 offload clusters (firmware 8.1 development builds, beta): a tracker sends its saved
+  // LP0 offload clusters (firmware 8.2, beta): a tracker sends its saved
   // records over plain LoRa to an offload station that stores them on a microSD card. The
   // role, slot, count, channel span and discovery interval are the five bytes of
   // lp0_node_params; the radio parameters are the four bytes of lp0_communication_params;
@@ -638,7 +638,7 @@
     beta: true,
     minFirmware: { major: 8, minor: 1 },
     requires: ['lp0_master_key', 'lp0_node_params', 'lp0_signal_checks'],
-    description: 'Beta, firmware 8.1 development builds only. A tracker sends its saved records over LoRa to an offload station, which stores them on a microSD card. Every tracker and station in a cluster needs the same master key, radio parameters, station count and channel span. Which message types go over LP0 is set in Data sending and storing; manual offloads and log cleanup are in the LP0 offload card.',
+    description: 'Beta, firmware 8.2 pre-release builds only. A tracker sends its saved records over LoRa to an offload station, which stores them on a microSD card. Every tracker and station in a cluster needs the same master key, radio parameters, station count and channel span. Which message types go over LP0 is set in Data sending and storing; manual offloads, log cleanup and the station status are in the LP0 offload card.',
     summary: 'lp0',
     fields: [
       { key: 'lp0_node_params', byte: 0, control: 'byte', label: 'Role',
@@ -650,6 +650,8 @@
         help: 'Number of discovery response slots for nearby stations, 10 by default. Every tracker and station in the cluster must use the same count; it is capacity for stations, not for trackers.' },
       { key: 'lp0_node_params', byte: 4, control: 'byte', label: 'Discovery interval', unit: 's', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
         help: 'How often a tracker looks for a station, 60 s by default. 0 means as soon as LP0 is idle. Scheduling, random delays and retry backoff make the real wait longer.' },
+      { key: 'lp0_discovery_retry_count', label: 'Discovery retries', unit: 'per interval', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
+        help: 'Extra attempts a tracker may make within one discovery interval after a failed attempt, 0 by default: one attempt per interval, then wait for the next. Retries follow a short randomised delay that doubles up to eight times the listen window. Added in the 2026-10-28 schema.' },
       { key: 'lp0_master_key', control: 'hex', secret: true, generate: true, copy: true, label: 'Cluster master key',
         help: 'One random 16-byte key shared by every tracker and station in the cluster. Generate it once, write the same key to every device and store it safely; a device with another key cannot join. Exported only when credentials are included.',
         warnings: [{ when: { key: 'lp0_master_key', in: ['00000000000000000000000000000000', ''] },
@@ -697,7 +699,7 @@
             enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 2, equals: 1 }] }, reason: 'Only used with the minimum RSSI check.',
             help: 'Entered as a positive number: 100 means -100 dBm. A larger number admits weaker packets; 0 is a real threshold of 0 dBm, not off.' },
           { key: 'lp0_signal_checks', byte: 4, control: 'byte', label: 'Background margin check', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason,
-            help: 'Require a packet to be stronger than the background noise by the margin below.' },
+            help: 'Require a packet to be stronger than the background noise by the margin below. Off by default since the 2026-11-03 schema; the threshold stays stored.' },
           { key: 'lp0_signal_checks', byte: 5, control: 'byte', label: 'Minimum margin', unit: 'dB', min: 0, max: 127,
             enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 4, equals: 1 }] }, reason: 'Only used with the background margin check.',
             help: 'Packet strength above the background, 20 dB by default.' },

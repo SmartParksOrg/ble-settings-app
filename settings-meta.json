@@ -250,6 +250,7 @@
         "lp0_app_key",
         "lp0_communication_params",
         "lp0_node_params",
+        "lp0_discovery_retry_count",
         "lp0_master_key",
         "lp0_signal_checks",
         "lp0_focus_offloading",
@@ -762,43 +763,49 @@
     "lp0_master_key": {
       "category": "lp0",
       "label": "LP0 cluster master key",
-      "description": "16-byte key shared by every tracker and offload station in one LP0 cluster. Devices with different master keys cannot discover each other. The all-zero default is accepted but public; use one random key per cluster. Firmware 8.1 development builds.",
+      "description": "16-byte key shared by every tracker and offload station in one LP0 cluster. Devices with different master keys cannot discover each other. The all-zero default is accepted but public; use one random key per cluster. Firmware 8.2 (beta).",
       "display_name": "LP0 cluster master key"
     },
     "lp0_signal_checks": {
       "category": "lp0",
       "label": "LP0 signal checks",
-      "description": "Six bytes: master switch, CAD veto, minimum RSSI check, minimum RSSI magnitude (100 = -100 dBm), background margin check, minimum margin in dB. Default 1 1 1 100 1 20. A change applies to the next offload visit. Firmware 8.1 development builds.",
+      "description": "Six bytes: master switch, CAD veto, minimum RSSI check, minimum RSSI magnitude (100 = -100 dBm), background margin check, minimum margin in dB. Default 1 1 1 100 0 20: the background margin check is off by default since the 2026-11-03 schema, its threshold stays stored at 20 dB. A change applies to the next offload visit. Firmware 8.2 (beta).",
       "display_name": "LP0 signal checks"
     },
     "lp0_focus_offloading": {
       "category": "lp0",
       "label": "LP0 focus on offloading",
-      "description": "When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Enable it on both the tracker and the station for a dedicated offload session. Firmware 8.1 development builds.",
+      "description": "When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Enable it on both the tracker and the station for a dedicated offload session. Firmware 8.2 (beta).",
       "display_name": "LP0 focus on offloading"
     },
     "lp0_gps_before_start": {
       "category": "lp0",
       "label": "LP0 GPS fix before offloading",
-      "description": "Take a u-blox GPS fix before an LP0 offload session starts so the device's clock is set from the receiver. Meant for offload stations, which timestamp the records they store on the SD card. Off by default. Firmware 8.1 development builds.",
+      "description": "Take a u-blox GPS fix before an LP0 offload session starts so the device's clock is set from the receiver. Meant for offload stations, which timestamp the records they store on the SD card. Off by default. Firmware 8.2 (beta).",
       "display_name": "LP0 GPS fix before offloading"
     },
     "lr_enabled": {
       "category": "lorawan",
       "label": "LoRaWAN enabled",
-      "description": "Master switch for the LoRaWAN stack, on by default. Firmware 8.1 development builds; the firmware documentation does not describe the effect of switching it off yet, so leave it on unless the firmware team asks otherwise.",
+      "description": "Master switch for the LoRaWAN stack, on by default. Firmware 8.2 (beta); the firmware documentation does not describe the effect of switching it off yet, so leave it on unless the firmware team asks otherwise.",
       "display_name": "LoRaWAN enabled"
     },
     "ublox_require_time": {
       "category": "gps",
       "label": "GPS fix requires valid time",
-      "description": "Firmware 8.1 development builds. Not yet described in the firmware documentation; leave it at the default (off) unless the firmware team asks for it.",
+      "description": "Firmware 8.2 (beta). Not yet described in the firmware documentation; leave it at the default (off) unless the firmware team asks for it.",
       "display_name": "GPS fix requires valid time"
+    },
+    "lp0_discovery_retry_count": {
+      "category": "lp0",
+      "label": "LP0 discovery retries",
+      "description": "Extra automatic discovery attempts a tracker may make within one discovery interval after a failed attempt, 0 to 255. 0 (the default) means one attempt per interval; a failed attempt then waits for the next interval. Retries use a short randomised delay. Firmware 8.2 (beta).",
+      "display_name": "LP0 discovery retries"
     },
     "lp0_statistics_interval": {
       "category": "lp0",
       "label": "LP0 station statistics interval",
-      "description": "How often an offload station generates its statistics report (port 23). 0 disables it; enabled values must be 60 to 604800 seconds. Only the station role generates reports; port 23 must also be ticked in the send or store flags. Firmware 8.1 development builds.",
+      "description": "How often an offload station generates its statistics report (port 23). 0 disables it; enabled values must be 60 to 604800 seconds. Only the station role generates reports; port 23 must also be ticked in the send or store flags. Firmware 8.2 (beta).",
       "display_name": "LP0 station statistics interval"
     },
     "lp0_rx_frequency_hz": {
@@ -1462,7 +1469,7 @@
     "cmd_flash_clear_confirmed": {
       "category": "commands",
       "label": "delete confirmed logs",
-      "description": "Erase whole flash sectors from the oldest logs onward as long as every record in them was confirmed delivered over the selected medium (or any medium). Stops at the first sector with an unconfirmed record. Replies with cmd_confirm 1 (done) or 0 (busy or failed). Firmware 8.1 development builds.",
+      "description": "Erase whole flash sectors from the oldest logs onward as long as every record in them was confirmed delivered over the selected medium (or any medium). Stops at the first sector with an unconfirmed record. Replies with cmd_confirm 1 (done) or 0 (busy or failed). Firmware 8.2 (beta).",
       "display_name": "delete confirmed logs",
       "options": [
         { "value": 0, "label": "Confirmed over any medium" },
@@ -1475,13 +1482,13 @@
     "cmd_offload_start": {
       "category": "commands",
       "label": "start offload",
-      "description": "Start a manual offload of saved records: medium (0 LP0, 1 LoRaWAN, 2 satellite, 3 Bluetooth), selection (0 all, 1 confirmed, 2 unconfirmed), port (0 all, or 1 to 32). The reply carries the job ID, state and result. Firmware 8.1 development builds.",
+      "description": "Start a manual transfer of saved records: medium (0 LP0, 1 LoRaWAN, 2 satellite, 3 Bluetooth), selection (0 all, 1 confirmed, 2 unconfirmed over that medium), port (0 all, or 1 to 32). The reply carries the job ID, state and result; a Bluetooth transfer streams the records on port 29 and ends without a further message. Firmware 8.2 (beta).",
       "display_name": "start offload"
     },
     "cmd_offload_cancel": {
       "category": "commands",
       "label": "cancel offload",
-      "description": "Cancel the current manual or automatic offload: job ID as uint32, or 0 for whatever runs. Firmware 8.1 development builds.",
+      "description": "Cancel the current manual or automatic offload: job ID as uint32, or 0 for whatever runs. Firmware 8.2 (beta).",
       "display_name": "cancel offload"
     },
     "cmd_flash_get_all": {
@@ -1764,7 +1771,7 @@
     "cmd_recover_sd": {
       "category": "commands",
       "label": "recover SD card",
-      "description": "Ask an offload station to run its SD card recovery test now (write, close and read back a test file) instead of waiting for the automatic retry. Replies with cmd_confirm 1 (started) or 0 (refused). Firmware 8.1 development builds.",
+      "description": "Ask an offload station to check its SD card now. A healthy station only produces a fresh statistics report (port 23); a station with a failed card runs its recovery test (write, close and read back a test file) and gets ten new reader reset attempts. No reply on success; cmd_confirm 0 when refused (not an active offload station). Firmware 8.2 (beta).",
       "display_name": "recover SD card"
     }
   }

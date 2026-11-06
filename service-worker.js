@@ -11,7 +11,7 @@
 // ones the previous cache already holds, and the missing ones are fetched one by one in the
 // background when a page asks (PRECACHE_DFU), so a failed download costs one file, not the set,
 // and a deploy does not download the binaries again.
-const CACHE_NAME = 'app-cache-v68'; // the deploy workflow replaces this line with the commit
+const CACHE_NAME = 'app-cache-v69'; // the deploy workflow replaces this line with the commit
 const BASE_URL = new URL(self.registration.scope);
 const toUrl = (path) => new URL(path, BASE_URL).toString();
 const DFU_MANIFEST_URL = toUrl('assets/dfu/manifest.json');
@@ -41,7 +41,7 @@ const STATIC_FILES = [
     toUrl('icon512_rounded.png'),
     toUrl('assets/smart-parks-logo.png'),
     toUrl('assets/dfu/manifest.json'),
-    toUrl('settings/settings-v8.1.0.json'),
+    toUrl('settings/settings-v8.2.0.json'),
     toUrl('settings/settings-v8.0.3.json'),
     toUrl('settings/settings-v8.0.2.json'),
     toUrl('settings/settings-v8.0.1.json'),

@@ -9,8 +9,8 @@ const definitions = require(path.join(root, 'panels/panel-definitions.js'));
 const schema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.0.1.json'), 'utf8'));
 // Older firmware only: keys a panel may reference that v8 dropped (S-Band credentials).
 const legacySchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v6.15.0.json'), 'utf8'));
-// Development firmware: the LP0 offload keys only exist from 8.1 on.
-const betaSchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.1.0.json'), 'utf8'));
+// Beta firmware (8.2.0 pre-release): the LP0 offload keys only exist from 8.1 on.
+const betaSchema = JSON.parse(fs.readFileSync(path.join(root, 'settings/settings-v8.2.0.json'), 'utf8'));
 const inSomeSchema = key => Boolean(schema.settings[key] || legacySchema.settings[key] || betaSchema.settings[key]);
 const meta = JSON.parse(fs.readFileSync(path.join(root, 'settings-meta.json'), 'utf8'));
 
@@ -387,18 +387,18 @@ test('conditions can test one byte of a byte-array setting', () => {
     assert.deepEqual([...engine.conditionKeys({ key: 'lp0_node_params', byte: 0, equals: 2 })], ['lp0_node_params']);
 });
 
-test('the LP0 panel is gated to the 8.1 schema and its byte fields fit the arrays', () => {
+test('the LP0 panel is gated to the 8.2 beta schema and its byte fields fit the arrays', () => {
     const panel = definitions.panels.find(item => item.id === 'lp0');
     assert.ok(panel.beta && panel.minFirmware.major === 8 && panel.minFirmware.minor === 1);
     panel.requires.forEach(key => {
-        assert.ok(betaSchema.settings[key], `${key} in 8.1.0`);
+        assert.ok(betaSchema.settings[key], `${key} in 8.2.0`);
     });
     assert.ok(panel.requires.some(key => !schema.settings[key]), 'at least one required key is missing from 8.0.x, so the panel is left out there');
     const keys = new Set();
     engine.walkFields(panel.fields, field => {
         engine.fieldKeys(field).forEach(key => {
             keys.add(key);
-            assert.ok(betaSchema.settings[key], `${key} in 8.1.0`);
+            assert.ok(betaSchema.settings[key], `${key} in 8.2.0`);
             assert.ok(meta.settings[key] && meta.settings[key].display_name, `${key} named in the meta`);
         });
         if (field.control === 'byte') {
@@ -413,10 +413,10 @@ test('the LP0 panel is gated to the 8.1 schema and its byte fields fit the array
         }
         engine.conditionKeys(field.enabledWhen, keys);
     });
-    for (const key of ['lp0_node_params', 'lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_gps_before_start', 'lp0_statistics_interval', 'lp0_communication_params', 'lp0_tx_frequency_hz', 'lp0_app_key']) {
+    for (const key of ['lp0_node_params', 'lp0_master_key', 'lp0_signal_checks', 'lp0_focus_offloading', 'lp0_gps_before_start', 'lp0_statistics_interval', 'lp0_discovery_retry_count', 'lp0_communication_params', 'lp0_tx_frequency_hz', 'lp0_app_key']) {
         assert.ok(keys.has(key), `${key} edited in the LP0 panel`);
     }
-    // The 8.1 additions outside LP0 sit in the Network and Positioning panels, and only there.
+    // The 8.2 additions outside LP0 sit in the Network and Positioning panels, and only there.
     const panelOf = key => definitions.panels.find(panel => { let found = false; engine.walkFields(panel.fields, field => { if (engine.fieldKeys(field).includes(key)) found = true; }); return found; });
     assert.equal(panelOf('lr_enabled').id, 'network');
     assert.equal(panelOf('ublox_require_time').id, 'positioning');
@@ -437,6 +437,12 @@ test('the LP0 summary reads as sentences for off, tracker and station', () => {
         'Tracker: looks for a station every 1 minute, 10 station slots. Cluster master key set. Focus on offloading.');
     assert.equal(describe({ lp0_node_params: '0100 0A 01 00', lp0_master_key: '{0x01,0x00}' }),
         'Tracker: looks for a station as soon as LP0 is idle, 10 station slots. Cluster master key set.');
+    assert.equal(describe({ lp0_node_params: '01000A013C', lp0_discovery_retry_count: '3' }),
+        'Tracker: looks for a station every 1 minute, up to 3 retries per interval, 10 station slots.');
+    assert.equal(describe({ lp0_node_params: '01000A013C', lp0_discovery_retry_count: 1 }),
+        'Tracker: looks for a station every 1 minute, up to 1 retry per interval, 10 station slots.');
+    assert.equal(describe({ lp0_node_params: '01000A013C', lp0_discovery_retry_count: 0 }),
+        'Tracker: looks for a station every 1 minute, 10 station slots.', 'the default 0 adds no sentence');
     assert.equal(describe({ lp0_node_params: '02030A013C', lp0_master_key: 'AB', lp0_statistics_interval: '0' }),
         'Offload station, ID 3 of 10 slots. Cluster master key set. Statistics off.');
     assert.equal(describe({ lp0_node_params: '02000A013C', lp0_statistics_interval: 7200 }),

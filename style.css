@@ -3079,7 +3079,7 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     background: linear-gradient(145deg, #e35d5d, #a51616);
 }
 
-/* LP0 offload card (firmware 8.1 development builds). */
+/* LP0 offload card (firmware 8.2 beta). */
 .lp0-note {
     margin: 0 0 12px;
     font-size: 13px;
@@ -4250,7 +4250,7 @@ body.has-pending-changes {
     font-weight: 700;
 }
 
-/* Beta tag after a panel or card title (LP0 offload on 8.1 development firmware). */
+/* Beta tag after a panel or card title (LP0 offload on 8.2 beta firmware). */
 .panel-beta-tag {
     display: inline-block;
     margin-left: 10px;
@@ -5007,4 +5007,84 @@ body.bootstrapping .sticky-status-dot {
     .sticky-status-disconnect {
         padding: 0 10px;
     }
+}
+
+/* Logs card: "only new records" toggle for the Bluetooth transfer by delivery state (firmware 8.2 beta). */
+.flash-log-new-only {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 4px 0 10px;
+    font-size: 13px;
+    line-height: 1.4;
+    color: var(--sp-text, #1f2a23);
+    cursor: pointer;
+}
+
+.flash-log-new-only input {
+    margin: 3px 0 0;
+    flex: 0 0 auto;
+    accent-color: var(--sp-forest-dark);
+}
+
+.flash-log-new-only small {
+    display: block;
+    margin-top: 2px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.65);
+}
+
+/* LP0 card: offload station status rows from the latest stored statistics report. */
+.lp0-station-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px 12px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+@media (min-width: 560px) {
+    .lp0-station-grid {
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+}
+
+.lp0-station-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 10px;
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--sp-border);
+}
+
+.lp0-station-label {
+    color: rgba(31, 42, 35, 0.7);
+    flex: 0 0 auto;
+}
+
+.lp0-station-value {
+    text-align: right;
+    font-weight: 600;
+    color: #1f2430;
+}
+
+.lp0-station-row.is-ok .lp0-station-value {
+    color: #1e7a3c;
+}
+
+.lp0-station-row.is-warn {
+    border-color: rgba(180, 35, 24, 0.35);
+    background: rgba(180, 35, 24, 0.06);
+}
+
+.lp0-station-row.is-warn .lp0-station-value {
+    color: #b42318;
+}
+
+.lp0-station-meta {
+    margin-top: 8px;
+    font-size: 12px;
+    color: rgba(31, 42, 35, 0.65);
 }

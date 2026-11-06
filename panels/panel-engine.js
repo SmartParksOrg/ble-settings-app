@@ -562,7 +562,7 @@
     return (on ? (current | portBit(portNumber)) : (current & ~portBit(portNumber))) >>> 0;
   }
 
-  // LP0 offload (firmware 8.1 development builds): role and station slot from
+  // LP0 offload (firmware 8.2 beta): role and station slot from
   // lp0_node_params, master key presence, focus mode and the statistics interval.
   function describeLp0(getValue, fmt = {}) {
     const has = key => getValue(key) !== null && getValue(key) !== undefined;
@@ -575,7 +575,9 @@
     const ping = byteAt(node, 4);
     const sentences = [];
     if (role === 1) {
-      sentences.push(`Tracker: looks for a station ${ping > 0 ? `every ${duration(ping)}` : 'as soon as LP0 is idle'}, ${count} station slot${count === 1 ? '' : 's'}.`);
+      const retries = has('lp0_discovery_retry_count') ? toNumber(getValue('lp0_discovery_retry_count')) : 0;
+      const retryText = retries > 0 ? `, up to ${retries} retr${retries === 1 ? 'y' : 'ies'} per interval` : '';
+      sentences.push(`Tracker: looks for a station ${ping > 0 ? `every ${duration(ping)}` : 'as soon as LP0 is idle'}${retryText}, ${count} station slot${count === 1 ? '' : 's'}.`);
     } else if (role === 2) {
       sentences.push(`Offload station, ID ${slot} of ${count} slot${count === 1 ? '' : 's'}.`);
     } else {

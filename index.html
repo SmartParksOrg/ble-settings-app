@@ -368,8 +368,12 @@
           <span>Flash messages</span>
           <span id="flash-log-count">Not loaded</span>
         </div>
+        <label id="flash-log-new-only-row" class="flash-log-new-only hidden">
+          <input type="checkbox" id="flash-log-new-only" checked onchange="renderFlashLogButtons()">
+          <span>Only records not yet downloaded over Bluetooth<small>The device remembers which records a Bluetooth download has delivered, so a later download sends only what is new. Records downloaded before firmware 8.2 do not count as delivered.</small></span>
+        </label>
         <div class="log-actions">
-          <button type="button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
+          <button type="button" id="flash-log-download-button" class="log-action-button scan-button" onclick="requestFlashLogDownloadAll()">Download all logs</button>
         </div>
         <div class="status-header recent-log-header">
           <div class="status-item"><span class="icon messages"></span>Recent messages</div>
@@ -379,7 +383,7 @@
             <option value="">Load settings to choose a message type</option>
           </select>
           <button type="button" class="log-action-button scan-button" onclick="requestRecentLogs()">Show latest 10 stored messages</button>
-          <button type="button" class="log-action-button" onclick="downloadFlashLogsByType()">Download all messages of this type</button>
+          <button type="button" id="flash-log-type-download-button" class="log-action-button" onclick="downloadFlashLogsByType()">Download all messages of this type</button>
         </div>
         <div id="recent-log-results" class="status-log-results">
           <div class="cmdq-empty">No stored messages loaded yet. Pick a message type and show the latest 10.</div>
@@ -453,7 +457,7 @@
     <details class="section section-card">
       <summary class="section-card-title"><span class="icon file-arrow-up" aria-hidden="true"></span>LP0 offload<span class="panel-beta-tag">beta</span></summary>
       <div class="section-card-body cmdq-card lp0-card">
-        <p class="lp0-note">Firmware 8.1 development build. The role, cluster master key, radio parameters and signal checks are in the LP0 offload panel under Settings. Automatic offloading runs by itself once a tracker and a station are configured; the actions here are for a manual session.</p>
+        <p class="lp0-note">Firmware 8.2 beta. The role, cluster master key, radio parameters and signal checks are in the LP0 offload panel under Settings. Automatic offloading runs by itself once a tracker and a station are configured; the actions here are for a manual session. Downloading the records not yet received over Bluetooth is in the Logs card.</p>
         <div class="status-header">
           <div class="status-item"><span class="icon file-arrow-up"></span>Manual offload</div>
         </div>
@@ -478,9 +482,10 @@
         <div class="log-actions">
           <button type="button" class="log-action-button scan-button" onclick="startLp0Offload()">Start offload</button>
           <button type="button" class="log-action-button" onclick="cancelLp0Offload()">Cancel offload</button>
+          <button type="button" class="log-action-button" onclick="refreshLp0Status()">Refresh state</button>
         </div>
         <div id="lp0-job-status" class="cmdq-results">
-          <div class="cmdq-empty">No offload requested from this app yet. The device answers a start or cancel with the job state; there is no separate status query.</div>
+          <div class="cmdq-empty">No offload requested from this app yet. Refresh asks the device for the state of the current or last offload, automatic ones included.</div>
         </div>
         <div class="status-header">
           <div class="status-item"><span class="icon bug"></span>Flash log cleanup</div>
@@ -498,13 +503,17 @@
         <div class="log-actions">
           <button type="button" class="log-action-button erase-logs-button" onclick="requestLp0DeleteConfirmed()">Delete confirmed logs</button>
         </div>
-        <div id="lp0-recover-sd" class="hidden">
+        <div id="lp0-station-status" class="hidden">
           <div class="status-header">
-            <div class="status-item"><span class="icon file-arrow-down"></span>Station SD card</div>
+            <div class="status-item"><span class="icon file-arrow-down"></span>Offload station status</div>
           </div>
-          <p class="lp0-note">A station whose SD card failed retries its storage test by itself. Recover runs that test now (write, close and read back a test file); only an offload station answers it.</p>
+          <p class="lp0-note">The station reports its SD card, counters and radio state in a statistics message (port 23) that it also stores in its own flash; the newest stored report is shown here. "Check SD card" asks the station for a fresh report; on a station whose card failed it also runs the recovery test (write, close and read back a test file) and allows ten new reader resets.</p>
+          <div id="lp0-station-report" class="cmdq-results">
+            <div class="cmdq-empty">No report loaded yet.</div>
+          </div>
           <div class="log-actions">
-            <button type="button" class="log-action-button" onclick="requestLp0RecoverSd()">Recover SD card</button>
+            <button type="button" class="log-action-button scan-button" onclick="requestLatestStationReport()">Load latest report</button>
+            <span id="lp0-recover-sd" class="hidden"><button type="button" class="log-action-button" onclick="requestLp0RecoverSd()">Check SD card</button></span>
           </div>
         </div>
       </div>
@@ -1097,7 +1106,11 @@
       logTypeLabel: 'all',
       requestMode: 'all',
       requestedPort: 0,
+      typeLabel: null,
       expectedTotal: null,
+      jobId: null,
+      cancelledJobId: null,
+      polls: 0,
       inactivityTimeoutId: null,
       lastFilename: '',
       lastError: '',
@@ -2266,14 +2279,69 @@
       }
     }
 
+    const FLASH_LOG_SILENCE_MS = 12000;
+    const OFFLOAD_DOWNLOAD_SILENCE_MS = 3000;
+    const OFFLOAD_DOWNLOAD_MAX_POLLS = 10;
+
     function scheduleFlashLogInactivityTimeout() {
       clearFlashLogInactivityTimeout();
+      const offload = flashLogState.requestMode === 'offload';
       flashLogState.inactivityTimeoutId = setTimeout(() => {
         if (!flashLogState.active) {
           return;
         }
+        if (offload) {
+          pollOffloadTransferState();
+          return;
+        }
         showFlashLogFailure('No new log data received for 12 seconds.');
-      }, 12000);
+      }, offload ? OFFLOAD_DOWNLOAD_SILENCE_MS : FLASH_LOG_SILENCE_MS);
+    }
+
+    // A Bluetooth transfer started with cmd_offload_start streams its records on port 29 and
+    // then ends without a message (only the legacy flash_get_all answers with cmd_confirm). After
+    // a short silence the app asks for the job state with a cancel that names a job ID that
+    // cannot exist: the firmware refuses it (ESTALE) and still answers with the current job's
+    // state and confirmed count, and cancels nothing. See encodeOffloadCancel in functions.js.
+    function pollOffloadTransferState() {
+      flashLogState.polls = (flashLogState.polls || 0) + 1;
+      if (flashLogState.polls > OFFLOAD_DOWNLOAD_MAX_POLLS) {
+        showFlashLogFailure(`No new log data and no transfer state from the device for ${Math.round(OFFLOAD_DOWNLOAD_SILENCE_MS * OFFLOAD_DOWNLOAD_MAX_POLLS / 1000)} seconds.`);
+        return;
+      }
+      scheduleFlashLogInactivityTimeout();
+      executeBleCommand(encodeOffloadCancel(OFFLOAD_STATUS_PROBE_JOB_ID))
+        .catch(error => log(`Transfer state request failed: ${error.message}`, true));
+    }
+
+    // Replies to the transfer start and to the state probes while a "new logs" download runs.
+    function handleOffloadDownloadReply(command, decoded) {
+      if (command === CMD_OFFLOAD_START) {
+        if (decoded.result !== 0 && decoded.result !== -115) {
+          showFlashLogFailure(`The device did not start the transfer: ${decoded.resultLabel}.`);
+          return;
+        }
+        flashLogState.jobId = decoded.jobId;
+        log(`Bluetooth transfer job ${decoded.jobId} ${decoded.stateLabel}.`);
+        if (decoded.state === 6) {
+          finishFlashLogCapture('device done');
+        }
+        return;
+      }
+      if (flashLogState.jobId && decoded.jobId !== flashLogState.jobId) {
+        log(`Transfer job ${flashLogState.jobId} was replaced by job ${decoded.jobId || 'automatic'}; keeping what was received.`);
+        finishFlashLogCapture('device done');
+        return;
+      }
+      if (decoded.state === 6) {
+        finishFlashLogCapture('device done');
+        return;
+      }
+      if (decoded.state === 7) {
+        showFlashLogFailure(`The device ended the transfer with an error after confirming ${decoded.confirmed} record${decoded.confirmed === 1 ? '' : 's'}.`);
+        return;
+      }
+      log(`Transfer job ${decoded.jobId} still ${decoded.stateLabel}, ${decoded.confirmed} records confirmed received.`);
     }
 
     function setFlashLogProgress({ title, detail, received, total, knownTotal, showSpinner = true }) {
@@ -2497,7 +2565,7 @@
       barEl.style.width = '100%';
       messageEl.innerHTML = `
         Use the <a href="https://smartparksorg.github.io/raw_logs_decoder/" target="_blank" rel="noopener noreferrer">Smart Parks - Log File Decoder</a>
-        to decode this log file.
+        to decode this log file.${flashLogState.requestMode === 'offload' ? ' The device has marked these records as downloaded over Bluetooth; the next download of new logs skips them.' : ''}
       `;
       messageEl.classList.remove('hidden');
       messageEl.classList.remove('warning');
@@ -2533,9 +2601,12 @@
       }
 
       const isAll = flashLogState.requestMode === 'all';
-      const scopeLabel = isAll ? 'for this device' : `for "${flashLogState.logTypeLabel}"`;
+      const isNew = flashLogState.requestMode === 'offload';
+      const scopeLabel = isNew
+        ? `${flashLogState.requestedPort ? `for "${flashLogState.typeLabel}" ` : ''}that were not yet downloaded over Bluetooth`
+        : isAll ? 'for this device' : `for "${flashLogState.logTypeLabel}"`;
       spinner.classList.add('hidden');
-      titleEl.textContent = 'No logs available';
+      titleEl.textContent = isNew ? 'No new logs' : 'No logs available';
       detailEl.textContent = `The device has no stored log messages ${scopeLabel}.`;
       progressEl.classList.add('hidden');
       messageEl.textContent = 'No file was downloaded.';
@@ -2583,8 +2654,11 @@
         persistFlashLogCapture(true);
         const filename = savePartialFlashLog(flashLogSnapshot(false));
         flashLogState.lastFilename = filename || '';
+        const retryNote = flashLogState.requestMode === 'offload'
+          ? 'Retry asks only for the records the device has not yet confirmed as received over Bluetooth.'
+          : 'The device still holds all logs; Retry downloads them again from the start.';
         messageEl.textContent = filename
-          ? `${received} messages were received before the download stopped and were saved as ${filename}. The device still holds all logs; Retry downloads them again from the start.`
+          ? `${received} messages were received before the download stopped and were saved as ${filename}. ${retryNote}`
           : `${received} messages were received before the download stopped. Use "Save partial log" to keep them.`;
         messageEl.classList.remove('warning');
         if (savePartialBtn) {
@@ -2605,7 +2679,7 @@
       log(`Flash log download interrupted: ${reason} (${received} messages received)`, true);
     }
 
-    function startFlashLogCapture({ logTypeLabel = 'all', requestMode = 'all', requestedPort = 0, expectedTotal = null } = {}) {
+    function startFlashLogCapture({ logTypeLabel = 'all', requestMode = 'all', requestedPort = 0, typeLabel = null, expectedTotal = null } = {}) {
       flashLogState.lastContents = '';
       clearFlashLogInactivityTimeout();
       flashLogState = {
@@ -2619,11 +2693,15 @@
         logTypeLabel,
         requestMode,
         requestedPort,
+        typeLabel,
         expectedTotal,
+        jobId: null,
+        cancelledJobId: null,
+        polls: 0,
         inactivityTimeoutId: null,
         lastFilename: '',
         lastError: '',
-        lastRequest: { logTypeLabel, requestMode, requestedPort, expectedTotal }
+        lastRequest: { logTypeLabel, requestMode, requestedPort, typeLabel, expectedTotal }
       };
       const detail = Number.isFinite(expectedTotal) && expectedTotal > 0
         ? `Received 0/${expectedTotal} messages (0%)`
@@ -2858,6 +2936,10 @@
           const list = decoded.entries.slice(0, 6).map(entry => `${entry.id} (${entry.rssi} dBm${entry.count !== null && entry.count !== undefined ? `, x${entry.count}` : ''})`).join('; ');
           return `${decoded.entries.length} result${decoded.entries.length === 1 ? '' : 's'}: ${list}${decoded.entries.length > 6 ? '; ...' : ''}`;
         }
+        const shared = describeMessageBody(key, bytes);
+        if (shared !== null) {
+          return shared;
+        }
         if (meta && meta.conversion && meta.conversion !== 'byte_array') {
           return String(bytesToSetting(meta, bytes.slice(0, meta.length)));
         }
@@ -2948,8 +3030,17 @@
     // an LP0 station statistics report.
     function renderRecentLogDetailsHtml(record) {
       const summary = escapeHtml(summarizeRecentLogRecord(record));
-      if (!record.message || record.message.key !== 'msg_lp0_statistics') {
+      if (!record.message) {
         return summary;
+      }
+      if (record.message.key !== 'msg_lp0_statistics') {
+        // Satellites, air quality: every value behind a fold, from the shared decoders.
+        const rows = describeMessageRows(record.message.key, record.payload);
+        if (!rows.length) {
+          return summary;
+        }
+        const items = rows.map(row => `<li>${escapeHtml(row.label)}: ${escapeHtml(row.value)}</li>`).join('');
+        return `${summary}<details class="recent-log-more"><summary>All values</summary><ul class="recent-log-list">${items}</ul></details>`;
       }
       try {
         const decoded = decodeLp0StatisticsMessage(record.payload);
@@ -3095,7 +3186,7 @@
         showToast('A recent messages request is already running.');
         return;
       }
-      if (flashLogState.active || mapTrackState.active) {
+      if (flashLogState.active || mapTrackState.active || stationReportState.active) {
         showToast('Another flash log request is already running.');
         return;
       }
@@ -3222,7 +3313,7 @@
       }
 
       const lines = flashLogState.lines;
-      if (lines.length === 0 && reason === 'device confirm') {
+      if (lines.length === 0 && (reason === 'device confirm' || reason === 'device done')) {
         flashLogState.active = false;
         showFlashLogNoData();
         log(`Flash log download finished with no data (${flashLogState.logTypeLabel}).`);
@@ -3254,6 +3345,7 @@
       if (!flashLogState.active) {
         return;
       }
+      flashLogState.polls = 0;
       scheduleFlashLogInactivityTimeout();
       let payloadLength = data.length >= 3 ? data[2] : 0;
       if (payloadLength === 0 || payloadLength > data.length - 3) {
@@ -8033,6 +8125,9 @@
         if (tryHandleScanFlashResponse(data)) {
           return;
         }
+        if (tryHandleStationReportResponse(data)) {
+          return;
+        }
         if (tryHandleLp0OffloadReply(data)) {
           return;
         }
@@ -8062,10 +8157,13 @@
             showToast('The device did not delete confirmed logs (busy, a download or offload is running, or a storage error).');
           }
         } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_RECOVER_SD) {
+          // The firmware sends no reply when it accepts the command; only a refusal is answered.
           if (data[4] === 0x01) {
-            showToast('SD card recovery started; watch the station LEDs and the next statistics report.');
+            showToast('SD card check started; the fresh report follows.');
           } else {
-            showToast('The device did not start the SD card recovery (not an offload station, or a test is already running).');
+            clearTimeout(stationReportRetryTimer);
+            stationReportRetryTimer = null;
+            showToast('The device refused the SD card check: it is not an active offload station, or this build has no SD card support.');
           }
         } else if (port === 31 && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === 0xBB) {
           if (data[4] === 0x01) {
@@ -8332,10 +8430,12 @@
       }
     }
 
-    function updateFlashLogCount(value) {
+    function updateFlashLogCount(value, usedPercent = null) {
       const countEl = document.getElementById('flash-log-count');
       if (countEl) {
-        countEl.textContent = Number.isFinite(value) ? String(value) : 'N/A';
+        countEl.textContent = Number.isFinite(value)
+          ? `${value}${Number.isFinite(usedPercent) ? ` (${usedPercent}% of the flash used)` : ''}`
+          : 'N/A';
       }
       flashLogCountTotal = Number.isFinite(value) ? Number(value) : null;
       setFlashLogStatus('');
@@ -8435,6 +8535,10 @@
       }
 
       const selectedLabel = select.options[select.selectedIndex]?.text || `port ${selectedPort}`;
+      if (flashLogNewOnly()) {
+        startOffloadDownload({ requestedPort: selectedPort, typeLabel: selectedLabel });
+        return;
+      }
       startFlashLogCapture({
         logTypeLabel: selectedLabel,
         requestMode: 'type',
@@ -8444,8 +8548,75 @@
       executeBleCommand([0x20, parseInt(flashCommand.id, 16), 0x01, selectedPort]);
     }
 
+    // ---- Transfers by delivery state (firmware 8.2 beta) --------------------------------------
+    // Every saved record carries a flag per medium that is cleared once that medium confirmed
+    // it; cmd_offload_start with the Bluetooth medium and the "unconfirmed" selection sends only
+    // the records this connection has not delivered yet. Offered when the schema has the
+    // commands and the device reports 8.1 or newer.
+    function offloadTransfersAvailable() {
+      const commands = settingsData && settingsData.commands ? settingsData.commands : null;
+      return Boolean(commands && commands.cmd_offload_start && commands.cmd_offload_cancel) && firmwareAtLeast(8, 1);
+    }
+
+    function flashLogNewOnly() {
+      const box = document.getElementById('flash-log-new-only');
+      return offloadTransfersAvailable() && Boolean(box && box.checked);
+    }
+
+    function renderFlashLogButtons() {
+      const available = offloadTransfersAvailable();
+      const row = document.getElementById('flash-log-new-only-row');
+      if (row) {
+        row.classList.toggle('hidden', !available);
+      }
+      const newOnly = flashLogNewOnly();
+      const all = document.getElementById('flash-log-download-button');
+      if (all) {
+        all.textContent = newOnly ? 'Download new logs' : 'Download all logs';
+      }
+      const byType = document.getElementById('flash-log-type-download-button');
+      if (byType) {
+        byType.textContent = newOnly ? 'Download new messages of this type' : 'Download all messages of this type';
+      }
+    }
+
+    function startOffloadDownload({ requestedPort = 0, typeLabel = 'all' } = {}) {
+      if (!offloadTransfersAvailable()) {
+        showToast('Downloading by delivery state is not available in this firmware.');
+        return;
+      }
+      if (flashLogState.active) {
+        showToast('A log download is already in progress.');
+        return;
+      }
+      if (recentLogState.active || stationReportState.active || mapTrackState.active) {
+        showToast('Wait for the running log request to finish first.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      startFlashLogCapture({
+        logTypeLabel: requestedPort ? `new ${typeLabel}` : 'new',
+        requestMode: 'offload',
+        requestedPort,
+        typeLabel,
+        expectedTotal: null
+      });
+      executeBleCommand(encodeOffloadStart(OFFLOAD_MEDIUM_BLUETOOTH, OFFLOAD_SELECTION_UNCONFIRMED, requestedPort))
+        .catch(error => showFlashLogFailure(`Could not send the transfer request: ${error.message}`));
+    }
+    window.renderFlashLogButtons = renderFlashLogButtons;
+
     function cancelFlashLogDownload() {
       if (flashLogState.active) {
+        if (flashLogState.requestMode === 'offload' && flashLogState.jobId) {
+          // The device keeps streaming otherwise; its reply is swallowed in tryHandleLp0OffloadReply.
+          flashLogState.cancelledJobId = flashLogState.jobId;
+          executeBleCommand(encodeOffloadCancel(flashLogState.jobId)).catch(() => null);
+          log(`Asked the device to cancel transfer job ${flashLogState.jobId}.`);
+        }
         clearFlashLogInactivityTimeout();
         flashLogState.active = false;
         log('Flash log download cancelled by user.');
@@ -8468,6 +8639,10 @@
         showToast('No previous log download to retry.');
         return;
       }
+      if (request.requestMode === 'offload') {
+        startOffloadDownload({ requestedPort: request.requestedPort, typeLabel: request.typeLabel || 'all' });
+        return;
+      }
       const flashCommand = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_all : null;
       if (!flashCommand) {
         showToast('Flash log command not available in this firmware.');
@@ -8482,12 +8657,20 @@
       executeBleCommand([0x20, parseInt(flashCommand.id, 16), 0x01, request.requestedPort]);
     }
 
-    // ---- LP0 offload card (firmware 8.1 development builds, beta) -----------------------
+    // ---- LP0 offload card (firmware 8.2 beta) --------------------------------------------
     // Offered only when the loaded schema carries the offload commands and the cluster master
     // key, and the connected device reports firmware 8.1 or newer. The start and cancel
     // commands are answered on the commands port with a 19-byte job reply (decodeOffloadJobReply
-    // in functions.js); "delete confirmed logs" is answered with the usual cmd_confirm.
-    const lp0State = { lastRequest: null, lastReply: null };
+    // in functions.js); "delete confirmed logs" is answered with the usual cmd_confirm. "Refresh
+    // state" is a cancel with a job ID that cannot exist (see functions.js): refused, but the
+    // reply carries the current job's state. The station status block shows the newest
+    // statistics report (port 23) stored in the device's flash.
+    const lp0State = { lastRequest: null, lastReply: null, stationReport: null };
+    const STATION_REPORT_TIMEOUT_MS = 8000;
+    const STATION_REPORT_FRESH_ATTEMPTS = 5;
+    const STATION_REPORT_FRESH_DELAY_MS = 3000;
+    let stationReportState = { active: false, flashBuffer: new Uint8Array(0), timeoutId: null, newerThan: null, attemptsLeft: 0, found: null };
+    let stationReportRetryTimer = null;
 
     function firmwareAtLeast(major, minor) {
       if (!lastStatusInfo) {
@@ -8508,11 +8691,16 @@
     function resetLp0State() {
       lp0State.lastRequest = null;
       lp0State.lastReply = null;
+      lp0State.stationReport = null;
+      clearStationReportTimers();
+      stationReportState.active = false;
       const area = document.getElementById('lp0-area');
       if (area) {
         area.classList.add('hidden');
       }
       renderLp0JobStatus();
+      renderStationReport();
+      renderFlashLogButtons();
     }
 
     function renderLp0Section() {
@@ -8520,6 +8708,7 @@
       if (!area) {
         return;
       }
+      renderFlashLogButtons();
       if (!lp0OffloadAvailable()) {
         area.classList.add('hidden');
         return;
@@ -8535,10 +8724,7 @@
           .map(([name, number]) => `<option value="${number}">${escapeHtml(labels[name] || name.replace(/^port_/, '').replace(/_/g, ' '))} (port ${number})</option>`);
         portSelect.innerHTML = `<option value="0">all message types</option>${options.join('')}`;
       }
-      const recover = document.getElementById('lp0-recover-sd');
-      if (recover) {
-        recover.classList.toggle('hidden', !(settingsData.commands && settingsData.commands.cmd_recover_sd));
-      }
+      renderLp0StationBlock();
       renderLp0JobStatus();
     }
 
@@ -8551,12 +8737,195 @@
         showToast('Cancel the current log download first.');
         return true;
       }
-      if (recentLogState.active) {
-        showToast('Wait for the recent messages request to finish first.');
+      if (recentLogState.active || stationReportState.active) {
+        showToast('Wait for the running log request to finish first.');
         return true;
       }
       return false;
     }
+
+    // Asks the device for the state of the current or last offload (manual or automatic).
+    function refreshLp0Status() {
+      if (!lp0OffloadAvailable()) {
+        showToast('Offloading is not available in this firmware.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      lp0State.lastRequest = { command: 'status', at: Date.now() };
+      lp0State.lastReply = null;
+      renderLp0JobStatus();
+      executeBleCommand(encodeOffloadCancel(OFFLOAD_STATUS_PROBE_JOB_ID));
+    }
+
+    // ---- Offload station status (latest stored statistics report, port 23) ------------------
+    function isStationRole() {
+      const node = settingsData && settingsData.settings ? settingsData.settings.lp0_node_params : null;
+      if (!node) {
+        return false;
+      }
+      const value = currentSettingValues.get(String(node.id));
+      return value !== undefined && value !== null && PanelEngine.byteAt(value, 0) === 2;
+    }
+
+    function renderLp0StationBlock() {
+      const block = document.getElementById('lp0-station-status');
+      if (!block) {
+        return;
+      }
+      const data = settingsData || {};
+      const hasReport = Boolean(data.messages && data.messages.msg_lp0_statistics && data.commands && data.commands.cmd_flash_get_from_head
+        && data.ports && Number.isFinite(data.ports.port_lp0_statistics));
+      block.classList.toggle('hidden', !(hasReport && lp0OffloadAvailable() && isStationRole()));
+      const recover = document.getElementById('lp0-recover-sd');
+      if (recover) {
+        recover.classList.toggle('hidden', !(data.commands && data.commands.cmd_recover_sd));
+      }
+      renderStationReport();
+    }
+
+    function clearStationReportTimers() {
+      if (stationReportState.timeoutId) {
+        clearTimeout(stationReportState.timeoutId);
+        stationReportState.timeoutId = null;
+      }
+      if (stationReportRetryTimer) {
+        clearTimeout(stationReportRetryTimer);
+        stationReportRetryTimer = null;
+      }
+    }
+
+    // Reads the newest port-23 record from the device's flash (CMD_FLASH_GET_FROM_HEAD, start 0,
+    // count 1). With `newerThan`, a report that is not newer than that one is retried a few
+    // times, for the fresh report a station writes after an SD card check.
+    function requestLatestStationReport({ newerThan = null, attemptsLeft = 0 } = {}) {
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_flash_get_from_head : null;
+      const port = settingsData && settingsData.ports ? settingsData.ports.port_lp0_statistics : null;
+      if (!command || !Number.isFinite(port)) {
+        showToast('Station statistics are not available in this firmware.');
+        return;
+      }
+      if (stationReportState.active) {
+        return;
+      }
+      if (flashLogState.active || recentLogState.active || mapTrackState.active) {
+        showToast('Wait for the running log request to finish first.');
+        return;
+      }
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      clearStationReportTimers();
+      stationReportState = {
+        active: true,
+        flashBuffer: new Uint8Array(0),
+        timeoutId: setTimeout(() => finishStationReportRequest('timeout'), STATION_REPORT_TIMEOUT_MS),
+        newerThan,
+        attemptsLeft,
+        found: null
+      };
+      renderStationReport(newerThan ? 'Checking for the fresh report...' : 'Loading the latest stored report...');
+      const payload = new Uint8Array(12);
+      const view = new DataView(payload.buffer);
+      view.setUint32(0, port, true);
+      view.setUint32(4, 0, true);
+      view.setUint32(8, 1, true);
+      executeBleCommand([0x20, parseInt(command.id, 16), payload.length, ...payload])
+        .catch(error => finishStationReportRequest(`request failed: ${error.message}`));
+    }
+
+    function tryHandleStationReportResponse(data) {
+      if (!stationReportState.active || !settingsData) {
+        return false;
+      }
+      const port = data[0];
+      const flashLogPort = settingsData.ports ? settingsData.ports.port_flash_log : null;
+      const messagesPort = settingsData.ports ? settingsData.ports.port_messages : null;
+      const statisticsPort = settingsData.ports ? settingsData.ports.port_lp0_statistics : null;
+      if (Number.isFinite(messagesPort) && port === messagesPort && data.length >= 5 && data[1] === MSG_CMD_CONFIRM && data[3] === CMD_FLASH_GET_FROM_HEAD) {
+        finishStationReportRequest(data[4] === 0x01 ? 'device confirm' : `device returned status 0x${data[4].toString(16).padStart(2, '0')}`);
+        return true;
+      }
+      if (!Number.isFinite(flashLogPort) || port !== flashLogPort) {
+        return false;
+      }
+      const parsed = parseFlashLogRecords(data, stationReportState.flashBuffer);
+      stationReportState.flashBuffer = parsed.remainder;
+      for (const record of parsed.records) {
+        if (record.port !== statisticsPort || stationReportState.found) {
+          continue;
+        }
+        try {
+          stationReportState.found = { decoded: decodeLp0StatisticsMessage(record.payload), timestamp: record.timestamp, at: Date.now() };
+        } catch (error) {
+          log(`Stored station report could not be decoded: ${error.message}`, true);
+          finishStationReportRequest(`undecodable report: ${error.message}`);
+          return true;
+        }
+      }
+      return true;
+    }
+
+    function finishStationReportRequest(reason) {
+      const state = stationReportState;
+      if (!state.active) {
+        return;
+      }
+      clearStationReportTimers();
+      state.active = false;
+      const found = state.found;
+      const previous = state.newerThan;
+      const isNewer = found && (!previous
+        || found.decoded.uptimeSeconds > previous.decoded.uptimeSeconds
+        || found.timestamp > previous.timestamp);
+      if (found && (isNewer || !state.attemptsLeft)) {
+        lp0State.stationReport = found;
+        renderStationReport(isNewer ? '' : 'No newer report was stored; the last stored report is shown.');
+        log(`Station report loaded (${reason}): ${summarizeLp0Statistics(found.decoded)}`);
+        if (previous && isNewer) {
+          showToast('Fresh station report received.');
+        }
+        return;
+      }
+      if (!found && !state.attemptsLeft) {
+        renderStationReport(reason === 'timeout'
+          ? 'The device did not answer the report request.'
+          : reason.startsWith('undecodable') || reason.startsWith('device returned') || reason.startsWith('request failed')
+            ? `Could not load the report (${reason}).`
+            : 'No statistics report is stored on this device. Set a statistics interval in the LP0 offload panel and tick "LP0 station statistics (port 23)" under Store in Data sending and storing.');
+        return;
+      }
+      renderStationReport(`Waiting for the station to store its fresh report (${state.attemptsLeft} more check${state.attemptsLeft === 1 ? '' : 's'})...`);
+      stationReportRetryTimer = setTimeout(() => {
+        stationReportRetryTimer = null;
+        requestLatestStationReport({ newerThan: previous, attemptsLeft: state.attemptsLeft - 1 });
+      }, STATION_REPORT_FRESH_DELAY_MS);
+    }
+
+    function renderStationReport(message = '') {
+      const target = document.getElementById('lp0-station-report');
+      if (!target) {
+        return;
+      }
+      const report = lp0State.stationReport;
+      if (!report) {
+        target.innerHTML = `<div class="cmdq-empty">${escapeHtml(message || 'No report loaded yet. Load the latest report the station stored, or check the SD card to make it write a fresh one.')}</div>`;
+        return;
+      }
+      const rows = describeStationReport(report.decoded);
+      const stored = report.timestamp
+        ? `${formatLocalDateTimeDisplay(new Date(report.timestamp * 1000))} by the device clock, ${formatRelativeTimeFromNow(report.timestamp)}`
+        : 'at an unknown time';
+      target.innerHTML = `
+        <div class="lp0-station-grid">${rows.map(row => `<div class="lp0-station-row is-${row.level}"><span class="lp0-station-label">${escapeHtml(row.label)}</span><span class="lp0-station-value">${escapeHtml(row.value)}</span></div>`).join('')}</div>
+        <div class="lp0-station-meta">Report v${report.decoded.version}, stored ${escapeHtml(stored)}.${message ? ` ${escapeHtml(message)}` : ''}</div>
+      `;
+    }
+    window.requestLatestStationReport = requestLatestStationReport;
+    window.refreshLp0Status = refreshLp0Status;
 
     function startLp0Offload() {
       if (!lp0OffloadAvailable()) {
@@ -8604,10 +8973,23 @@
         return false;
       }
       const decoded = decodeOffloadJobReply(data.slice(3, 20));
-      lp0State.lastReply = { command: data[1], decoded, at: Date.now() };
-      log(`Offload ${data[1] === CMD_OFFLOAD_START ? 'start' : 'cancel'} reply: job ${decoded.jobId}, ${decoded.stateLabel}, ${decoded.resultLabel}, ${decoded.confirmed} confirmed`);
+      if (flashLogState.active && flashLogState.requestMode === 'offload') {
+        log(`Transfer ${data[1] === CMD_OFFLOAD_START ? 'start' : 'state'} reply: job ${decoded.jobId}, ${decoded.stateLabel}, ${decoded.resultLabel}, ${decoded.confirmed} confirmed`);
+        handleOffloadDownloadReply(data[1], decoded);
+        return true;
+      }
+      if (data[1] === CMD_OFFLOAD_CANCEL && flashLogState.cancelledJobId && decoded.jobId === flashLogState.cancelledJobId) {
+        log(`Transfer job ${decoded.jobId} cancel answered: ${decoded.stateLabel}, ${decoded.resultLabel}.`);
+        flashLogState.cancelledJobId = null;
+        return true;
+      }
+      const refresh = data[1] === CMD_OFFLOAD_CANCEL && lp0State.lastRequest && lp0State.lastRequest.command === 'status';
+      lp0State.lastReply = { command: refresh ? 'status' : data[1], decoded, at: Date.now() };
+      log(`Offload ${refresh ? 'state' : data[1] === CMD_OFFLOAD_START ? 'start' : 'cancel'} reply: job ${decoded.jobId}, ${decoded.stateLabel}, ${decoded.resultLabel}, ${decoded.confirmed} confirmed`);
       renderLp0JobStatus();
-      if (data[1] === CMD_OFFLOAD_START) {
+      if (refresh) {
+        showToast(decoded.jobId === 0 && decoded.state === 0 ? 'No offload has run since the device started.' : `Offload state: ${decoded.stateLabel}.`);
+      } else if (data[1] === CMD_OFFLOAD_START) {
         showToast(decoded.result === 0 || decoded.result === -115
           ? `Offload job ${decoded.jobId} ${decoded.stateLabel}.`
           : `Offload not started: ${decoded.resultLabel}.`);
@@ -8632,12 +9014,16 @@
       if (!lastReply) {
         const what = lastRequest.command === CMD_OFFLOAD_START
           ? `Start requested: ${LP0_OFFLOAD_SELECTIONS[lastRequest.selection] || 'records'} over ${LP0_OFFLOAD_MEDIA[lastRequest.medium] || 'medium'}, ${lastRequest.port ? `port ${lastRequest.port}` : 'all message types'}.`
-          : 'Cancel requested.';
+          : lastRequest.command === 'status' ? 'State requested.' : 'Cancel requested.';
         target.innerHTML = `<div class="lp0-job"><div class="lp0-job-state">Waiting for the device...</div><div>${escapeHtml(what)}</div></div>`;
         return;
       }
       const d = lastReply.decoded;
       const stateClass = d.state === 7 ? ' is-failed' : d.state === 6 ? ' is-done' : '';
+      if (lastReply.command === 'status' && d.jobId === 0 && d.state === 0) {
+        target.innerHTML = `<div class="lp0-job"><div class="lp0-job-state">No offload has run since the device started</div><div>${escapeHtml(formatLocalDateTimeDisplay(new Date(lastReply.at)))}</div></div>`;
+        return;
+      }
       const pills = [
         `Job ${d.jobId || 'automatic'}`,
         `${d.selectionLabel} over ${d.mediumLabel}`,
@@ -8645,12 +9031,17 @@
         `${d.attempts} discovery attempt${d.attempts === 1 ? '' : 's'}`,
         `${d.confirmed} record${d.confirmed === 1 ? '' : 's'} confirmed saved`
       ].map(text => `<span class="lp0-pill">${escapeHtml(text)}</span>`).join('');
+      const heading = lastReply.command === 'status'
+        ? `Current state: ${d.stateLabel}`
+        : `${lastReply.command === CMD_OFFLOAD_START ? 'Start' : 'Cancel'} answered: ${d.stateLabel}`;
+      // A state refresh is a refused cancel, so its result field says "stale", not the job's result.
+      const resultLine = lastReply.command === 'status' ? 'Result: not reported by a state refresh.' : `Result: ${d.resultLabel}.`;
       target.innerHTML = `
         <div class="lp0-job">
-          <div class="lp0-job-state${stateClass}">${escapeHtml(`${lastReply.command === CMD_OFFLOAD_START ? 'Start' : 'Cancel'} answered: ${d.stateLabel}`)}</div>
-          <div>${escapeHtml(`Result: ${d.resultLabel}.`)} ${escapeHtml(formatLocalDateTimeDisplay(new Date(lastReply.at)))}</div>
+          <div class="lp0-job-state${stateClass}">${escapeHtml(heading)}</div>
+          <div>${escapeHtml(resultLine)} ${escapeHtml(formatLocalDateTimeDisplay(new Date(lastReply.at)))}</div>
           <div class="lp0-job-meta">${pills}</div>
-          <div>The device sends no further updates; start or cancel again to see the current state.</div>
+          <div>The device sends no updates by itself; Refresh state asks again.</div>
         </div>
       `;
     }
@@ -8700,8 +9091,17 @@
       if (lp0Busy()) {
         return;
       }
-      showToast('Asking the station to test its SD card...');
+      // Accepted commands get no reply: the station answers with a fresh statistics report
+      // through its normal routes (stored in flash when port 23 is in the store mask), so the
+      // app fetches the newest stored report a few times until a newer one appears.
+      showToast('SD card check requested; waiting for the fresh station report.');
+      const baseline = lp0State.stationReport;
       executeBleCommand([0x20, CMD_RECOVER_SD, 0x00]);
+      clearStationReportTimers();
+      stationReportRetryTimer = setTimeout(() => {
+        stationReportRetryTimer = null;
+        requestLatestStationReport({ newerThan: baseline, attemptsLeft: STATION_REPORT_FRESH_ATTEMPTS });
+      }, STATION_REPORT_FRESH_DELAY_MS);
     }
 
     window.startLp0Offload = startLp0Offload;
@@ -8765,6 +9165,10 @@
       }
       if (!document.body.classList.contains('connected') || !rxCharacteristic) {
         showToast('Connect to a device first.');
+        return;
+      }
+      if (flashLogNewOnly()) {
+        startOffloadDownload({ requestedPort: 0, typeLabel: 'all' });
         return;
       }
       if (Number.isFinite(flashLogCountTotal) && flashLogCountTotal > 500) {
@@ -9050,7 +9454,15 @@
               log(`Decoded message: ${key} = ${bytesToSetting(msg, valueBytes)}`);
             }
           } else {
-            log(`Decoded message: ${key} = ${bytesToSetting(msg, valueBytes)}`);
+            // The length byte bounds variable-length bodies (air quality, satellites); the
+            // schema length is the maximum.
+            const body = data.slice(3, 3 + Math.min(data[2] || msg.length, data.length - 3));
+            if (key === 'msg_flash_status') {
+              const status = decodeFlashStatusMessage(body);
+              updateFlashLogCount(status.messageCount, status.usedPercent);
+            }
+            const text = describeMessageBody(key, body);
+            log(`Decoded message: ${key} = ${text !== null ? text : bytesToSetting(msg, valueBytes)}`);
           }
         } else {
           throw new Error(`No message found for port: ${portName} and id: 0x${id.toString(16)}`);
@@ -9081,6 +9493,9 @@
         resolveSettingRead(setting.id, value);
         if (key === 'flash_nr_msg') {
           updateFlashLogCount(value);
+        }
+        if (key === 'lp0_node_params') {
+          renderLp0StationBlock();
         }
         if (key === 'ublox_time') {
           const timestampEl = document.getElementById('ublox-timestamp');

@@ -150,18 +150,85 @@ stubbed device picker, stubbed downloads) and checks these paths; the desktop an
 check that exports still download through an anchor and that the manufacturer filter stays.
 Verification on a real iPhone with Bluefy is still open (see to-do.md).
 
-## Firmware 8.1 development builds: LP0 offload (beta)
+## Firmware 8.2.0 pre-release: LP0 offload and transfers by delivery state (beta)
 
-Firmware 8.1 is under development on the `fix/existing-lp0-implementation` branch of the
-private firmware repository and is flashed by hand; the app bundles no DFU file for it. Its
-settings schema, `settings/settings-v8.1.0.json`, is the `settings_v8.1.0.json` the firmware team
-sent on 2026-10-27 (the branch's `scripts/settings/settings.json` after commit 7bae042; the
-GitHub branch head still lacked these additions that day). Replace the file when the schema
-changes again. Against 8.0.3 it adds seven settings (`lp0_master_key`, `lp0_signal_checks`,
-`lp0_focus_offloading`, `lp0_statistics_interval`, `lp0_gps_before_start`, `lr_enabled`,
+The next firmware release, 8.2.0, is being finished on the `fix/existing-lp0-implementation`
+branch of the private firmware repository (PR #769) and is still flashed by hand; the app
+bundles no DFU file for it. Its settings schema, `settings/settings-v8.2.0.json`, is the branch's
+`scripts/settings/settings.json` at commit 4b58e4f (2026-11-04), bundled in the "Beta" group of
+the schema dropdown; replace the file with the release asset once v8.2.0 is published. It
+replaced the earlier `settings-v8.1.0.json` snapshot (the development line was first called 8.1):
+the schema differs from that snapshot in one added setting, `lp0_discovery_retry_count`, and the
+default of `lp0_signal_checks` (background margin check off). Against 8.0.3 it adds eight
+settings (`lp0_master_key`, `lp0_signal_checks`, `lp0_focus_offloading`,
+`lp0_statistics_interval`, `lp0_gps_before_start`, `lp0_discovery_retry_count`, `lr_enabled`,
 `ublox_require_time`), four commands (`cmd_offload_start` 0xCF, `cmd_offload_cancel` 0xD1,
 `cmd_flash_clear_confirmed` 0xD2, `cmd_recover_sd` 0xD3), the station statistics message
 (port 23, id 0x9D) and new defaults for `flash_store_flag` and `lp0_send_flag` (port 23 set).
+
+The firmware version a device reports decides what the app offers: the schema match needs 8.2
+(`findSettingsFileForFirmware` matches major.minor), and the LP0 panel, the LP0 card and the
+"new logs" download appear from 8.1 on. The firmware's `VERSION` file comes from `git describe`,
+so a build of the branch without a `v8.2.0` tag reports the nearest tag, 8.0.3, and the app then
+treats it as 8.0.3 (no beta features); build with a tag or pick the 8.2.0 schema by hand and
+accept that the LP0 features stay hidden until the status says 8.1 or newer.
+
+### Records remember how they were delivered
+
+Since this firmware every saved record carries a flags byte with one bit per medium (satellite,
+Bluetooth, LoRaWAN, LP0 station); a medium clears its bit once it has confirmed the record.
+`cmd_offload_start` (`20 CF 03 medium selection port`) sends the records that are still
+unconfirmed (or confirmed, or all) over a medium: LP0 0, LoRaWAN 1, satellite 2, Bluetooth 3,
+optionally filtered to one application port. Bluetooth transfers stream the records on port 29
+exactly like `flash_get_all`, but **the firmware sends no closing message for them** (only the
+legacy `flash_get_all` ends with `cmd_confirm`); the 19-byte job reply answers the start and
+cancel commands only. There is no command that counts confirmed or unconfirmed records
+(`flash_nr_msg` and the port-14 flash status carry the total only), and no job state query; the
+first boot of this firmware clears every stored log because of the new record format.
+
+- **Download new logs** (Logs card, firmware 8.1 or newer): a checkbox "Only records not yet
+  downloaded over Bluetooth", on by default, turns "Download all logs" into "Download new logs"
+  and "Download all messages of this type" into its "new" variant. The app sends
+  `20 CF 03 03 02 port`, treats the job reply as the go-ahead (or shows the firmware's reason,
+  such as busy or no connection), collects the port-29 packets as before, and after 3 seconds of
+  silence asks for the job state. That query is `20 D1 04 FF FF FF FF`: a cancel naming a job ID
+  that cannot exist, which the firmware refuses with ESTALE while still answering with the
+  current job's state and confirmed count, and which cancels nothing (`offload_job_cancel` in
+  the firmware source; the firmware documentation says there is no state query, so this is a
+  source-verified workaround, see to-do.md). "done" completes the download, "failed" interrupts
+  it, a job still sending is probed again (up to 30 seconds without data). An empty transfer
+  ends as "No new logs". Cancel sends the real cancel for the job; Retry asks again for the
+  records still unconfirmed, so a partial download continues where it stopped. The file is
+  `raw_logs-new-<device>_<timestamp>.txt`. With the checkbox off, or on older firmware, the
+  legacy `flash_get_all` download runs unchanged. The device marks a record as delivered when
+  the notification carrying it completed, not when the app saved the file; records downloaded
+  with older firmware or by other means are not marked.
+- **Refresh state** in the LP0 offload card sends the same probe and renders the current or
+  last job, automatic offloads included (job 0): state, medium, selection, port, discovery
+  attempts and confirmed records. The result line is left out because the probe's reply carries
+  ESTALE instead of the job's result.
+- **Delete confirmed logs** (LP0 card, `20 D2 01 selector`) erases whole sectors from the oldest
+  logs onward while every record in them is confirmed over the chosen medium.
+- **Offload station status** (LP0 card, shown when the device reports the station role): the
+  station writes a statistics report (port 23, version 3, 104 bytes) every
+  `lp0_statistics_interval`, on media changes and after an SD card check, through its normal
+  routes: stored in flash when port 23 is in `flash_store_flag` (the new default) and sent over
+  LP0 when it is in `lp0_send_flag`. There is no direct Bluetooth reply with it, so the app reads
+  the newest stored one with `flash_get_from_head` (port 23, start 0, count 1) and shows it as
+  rows: SD card (present and writable, missing, storage fault, write not yet verified), SD reader,
+  LP0 radio (listening, visit in progress, radio fault), uptime, tracker visits, records saved,
+  SD space, storage errors and report counters, with the storage time by the device clock.
+  Unknown flags are shown as unknown. "Check SD card" sends `20 D3 00` (`cmd_recover_sd`): a
+  healthy station only writes a fresh report, a station with a failed card runs its recovery test
+  and is allowed ten new reader resets. The firmware sends **no reply when it accepts** this
+  command (only a refusal is answered with `cmd_confirm 0`), so the app fetches the newest stored
+  report a few times until one with a higher uptime or a later storage time appears.
+
+The 2026-10-28 and 2026-11-03 schema changes: `lp0_discovery_retry_count` ("Discovery retries"
+in the LP0 panel, trackers only) allows up to 255 extra automatic discovery attempts per
+discovery interval after a failed attempt, 0 by default; the LP0 summary names it when set. The
+default of `lp0_signal_checks` became `1 1 1 100 0 20`: the background margin check is off, its
+20 dB threshold stays stored. The panel help, the list renderer and the metadata say so.
 
 The 2026-10-27 additions: `lp0_gps_before_start` is a toggle in the LP0 offload panel ("GPS fix
 before offloading"): a station takes a u-blox GPS fix before an offload session so its clock is
@@ -169,15 +236,15 @@ set from the receiver. Its summary sentence is "GPS fix before offloading." `lr_
 first field of the Network panel, a master switch for the LoRaWAN stack that warns while off,
 and `ublox_require_time` sits in the Positioning panel's "Fix result and follow-up" group; the
 firmware documentation does not describe either yet, so their help says only that. The LP0
-offload card gets a "Station SD card" block with a "Recover SD card" button (`20 D3 00`) that is
-shown only when the schema has the command; the device's cmd_confirm answers with a toast.
+offload card got a "Recover SD card" button (`20 D3 00`), since 2026-11-06 the "Check SD card"
+button of the station status block described above.
 
 The eight LP0 settings that older schemas already have stay where they were: in the LP0 group
 of the All settings list and as the LP0 column of the Data sending and storing matrix. The
 LP0 features below are only offered when the device reports firmware 8.1 or newer and the
 loaded schema carries the master key and the offload commands; they are hidden on 8.0.x, also
-when someone picks the 8.1.0 schema by hand for an 8.0 collar. The composer shows the panel
-whenever the 8.1.0 schema is selected; the schema sits in the "Beta" group at the bottom of
+when someone picks the 8.2.0 schema by hand for an 8.0 collar. The composer shows the panel
+whenever the 8.2.0 schema is selected; the schema sits in the "Beta" group at the bottom of
 the dropdown and the composer opens with the latest release instead.
 
 - **LP0 offload panel** (beta tag, between S-Band and VHF): role, station ID, station count and
@@ -202,10 +269,11 @@ the dropdown and the composer opens with the latest release instead.
   reply on the commands port is decoded (`decodeOffloadJobReply` in `functions.js`: job ID,
   state, medium, selection, port, discovery attempts, errno with its documented meaning,
   confirmed records) into the card and a toast. The firmware has no status query, so the card
-  shows the last reply only. "Delete confirmed logs" asks first, then sends `20 D2 01 selector`
-  (any medium, LP0 station, LoRaWAN, Bluetooth or satellite); the usual cmd_confirm reply
-  shows a toast and refreshes the flash message count. The Bluetooth offload medium is not
-  offered: the Logs card's download already covers it.
+  shows the last reply, and "Refresh state" asks for the current one (see above). "Delete
+  confirmed logs" asks first, then sends `20 D2 01 selector` (any medium, LP0 station, LoRaWAN,
+  Bluetooth or satellite); the usual cmd_confirm reply shows a toast and refreshes the flash
+  message count. The Bluetooth medium is not offered here: the Logs card's "Download new logs"
+  is that transfer.
 - **Station statistics** stored in flash (port 23) are decoded in the Logs card's recent
   messages (`decodeLp0StatisticsMessage`, versions 1 to 3): a one-line summary with uptime,
   the status flags that are set, visit and data counters and the SD card size, plus every flag
@@ -216,8 +284,12 @@ the dropdown and the composer opens with the latest release instead.
   fifth byte where the schema has one (v7.0.0).
 - `tests/browser-input-check.mjs` has an LP0 scenario: nothing on 8.0.1, panel, card, Features
   row and port list on 8.1, byte edits through the shared hidden input, Generate, the signal
-  check gate, the start command and its reply, the delete confirmation, a replayed statistics
-  record, and no panel or card for an 8.0 status with the 8.1.0 schema.
+  check gate, the start command and its reply, the station status block with a stored report
+  and the SD card check, the state refresh, the delete confirmation, a replayed statistics
+  record, and no panel or card for an 8.0 status with the 8.2.0 schema; and a new-logs scenario:
+  the toggle and labels, the transfer start, the records, the state probe that completes the
+  download, the empty, refused and cancelled cases, the legacy download with the toggle off,
+  and no toggle on 8.0.
 
 ## Firmware v8 settings support
 
@@ -416,6 +488,22 @@ time is still set, and says so in a toast. Driver-update firmware (LR update, v5
 as the button is hidden there as well. The update runs again after the automatic reconnect
 that follows a DFU, since that is a new connection with a freshly booted collar.
 
+## Message decoding
+
+Rule (2026-11-06): every message type the firmware's TTN decoder (`scripts/ttn_decoder.js` in the
+firmware repository, `ttn_decoder-vX.Y.Z.js` in a release) decodes for a bundled release must
+decode in the app as well, in the Logs card's recent messages and in the Debug log for live
+notifications. `MESSAGE_SUMMARIZERS` in `functions.js` holds the shared decoders (flash status,
+LR1110 and u-blox satellites, GNSS scan, external switch detection and status, air quality,
+Memfault chunks, LP0 statistics), each with a one-line summary and, where there are many values,
+detail rows behind a fold. Positions, scans, CMDQ, fence, messenger and status messages are
+decoded on the main page because they feed cards. `MESSAGES_WITHOUT_DECODER` lists the only
+messages shown as raw bytes, with the reason (containers, replies, messages the firmware no
+longer sends). The Node test "every message in every bundled schema has a decoder" fails when a
+new schema brings a message that is in none of those places, so bundling a release means porting
+its new decoders first. A live port-14 flash status message also updates the "Flash messages"
+count in the Logs card together with the flash usage percentage.
+
 ## Recent stored messages
 
 The Logs card shows the newest stored messages of any type without downloading the whole
@@ -432,6 +520,10 @@ The cards below the map are ordered: Settings (guided panels), Logs, BLE scan, W
 CMDQ, FenceEdge, Messenger, All settings, Commands, Firmware notes.
 
 ## Raw log downloads
+
+On firmware 8.1 and newer the Logs card downloads only the records not yet delivered over
+Bluetooth by default (see "Records remember how they were delivered" above); the legacy
+download of everything stays behind the checkbox. Both produce the same file format.
 
 Flash log downloads stream one packet per line (base64) into memory. If the connection drops,
 the device stops answering, or the page is closed mid-download, the packets received so far are

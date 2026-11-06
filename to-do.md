@@ -77,14 +77,37 @@ pass; verify in the field, on a phone that has opened the app online once:
    does to the connection. Note the text; a QUIC block is one candidate (test with QUIC off
    under chrome://flags).
 
-## Firmware 8.1 development builds, LP0 offload beta (added 2026-10-20, hardware test pending)
+## Firmware 8.2.0 pre-release, LP0 offload and transfers by delivery state (beta; added 2026-10-20, updated 2026-11-06, hardware test pending)
 
-The app bundles the 8.1.0 settings schema (branch fix/existing-lp0-implementation, commit
-7bae042) and offers the LP0 offload panel, card, Features row and statistics decoding only
-when a device reports 8.1. Nothing has run against 8.1 hardware yet; the headless check covers
-the UI and the wire bytes. Verify on a manually flashed 8.1 tracker and station:
+The app bundles the 8.2.0 settings schema (branch fix/existing-lp0-implementation, commit
+4b58e4f of 2026-11-04; it replaced the 8.1.0 snapshot) and offers the LP0 offload panel, card,
+Features row, statistics decoding and the "new logs" download only when a device reports 8.1 or
+newer. Nothing has run against this firmware yet; the headless check covers the UI and the wire
+bytes. Before the test, check what version the test build reports: the firmware's VERSION comes
+from `git describe`, so a branch build without a v8.2.0 tag reports 8.0.3 and the app hides every
+beta feature (ask the firmware team to build with `version.py --tag v8.2.0-0` or similar). Open
+questions for the firmware team, found while reading the source on 2026-11-06:
 
-1. Connect to an 8.1 collar: the app selects settings-v8.1.0.json, the 8.1.0 firmware note
+- No count of confirmed or unconfirmed records exists yet (flash_nr_msg and the port-14 flash
+  status carry the total). The firmware developer is adding the confirmed and unconfirmed counts
+  to the port-14 flash status message (Tim, 2026-11-06). When the layout is known (per medium or
+  Bluetooth only, field widths, message length; the message is `94 len % used, total u32`
+  today and the app does not decode it at all): request it with cmd_get_flash_status (`20 B3 00`)
+  on connect, after a download and after an erase (the message decodes since 2026-11-06,
+  decodeFlashStatusMessage in functions.js); show "n not yet downloaded over Bluetooth"
+  next to the Flash messages count in the Logs card; use that number as the known total of a
+  "Download new logs" progress bar; and decode it in the Logs card's recent messages as well.
+  Bump the schema snapshot if the message length changes.
+- No job state query exists; the app uses a cancel with job ID 0xFFFFFFFF, which the firmware
+  refuses with ESTALE while answering with the current job's fields (offload_job_cancel in
+  offload_job.c). A proper query, or a closing cmd_confirm after an explicit Bluetooth transfer,
+  would remove the 3-second silence detection.
+- cmd_recover_sd answers nothing when accepted (prv_execute_command_message returns 0); a
+  cmd_confirm 1 would let the app say "started" instead of waiting for the fresh report.
+
+Verify on a manually flashed 8.2.0 tracker and station:
+
+1. Connect to an 8.2 collar: the app selects settings-v8.2.0.json, the 8.2.0 firmware note
    shows, the LP0 offload panel (beta) and card appear, and an 8.0.3 collar shows neither.
 2. In the panel set the station role and ID on the station and the tracker role on the
    tracker, Generate one master key, copy it to the other device (Show, select, copy), apply on
@@ -100,14 +123,32 @@ the UI and the wire bytes. Verify on a manually flashed 8.1 tracker and station:
    answers "satellite modem not detected".
 6. Delete confirmed logs (LP0 station) after an offload: the toast confirms and the flash
    message count drops; with a download running it reports that the device did not delete.
-7. Export on 8.1, import on the same collar: zero changes, master key included only with the
-   credentials box ticked; import an 8.0.3 profile on 8.1: the seven new settings are untouched.
+7. Export on 8.2, import on the same collar: zero changes, master key included only with the
+   credentials box ticked; import an 8.0.3 profile on 8.2: the eight new settings are untouched.
 8. Schema of 2026-10-27: on the station turn on "GPS fix before offloading" in the LP0 panel,
    apply, read back true; after the next offload the station's timestamps and SD file times are
-   current. "Recover SD card" in the LP0 card: on a station the toast says started and the LEDs
-   run the storage test; on a tracker the toast says it was refused. Switch LoRaWAN off in the
-   Network panel only on a bench collar and note what the firmware does, so the help text can
-   say it; same for "Fix requires valid time" in Positioning.
+   current. Switch LoRaWAN off in the Network panel only on a bench collar and note what the
+   firmware does, so the help text can say it; same for "Fix requires valid time" in Positioning.
+9. Download new logs (Logs card, checkbox on by default): on a collar with stored records the
+   download starts (Debug log: "Bluetooth transfer job n sending"), the records arrive, after
+   the stream ends the probe `20 D1 04 FF FF FF FF` is answered with state done and the file
+   raw_logs-new-... is saved; run it again at once: "No new logs". Then "Download all logs"
+   with the checkbox off still delivers everything. Note how long the silence before the probe
+   is in practice; 3 s is a guess, lengthen OFFLOAD_DOWNLOAD_SILENCE_MS in index.html if the
+   device pauses longer between packets (a pause ends a download early as "done" only if the
+   device really reports done, otherwise the probe is repeated, so a too-short value costs only
+   extra probes). Cancel mid-way: the device stops streaming. Walk out of range mid-way, come
+   back, Retry: only the remaining records arrive.
+10. Refresh state in the LP0 card while an automatic offload runs on a tracker: state and
+   confirmed count follow the offload; while idle it says what the last job did. Confirm that the
+   probe never cancels a running automatic offload (the station keeps receiving).
+11. Station status (LP0 card, station role): "Load latest report" shows the stored report with
+   the SD card present and writable; pull the card, wait for the magenta flashes, load again:
+   "missing" and the storage fault; reinsert, "Check SD card": within 15 s the fresh report shows
+   the card present again and the toast "Fresh station report received". On a tracker the block is
+   hidden and Check SD card is refused.
+12. Discovery retries: set 2 on a tracker, apply, read back 2; the LP0 summary names it. The
+   signal checks default reads 1 1 1 100 0 20 in the All settings list after a factory reset.
 
 ## Firmware v8.0.3 (bundled 2026-10-07, hardware test pending)
 

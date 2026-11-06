@@ -1,11 +1,11 @@
 {
   "notes": [
     {
-      "id": "open-collar-8-1-0-beta",
-      "title": "Open Collar 8.1.0: development build (beta)",
+      "id": "open-collar-8-2-0-beta",
+      "title": "Open Collar 8.2.0: pre-release build (beta)",
       "appliesTo": {
         "fwVersions": [
-          "8.1.0"
+          "8.2.0"
         ],
         "fwVersionMin": null,
         "fwVersionMax": null,
@@ -15,13 +15,15 @@
         "hwTypes": []
       },
       "body": [
-        "Beta: this firmware is under development and is flashed manually; the app offers no built-in DFU for it.",
+        "Beta: this firmware is not released yet and is flashed manually; the app offers no built-in DFU for it. The app treats a device reporting 8.1 or newer as this firmware.",
         "Added: LP0 offload clusters. A tracker sends its saved records over LoRa to an offload station, which stores them on a microSD card. The LP0 offload panel and card in this app are only shown on this firmware.",
-        "Added settings: lp0_master_key (one random key per cluster), lp0_signal_checks, lp0_focus_offloading, lp0_statistics_interval, lp0_gps_before_start (a station takes a u-blox GPS fix before offloading so its clock is set), lr_enabled (LoRaWAN master switch) and ublox_require_time.",
-        "Added commands: start offload (0xCF), cancel offload (0xD1), delete confirmed logs (0xD2), recover SD card (0xD3).",
-        "Added message: LP0 station statistics on port 23 (id 0x9D), decoded in the Logs card.",
-        "Changed defaults: flash_store_flag and lp0_send_flag include port 23; a device updated from 8.0 keeps its saved masks.",
-        "Settings schema: settings_v8.1.0.json as received from the firmware team on 2026-10-27 (branch fix/existing-lp0-implementation after commit 7bae042), bundled as settings-v8.1.0.json."
+        "Added: log transfers by delivery state. Every saved record remembers over which medium it was confirmed received (Bluetooth, LoRaWAN, LP0 station, satellite). The Logs card can download only the records not yet downloaded over Bluetooth, and the LP0 card can delete the logs that were confirmed over a chosen medium.",
+        "Added settings: lp0_master_key (one random key per cluster), lp0_signal_checks, lp0_focus_offloading, lp0_statistics_interval, lp0_gps_before_start (a station takes a u-blox GPS fix before offloading so its clock is set), lp0_discovery_retry_count (extra discovery attempts per interval, 0 by default), lr_enabled (LoRaWAN master switch) and ublox_require_time.",
+        "Added commands: start transfer (0xCF), cancel transfer (0xD1), delete confirmed logs (0xD2), recover SD card (0xD3).",
+        "Added message: LP0 station statistics on port 23 (id 0x9D, version 3 with the SD card state), decoded in the Logs card and shown as the station status in the LP0 offload card.",
+        "Changed defaults: flash_store_flag and lp0_send_flag include port 23 (a device updated from 8.0 keeps its saved masks); the LP0 background signal margin check is off by default (lp0_signal_checks 1 1 1 100 0 20); the minimum RSSI check defaults to -100 dBm.",
+        "Changed: the first boot of this firmware clears all stored logs (new log format with delivery flags); export the logs before updating. AirQ builds carry S-Band only, without LP0 offloading or SD card support.",
+        "Settings schema: scripts/settings/settings.json of branch fix/existing-lp0-implementation at commit 4b58e4f (2026-11-04), bundled as settings-v8.2.0.json. Replace it when the 8.2.0 release asset appears."
       ]
     },
     {

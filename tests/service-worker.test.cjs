@@ -114,7 +114,7 @@ test('install fetches every app file fresh and does not download the DFU binarie
     const cache = w.caches.get(w.cacheName);
     assert.ok(await cache.match(`${SCOPE}index.html`));
     assert.ok(await cache.match(`${SCOPE}functions.js`));
-    assert.ok(await cache.match(`${SCOPE}settings/settings-v8.1.0.json`));
+    assert.ok(await cache.match(`${SCOPE}settings/settings-v8.2.0.json`));
     assert.ok(w.fetched.every(f => f.cache === 'reload' || f.url.endsWith('manifest.json')), 'app files bypass the HTTP cache');
     assert.equal(w.fetched.filter(f => f.url.includes('/releases/')).length, 0);
     assert.ok(w.self.skipped);

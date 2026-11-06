@@ -638,7 +638,7 @@
 		},
 		"lp0_signal_checks": {
 			"id": "0x25",
-			"default": "{0x01,0x01,0x01,0x64,0x01,0x14}",
+			"default": "{0x01,0x01,0x01,0x64,0x00,0x14}",
 			"min": "{0x00,0x00,0x00,0x00,0x00,0x00}",
 			"max": "{0x01,0x01,0x01,0x7d,0x01,0x7f}",
 			"length": 6,
@@ -670,6 +670,15 @@
 			"max": true,
 			"length": 1,
 			"conversion": "bool",
+			"family": "0x05"
+		},
+		"lp0_discovery_retry_count": {
+			"id": "0x2A",
+			"default": 0,
+			"min": 0,
+			"max": 255,
+			"length": 1,
+			"conversion": "uint8",
 			"family": "0x05"
 		},
 		"ublox_send_interval": {
