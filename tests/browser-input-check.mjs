@@ -674,13 +674,27 @@ async function newLogsDownload(tag) {
   const empty = await overlay();
   const emptyErase = await evaluate(`document.getElementById('flash-log-erase').classList.contains('hidden')`);
   check(`${tag} new logs: a transfer with no records ends as "No new logs" without an erase button`, empty.title === 'Nothing new to download' && /already been downloaded over Bluetooth/.test(empty.detail) && emptyErase, { empty, emptyErase });
-  // Busy device: the start reply carries EBUSY.
+  // Busy collar: an automatic LP0 discovery attempt owns the job slot; the app waits and asks again.
   await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);
-  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -16, 0))}).buffer) } })`);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J([0x20, 0xCF, 17, 0, 0, 0, 0, 3, 0, 2, 0, 1, 0xF0, 0xFF, 0xFF, 0xFF, 0, 0, 0, 0])}).buffer) } })`); // EBUSY, automatic job discovering
+  await sleep(100);
+  const busyWait = await overlay();
+  await sleep(4200);
+  const retried = await overlay();
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(12, 4, -119, 0))}).buffer) } })`);
+  await sleep(3300);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(stateReply(12, 6, 0))}).buffer) } })`);
+  await sleep(100);
+  const afterBusy = await overlay();
+  check(`${tag} new logs: a busy collar is asked again after a pause, with the reason shown meanwhile`, /Collar busy, trying again \(1 of 4\)/.test(busyWait.title) && /automatic LP0 offload attempt \(discovering\)/.test(busyWait.detail) && retried.writes.filter(w => JSON.stringify(w) === JSON.stringify([0x20, 0xCF, 3, 3, 2, 0])).length === 2 && afterBusy.title === 'Nothing new to download', { busyWait, retried: retried.writes, afterBusy });
+  // A start the collar refuses for good (no connection generation): the dialog says why.
+  await evaluate(`(() => { document.getElementById('flash-log-ok').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
+  await sleep(60);
+  await evaluate(`handleNotifications({ target: { value: new DataView(new Uint8Array(${J(startReply(10, 4, -128, 0))}).buffer) } })`);
   await sleep(100);
   const busy = await overlay();
-  check(`${tag} new logs: a refused start shows why`, busy.title === 'Log download interrupted' && /did not start the transfer: another offload/.test(busy.detail), busy);
+  check(`${tag} new logs: a refused start shows why`, busy.title === 'Log download interrupted' && /did not start the transfer: Bluetooth connection no longer valid/.test(busy.detail), busy);
   // Cancel: the device is asked to cancel the job, the reply stays out of the LP0 card.
   await evaluate(`(() => { document.getElementById('flash-log-cancel').click(); window.__writes.length = 0; requestFlashLogDownloadAll(); return true; })()`);
   await sleep(60);

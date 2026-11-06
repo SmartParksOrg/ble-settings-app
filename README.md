@@ -201,7 +201,11 @@ first boot of this firmware clears every stored log because of the new record fo
   table. Until 2026-11-06 the app used Linux's numbers and read a started transfer (-119) as a
   failure, which aborted the first field test on SP051307 one second into a running stream. "done" completes the download, "failed" interrupts
   it, a job still sending is probed again (up to 30 seconds without data). An empty transfer
-  ends as "No new logs". Cancel sends the real cancel for the job; Retry asks again for the
+  ends as "Nothing new to download". A start the collar refuses with EBUSY is asked again up
+  to four times, four seconds apart, with the reason shown meanwhile: a tracker's automatic
+  discovery attempt owns the job slot for a few seconds every discovery interval, a flash read
+  (tracks, recent messages) owns the flash while it runs, and a cancelled transfer settles its
+  confirmations first. Cancel sends the real cancel for the job; Retry asks again for the
   records still unconfirmed, so a partial download continues where it stopped. The file is
   `raw_logs-new-<device>_<timestamp>.txt`. The completion dialog (and the interruption dialog,
   for what was saved) reports the download: records, packets and bytes, duration, the storage

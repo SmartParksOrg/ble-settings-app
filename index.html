@@ -2283,6 +2283,23 @@
     const FLASH_LOG_SILENCE_MS = 12000;
     const OFFLOAD_DOWNLOAD_SILENCE_MS = 3000;
     const OFFLOAD_DOWNLOAD_MAX_POLLS = 10;
+    // EBUSY on a start is transient: a tracker's automatic discovery attempt owns the job slot
+    // for a few seconds every discovery interval, a flash read (tracks, recent messages) owns
+    // the flash while it runs, and a cancelled transfer settles its confirmations first.
+    const OFFLOAD_BUSY_RETRIES = 4;
+    const OFFLOAD_BUSY_RETRY_MS = 4000;
+
+    // What the collar is busy with, from the job fields every start reply carries.
+    function describeBusyJob(decoded) {
+      const running = decoded.state >= 1 && decoded.state <= 5;
+      if (decoded.jobId === 0 && running) {
+        return `It is in the middle of an automatic LP0 offload attempt (${decoded.stateLabel}); a tracker makes one every discovery interval.`;
+      }
+      if (decoded.jobId > 0 && running) {
+        return `Transfer job ${decoded.jobId} is still ${decoded.stateLabel}.`;
+      }
+      return 'A previous transfer is finishing its cleanup, or another flash read (tracks, recent messages) is still running.';
+    }
 
     function scheduleFlashLogInactivityTimeout() {
       clearFlashLogInactivityTimeout();
@@ -2318,8 +2335,33 @@
     // Replies to the transfer start and to the state probes while a "new logs" download runs.
     function handleOffloadDownloadReply(command, decoded) {
       if (command === CMD_OFFLOAD_START) {
+        if (decoded.result === OFFLOAD_ERRNO.EBUSY && flashLogState.busyRetries < OFFLOAD_BUSY_RETRIES) {
+          flashLogState.busyRetries += 1;
+          const what = describeBusyJob(decoded);
+          log(`Collar busy, start retried in ${OFFLOAD_BUSY_RETRY_MS / 1000} s (${flashLogState.busyRetries} of ${OFFLOAD_BUSY_RETRIES}): ${what}`);
+          setFlashLogProgress({
+            title: `Collar busy, trying again (${flashLogState.busyRetries} of ${OFFLOAD_BUSY_RETRIES})...`,
+            detail: what,
+            received: 0,
+            total: null,
+            knownTotal: false
+          });
+          clearFlashLogInactivityTimeout();
+          flashLogState.inactivityTimeoutId = setTimeout(() => {
+            if (!flashLogState.active) {
+              return;
+            }
+            scheduleFlashLogInactivityTimeout();
+            executeBleCommand(encodeOffloadStart(OFFLOAD_MEDIUM_BLUETOOTH, OFFLOAD_SELECTION_UNCONFIRMED, flashLogState.requestedPort))
+              .catch(error => showFlashLogFailure(`Could not send the transfer request: ${error.message}`));
+          }, OFFLOAD_BUSY_RETRY_MS);
+          return;
+        }
         if (decoded.result !== 0 && decoded.result !== OFFLOAD_ERRNO.EINPROGRESS) {
-          showFlashLogFailure(`The device did not start the transfer: ${decoded.resultLabel}.`);
+          const busyHint = decoded.result === OFFLOAD_ERRNO.EBUSY
+            ? ` ${describeBusyJob(decoded)} Wait a minute and retry, or pause LP0 offloading in the LP0 panel for the download.`
+            : '';
+          showFlashLogFailure(`The collar did not start the transfer: ${decoded.resultLabel}.${busyHint}`);
           return;
         }
         flashLogState.jobId = decoded.jobId;
@@ -2748,6 +2790,7 @@
         frameBuffer: new Uint8Array(0),
         decodedMessages: 0,
         stats: { records: 0, packets: 0, bytes: 0, byPort: new Map(), oldest: null, newest: null, deviceConfirmed: null },
+        busyRetries: 0,
         startedAt: new Date(),
         deviceName: device && device.name ? device.name : '',
         logTypeLabel,
