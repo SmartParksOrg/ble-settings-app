@@ -2622,6 +2622,16 @@
 
     function showFlashLogFailure(reason = 'Log download stopped prematurely.') {
       clearFlashLogInactivityTimeout();
+      // A Bluetooth transfer keeps streaming after the app stops collecting, and the device
+      // marks every record whose notification completed as delivered, whether the app kept it
+      // or not (on 2026-11-06 an aborted run consumed the whole backlog that way). So a
+      // transfer the app gives up on is cancelled on the device while the link is still there.
+      if (flashLogState.active && flashLogState.requestMode === 'offload' && flashLogState.jobId
+        && document.body.classList.contains('connected') && rxCharacteristic) {
+        flashLogState.cancelledJobId = flashLogState.jobId;
+        executeBleCommand(encodeOffloadCancel(flashLogState.jobId)).catch(() => null);
+        log(`Asked the device to cancel transfer job ${flashLogState.jobId} after: ${reason}`);
+      }
       flashLogState.active = false;
       flashLogState.lastError = reason;
 

@@ -206,7 +206,11 @@ first boot of this firmware clears every stored log because of the new record fo
   `raw_logs-new-<device>_<timestamp>.txt`. With the checkbox off, or on older firmware, the
   legacy `flash_get_all` download runs unchanged. The device marks a record as delivered when
   the notification carrying it completed, not when the app saved the file; records downloaded
-  with older firmware or by other means are not marked.
+  with older firmware or by other means are not marked. The reverse holds too: a transfer the
+  app stops collecting keeps streaming and keeps marking records delivered, so whenever the app
+  gives up on a transfer while still connected it sends the cancel for that job (on 2026-11-06
+  an aborted run delivered the whole backlog of SP051307 into the void; those records stay
+  available through "Download all logs").
 - **Refresh state** in the LP0 offload card sends the same probe and renders the current or
   last job, automatic offloads included (job 0): state, medium, selection, port, discovery
   attempts and confirmed records. The result line is left out because the probe's reply carries

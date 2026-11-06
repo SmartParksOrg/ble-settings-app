@@ -132,7 +132,9 @@ Verify on a manually flashed 8.2.0 tracker and station:
 9. (First run 2026-11-06 on SP051307: the device streamed at once and answered the start with
    job 2, waiting, -119; the app read -119 with Linux errno numbers as a failure and aborted after
    72 records while the stream went on. Fixed the same day: the table now uses newlib's numbers,
-   -119 = EINPROGRESS. Repeat the test.)
+   -119 = EINPROGRESS. The second run at 14:56 returned 1 record, correctly: the aborted stream
+   had delivered the whole backlog, which the device counts as delivered. Since then the app
+   cancels a transfer it gives up on. Repeat the test after new records have been stored.)
    Download new logs (Logs card, checkbox on by default): on a collar with stored records the
    download starts (Debug log: "Bluetooth transfer job n sending"), the records arrive, after
    the stream ends the probe `20 D1 04 FF FF FF FF` is answered with state done and the file
