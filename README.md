@@ -203,7 +203,12 @@ first boot of this firmware clears every stored log because of the new record fo
   it, a job still sending is probed again (up to 30 seconds without data). An empty transfer
   ends as "No new logs". Cancel sends the real cancel for the job; Retry asks again for the
   records still unconfirmed, so a partial download continues where it stopped. The file is
-  `raw_logs-new-<device>_<timestamp>.txt`. With the checkbox off, or on older firmware, the
+  `raw_logs-new-<device>_<timestamp>.txt`. The completion dialog (and the interruption dialog,
+  for what was saved) reports the download: records, packets and bytes, duration, the storage
+  time span by the device clock, a count per message type, and for a new-logs download what
+  the device confirmed as delivered. "Erase all logs" is offered only after the legacy download of
+  everything: a download by delivery state leaves the records on the device on purpose, and
+  its cleanup is "Delete confirmed logs" in the LP0 card. With the checkbox off, or on older firmware, the
   legacy `flash_get_all` download runs unchanged. The device marks a record as delivered when
   the notification carrying it completed, not when the app saved the file; records downloaded
   with older firmware or by other means are not marked. The reverse holds too: a transfer the

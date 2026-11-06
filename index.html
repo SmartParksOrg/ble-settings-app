@@ -1101,6 +1101,7 @@
       buffer: '',
       frameBuffer: new Uint8Array(0),
       decodedMessages: 0,
+      stats: null,
       startedAt: null,
       deviceName: '',
       logTypeLabel: 'all',
@@ -2333,6 +2334,9 @@
         finishFlashLogCapture('device done');
         return;
       }
+      if (flashLogState.stats) {
+        flashLogState.stats.deviceConfirmed = decoded.confirmed;
+      }
       if (decoded.state === 6) {
         finishFlashLogCapture('device done');
         return;
@@ -2542,6 +2546,38 @@
       return `raw_logs-${logType}-${deviceName}_${timestamp}.txt`;
     }
 
+    // What a download delivered: counts, size, duration, the records' storage times (device
+    // clock) and a count per message type; for a transfer by delivery state also what the
+    // device confirmed as delivered.
+    function describeFlashLogCapture() {
+      const stats = flashLogState.stats;
+      if (!stats) {
+        return '';
+      }
+      const ports = settingsData && settingsData.ports ? settingsData.ports : {};
+      const labels = (window.PanelDefinitions && PanelDefinitions.portLabels) || {};
+      const nameOfPort = Object.fromEntries(Object.entries(ports).map(([name, number]) => [number, labels[name] || name.replace(/^port_/, '').replace(/_/g, ' ')]));
+      const seconds = flashLogState.startedAt ? Math.max(1, Math.round((Date.now() - flashLogState.startedAt.getTime()) / 1000)) : null;
+      const size = stats.bytes >= 10240 ? `${(stats.bytes / 1024).toFixed(1)} KB` : `${stats.bytes} bytes`;
+      const lines = [];
+      lines.push(`${stats.records} record${stats.records === 1 ? '' : 's'} in ${stats.packets} packet${stats.packets === 1 ? '' : 's'} (${size})${seconds ? `, ${formatDurationCompact(seconds)}` : ''}.`);
+      if (stats.oldest !== null) {
+        lines.push(stats.oldest === stats.newest || stats.records === 1
+          ? `Stored ${formatLocalDateTimeDisplay(new Date(stats.newest * 1000))} by the device clock.`
+          : `Stored between ${formatLocalDateTimeDisplay(new Date(stats.oldest * 1000))} and ${formatLocalDateTimeDisplay(new Date(stats.newest * 1000))} by the device clock.`);
+      }
+      if (flashLogState.requestMode === 'offload' && stats.deviceConfirmed !== null) {
+        lines.push(stats.deviceConfirmed === stats.records
+          ? `The device confirmed all ${stats.deviceConfirmed} as delivered.`
+          : `The device confirmed ${stats.deviceConfirmed} as delivered, the app received ${stats.records}.`);
+      }
+      const byType = Array.from(stats.byPort.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([port, count]) => `<li><span>${escapeHtml(nameOfPort[port] || `port ${port}`)}</span><span>${count}</span></li>`)
+        .join('');
+      return `<div class="flash-log-report">${lines.map(line => `<div>${escapeHtml(line)}</div>`).join('')}${byType ? `<ul class="flash-log-report-types">${byType}</ul>` : ''}</div>`;
+    }
+
     function showFlashLogSuccess(filename) {
       const spinner = document.getElementById('flash-log-overlay-spinner');
       const titleEl = document.getElementById('flash-log-overlay-title');
@@ -2563,7 +2599,7 @@
       progressEl.classList.remove('hidden');
       progressEl.classList.remove('indeterminate');
       barEl.style.width = '100%';
-      messageEl.innerHTML = `
+      messageEl.innerHTML = `${describeFlashLogCapture()}
         Use the <a href="https://smartparksorg.github.io/raw_logs_decoder/" target="_blank" rel="noopener noreferrer">Smart Parks - Log File Decoder</a>
         to decode this log file.${flashLogState.requestMode === 'offload' ? ' The device has marked these records as downloaded over Bluetooth; the next download of new logs skips them.' : ''}
       `;
@@ -2571,7 +2607,9 @@
       messageEl.classList.remove('warning');
       retryBtn.classList.add('hidden');
       cancelBtn.classList.add('hidden');
-      eraseBtn.classList.remove('hidden');
+      // Erasing is a step after a download of everything; a download by delivery state leaves
+      // the records on the device on purpose (Delete confirmed logs in the LP0 card is its cleanup).
+      eraseBtn.classList.toggle('hidden', flashLogState.requestMode === 'offload');
       okBtn.classList.remove('hidden');
       const saveBtn = document.getElementById('flash-log-save-partial');
       if (saveBtn) {
@@ -2614,7 +2652,7 @@
       messageEl.classList.remove('warning');
       retryBtn.classList.add('hidden');
       cancelBtn.classList.add('hidden');
-      eraseBtn.classList.remove('hidden');
+      eraseBtn.classList.toggle('hidden', isNew);
       okBtn.classList.remove('hidden');
       document.getElementById('flash-log-save-partial')?.classList.add('hidden');
       setFlashLogOverlayVisible(true);
@@ -2667,9 +2705,9 @@
         const retryNote = flashLogState.requestMode === 'offload'
           ? 'Retry asks only for the records the device has not yet confirmed as received over Bluetooth.'
           : 'The device still holds all logs; Retry downloads them again from the start.';
-        messageEl.textContent = filename
+        messageEl.innerHTML = `${describeFlashLogCapture()}${escapeHtml(filename
           ? `${received} messages were received before the download stopped and were saved as ${filename}. ${retryNote}`
-          : `${received} messages were received before the download stopped. Use "Save partial log" to keep them.`;
+          : `${received} messages were received before the download stopped. Use "Save partial log" to keep them.`)}`;
         messageEl.classList.remove('warning');
         if (savePartialBtn) {
           savePartialBtn.textContent = 'Save partial log';
@@ -2698,6 +2736,7 @@
         buffer: '',
         frameBuffer: new Uint8Array(0),
         decodedMessages: 0,
+        stats: { records: 0, packets: 0, bytes: 0, byPort: new Map(), oldest: null, newest: null, deviceConfirmed: null },
         startedAt: new Date(),
         deviceName: device && device.name ? device.name : '',
         logTypeLabel,
@@ -3376,10 +3415,23 @@
       flashLogState.lines.push(base64Line);
       persistFlashLogCapture();
 
-      const parsed = parseFlashLogRecordCount(data, flashLogState.frameBuffer);
+      const parsed = parseFlashLogRecords(data, flashLogState.frameBuffer);
       flashLogState.frameBuffer = parsed.remainder;
-      if (parsed.count > 0) {
-        flashLogState.decodedMessages += parsed.count;
+      if (parsed.records.length > 0) {
+        flashLogState.decodedMessages += parsed.records.length;
+      }
+      const stats = flashLogState.stats;
+      if (stats) {
+        stats.packets += 1;
+        stats.bytes += payload.length;
+        for (const record of parsed.records) {
+          stats.records += 1;
+          stats.byPort.set(record.port, (stats.byPort.get(record.port) || 0) + 1);
+          if (record.timestamp > 0) {
+            stats.oldest = stats.oldest === null ? record.timestamp : Math.min(stats.oldest, record.timestamp);
+            stats.newest = stats.newest === null ? record.timestamp : Math.max(stats.newest, record.timestamp);
+          }
+        }
       }
 
       const receivedCount = flashLogState.decodedMessages > 0
