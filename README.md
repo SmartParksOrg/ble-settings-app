@@ -530,11 +530,20 @@ Every status message says whether the collar found its RockBLOCK: bit 0 of the f
 (status byte 15) is set once the modem answered a ping, and the high nibble is the number of
 attempts the last satellite send took (`satellite_resend_try`: n means it got through on attempt
 n, and a value equal to `satellite_retry` means every attempt was used, without saying whether
-the last one got through). The firmware only tests the modem in two cases: at boot while
-`satellite_enabled` is on, and when `satellite_enabled` is written while the modem has not been
-detected (the test powers the modem, waits 5 s and pings it up to five times: about 8 s when it
-answers, up to about 40 s when it does not). With satellite off the bit is therefore 0 even with
-a working modem, and once set it stays set until the collar restarts.
+the last one got through). The firmware tests the modem in three cases: at boot while
+`satellite_enabled` is on, when `satellite_enabled` is written while the modem has not been
+detected, and at the start of every satellite send (`satellite_send_buffer` pings before it
+sends). The test powers the modem, waits 5 s and pings it up to five times: about 8 s when it
+answers, up to about 40 s when it does not. With satellite off the bit is therefore 0 even with
+a working modem; with satellite on it reflects the last test, so a send whose ping fails clears it.
+
+At boot the test runs inside the satellite thread's init, and the collar only starts Bluetooth
+advertising once every thread has finished its init (`main.c`, 60 s init timeout). A collar
+restarted with satellite on therefore becomes connectable about 8 s (modem answers) to 40 s (no
+answer) later than one with satellite off, and its first status message already carries the
+result. The RockBLOCK is powered only during a test or a send (FreeEdge: enable pin P0.02;
+UART1 at 19200 baud on TX P0.11 and RX P0.08, no flow control); before a send the firmware also
+sets echo on (`ATE1`), flow control off (`AT&K0`) and ring alerts off (`AT+SBDMTA=0`).
 
 The Smart Parks Connect Android app only opens its satellite screen when this bit is set or the
 collar is a Ranger, so on a FreeEdge with satellite off it says "This feature is not available

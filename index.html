@@ -7866,10 +7866,10 @@
 
     // ---- Satellite modem (RockBLOCK) as the collar reports it ----
     // Status byte 15 bit 0 is set once the modem answered a ping; the high nibble is the number of
-    // attempts the last satellite send took (satellite_resend_try). The firmware only tests the
-    // modem at boot with satellite_enabled on and when satellite_enabled is written while the
-    // modem has not been detected (satellite.c); a 0 with satellite off therefore means "not
-    // tested", and once set the bit stays set until the collar restarts.
+    // attempts the last satellite send took (satellite_resend_try). The firmware tests the modem
+    // at boot with satellite_enabled on, when satellite_enabled is written while the modem has not
+    // been detected, and at the start of every send (satellite.c); a 0 with satellite off therefore
+    // means "not tested", and with satellite on the bit reflects the last test.
     function updateSatelliteModemFromStatus(statusMessage) {
       satelliteModem.reported = true;
       satelliteModem.detected = Boolean(statusMessage.sat_support);
@@ -7935,7 +7935,7 @@
       }
       if (isSatelliteEnabledOnDevice() || satelliteModem.notFound) {
         return {
-          text: 'Not found: the modem did not answer when satellite sending was switched on or at the last restart. Check the RockBLOCK cable and power, then use "Test satellite modem" in Actions.',
+          text: 'Not found: the modem did not answer at its last test (when satellite sending was switched on, at the last restart, or at the last send). Check the RockBLOCK cable and power, then use "Test satellite modem" in Actions.',
           tone: 'warn'
         };
       }
