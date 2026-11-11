@@ -82,6 +82,36 @@ test('nested group conditions gate every field inside the group', () => {
     assert.equal(rules.get('ublox_active_tracking').gates.size, 0);
 });
 
+test('a feature is set up first and switched on last: its settings stay editable while it is off', () => {
+    // Feature switches never grey out their own settings (Tim, 2026-11-11: "in CMDQ I need to
+    // set the search settings without enabling the feature"). Only choices between modes do.
+    const featureSwitches = ['cmdq_enabled', 'fence_enabled', 'external_switch_detection_enabled', 'wifi_scan_interval', 'ble_scan_interval',
+        'satellite_enabled', 's_band_send_interval', 'vhf_enabled', 'air_quality_enabled', 'enable_motion_trig_gps', 'outdoor_detection_enabled', 'ublox_min_satellites'];
+    definitions.panels.forEach(panel => engine.walkFields(panel.fields, (field, context) => {
+        const gates = engine.conditionKeys(field.enabledWhen, engine.conditionKeys(context.inherited)); // groups carry no dependsOn
+        featureSwitches.forEach(key => assert.ok(!gates.has(key) || engine.fieldKeys(field).includes(key), `${engine.fieldKeys(field).join(',') || field.label} is greyed out by ${key}`));
+    }));
+    const rules = engine.collectFieldRules(definitions);
+    ['cmdq_searched_mac_address', 'cmdq_search_interval', 'cmdq_scan_duration', 'cmdq_reporting_interval'].forEach(key => assert.ok(rules.get(key).gates.has('cmdq_enabled'), `${key} ordered with cmdq_enabled`));
+    const on = engine.planWriteOrder([
+        { key: 'cmdq_enabled', value: 'true' },
+        { key: 'cmdq_searched_mac_address', value: 'AABBCCDDEEFF' },
+        { key: 'cmdq_search_interval', value: '60' },
+    ], definitions);
+    assert.deepEqual(on.map(item => item.key), ['cmdq_searched_mac_address', 'cmdq_search_interval', 'cmdq_enabled'], 'the switch is written last');
+    const off = engine.planWriteOrder([
+        { key: 'fence_interval', value: '120' },
+        { key: 'fence_enabled', value: 'false' },
+    ], definitions);
+    assert.deepEqual(off.map(item => item.key), ['fence_enabled', 'fence_interval'], 'switched off first');
+    const satellite = engine.planWriteOrder([
+        { key: 'satellite_enabled', value: 'true' },
+        { key: 'satellite_multiple_intervals', value: 'true' },
+        { key: 'satellite_send_interval2', value: '86400' },
+    ], definitions);
+    assert.equal(satellite[satellite.length - 1].key, 'satellite_enabled');
+});
+
 test('draft tracks entries, validity and listeners', () => {
     const draft = engine.createDraft();
     const seen = [];
@@ -147,6 +177,7 @@ test('the Positioning definition only references settings that exist in the v8.0
         engine.fieldKeys(field).forEach(key => keys.add(key));
         engine.conditionKeys(field.enabledWhen, keys);
         engine.conditionKeys(field.visibleWhen, keys);
+        engine.conditionKeys(field.dependsOn, keys);
         (field.options || []).forEach(option => {
             engine.conditionKeys(option.when, keys);
             Object.keys(option.set || {}).forEach(key => keys.add(key));
@@ -315,6 +346,7 @@ test('every panel definition only references settings, options and ports that ex
         engine.fieldKeys(field).forEach(key => keys.add(key));
         (field.columns || []).forEach(column => keys.add(column.key));
         engine.conditionKeys(field.enabledWhen, keys);
+        engine.conditionKeys(field.dependsOn, keys);
         (field.options || []).forEach(option => {
             engine.conditionKeys(option.when, keys);
             Object.keys(option.set || {}).forEach(key => keys.add(key));
@@ -425,6 +457,7 @@ test('the LP0 panel is gated to the 8.2 beta schema and its byte fields fit the 
     const stationId = panel.fields.find(field => field.label === 'Station ID');
     assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '02000A013C' })[key]), true);
     assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '01000A013C' })[key]), false);
+    assert.equal(engine.evaluateCondition(stationId.enabledWhen, key => ({ lp0_node_params: '00000A013C' })[key]), true, 'editable while the role is off, so a station can be set up before the role is chosen');
     const plan = engine.planWriteOrder([{ key: 'lp0_node_params' }, { key: 'lp0_statistics_interval' }], definitions);
     assert.deepEqual(plan.map(change => change.key), ['lp0_node_params', 'lp0_statistics_interval'], 'same-key byte gates do not reorder');
 });

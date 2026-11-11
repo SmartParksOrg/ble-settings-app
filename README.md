@@ -113,6 +113,9 @@ Things that work differently on an iPhone:
   foreground until the collar has rebooted and reconnected.
 - Bluefy does not install the app on the home screen or keep an offline copy; it needs an
   internet connection to load the page.
+- A collar the iPhone has connected to before can be listed as "Zephyr" instead of its SP name,
+  and then a typed name does not find it. Clear the name in Scan settings and pick the Zephyr
+  entry; once connected, the app shows the collar's real name.
 
 If something does not work, tap the floating **Debug** button that appears while a collar is
 connected and send the log along with the iPhone model, iOS version and Bluefy version
@@ -142,6 +145,16 @@ browser with its own Web Bluetooth stack. The app detects iOS WebKit (and a miss
   button in the result overlay so the share sheet can be opened from a tap.
 - The DFU wake lock falls back to Bluefy's `bluetooth.setScreenDimEnabled(false)` where the
   Wake Lock API is missing.
+- iOS names a device after the GATT Device Name it read at an earlier connection, not after the
+  advertised name. The firmware only puts the collar name ("SP..." or the `device_name` setting)
+  in the advertising packet (`bt_adv.c`) and never calls `bt_set_name`, so the Device Name
+  characteristic keeps Zephyr's build default, and a collar the phone has met before shows
+  under that name in Bluefy's picker and in `device.name`. The picker is Bluefy's own and cannot
+  be changed from the page. The app shows the `device_name` setting in the device card and uses
+  it in log file names once the collar reports it (`getCollarDisplayName`); reconnects still
+  match on `device.name`, which is what `getDevices()` returns. The fix belongs in the firmware:
+  `CONFIG_BT_DEVICE_NAME_DYNAMIC=y` and a `bt_set_name()` call in `ble_adv_device_name_update`,
+  after which iOS picks up the SP name at the next connection (see to-do.md).
 - `viewport-fit=cover` plus `env(safe-area-inset-bottom)` padding keep the pending-changes bar
   and the bottom bars above the iPhone home indicator.
 
@@ -416,6 +429,17 @@ settings blocks are hidden because the panels edit those settings now.
   `exportSettingValue`, which treats the device's typed booleans and the inputs' strings alike.
   Exports made between 2026-09-25 and 2026-10-20 wrote every enabled on/off setting as `false`
   (the device's boolean was compared with the string "true"); re-export such profiles.
+- A feature is set up first and switched on last (Tim, 2026-11-11): a feature's own on/off
+  switch never greys out its settings, so the CMDQ search, fence, external switch, WiFi and BLE
+  scanning, Iridium, S-Band, VHF, air quality, motion-triggered GPS, outdoor detection, satellite
+  check and LP0 signal check settings can all be edited while the feature is off. These fields
+  carry `dependsOn` instead of `enabledWhen`; it keeps the write order (settings before a switch
+  that turns on, after one that turns off) without disabling anything. `enabledWhen` remains only
+  where a field has no meaning in the current choice: day and night windows with a fixed
+  schedule, the data rate without the Custom ADR profile, the manufacturer ID without a
+  manufacturer filter, the movement window with "Skip fixes while still", the inactivity report
+  without a periodic report, and LP0 fields of the other role (open while the role is Off). The
+  GPS fix interval stays gated because that interval is itself the scheduled-fixes switch.
 - Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
   input) as 0: doing so flipped switches and gate conditions and disabled the field under the
   person's finger. The field is brought back in line with the draft when focus leaves it.

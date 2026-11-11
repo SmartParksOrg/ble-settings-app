@@ -2792,7 +2792,7 @@
         stats: { records: 0, packets: 0, bytes: 0, byPort: new Map(), oldest: null, newest: null, deviceConfirmed: null },
         busyRetries: 0,
         startedAt: new Date(),
-        deviceName: device && device.name ? device.name : '',
+        deviceName: getCollarDisplayName(),
         logTypeLabel,
         requestMode,
         requestedPort,
@@ -8085,6 +8085,19 @@
     }
     window.connectToDevice = connectToDevice;
 
+    // The collar's own name, as it advertises it. iOS (Bluefy) names a device after the GATT
+    // Device Name it read at an earlier connection, and the firmware leaves that at Zephyr's
+    // build default; only the advertising packet carries "SP...". So device.name can be the
+    // Zephyr name there, while the device_name setting is what the collar advertises. An empty
+    // device_name means the firmware's "SP" + MAC default, which the app cannot see.
+    // Reconnect matching keeps using device.name: that is what getDevices() reports.
+    function getCollarDisplayName() {
+      const setting = settingsData && settingsData.settings ? settingsData.settings.device_name : null;
+      const reported = setting ? currentSettingValues.get(String(setting.id)) : undefined;
+      const name = typeof reported === 'string' ? reported.replace(/\0/g, '').trim() : '';
+      return name || (device && device.name) || '';
+    }
+
     const UART_OPTIONAL_SERVICES = [
       '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
       '8d53dc1d-1db7-4cd3-868b-8a527460aa84'
@@ -8162,7 +8175,7 @@
       }
       if (isIosWebKit()) {
         note.classList.add('info');
-        note.textContent = 'On iPhone and iPad the device list shows every nearby Bluetooth device. Type the start of the device name in Scan settings to narrow it down.';
+        note.textContent = 'On iPhone and iPad the device list shows every nearby Bluetooth device. Type the start of the device name in Scan settings to narrow it down. A collar this iPhone has connected to before can be listed as "Zephyr" instead of its SP name; if the typed name finds nothing, clear it and pick the Zephyr entry. The app shows the collar\'s real name once connected.';
         note.classList.remove('hidden');
         return;
       }
@@ -9672,6 +9685,9 @@
       }
       if (key === 'lr_send_flag' || key === 'lr_messaging_retry_interval' || key === 'lr_messaging_retry_count') {
         updateMessengerMeta();
+      }
+      if (key === 'device_name') {
+        stickyStatus.setDevice(getCollarDisplayName());
       }
       if ([
         'ublox_send_interval', 'ublox_multiple_intervals', 'ublox_send_interval_2',

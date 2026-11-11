@@ -210,6 +210,19 @@ agent, but nothing has run on a real iPhone yet. Verify in Bluefy on an iPhone a
 5. Lose the connection on purpose: the Reconnect overlay's picker opens without manufacturer
    data and finds the collar.
 
+### Collar listed as "Zephyr" on iPhone (reported 2026-11-11)
+
+Apple users see a long Zephyr name instead of the SP name in Bluefy's picker, not always. Cause:
+iOS shows the GATT Device Name it cached at an earlier connection; the firmware advertises the
+SP name but leaves the Device Name characteristic at Zephyr's build default (no
+`CONFIG_BT_DEVICE_NAME`, no `bt_set_name` in `app/src/bt_module/bt_adv/bt_adv.c`). Ask the
+firmware team to set `CONFIG_BT_DEVICE_NAME_DYNAMIC=y` (`CONFIG_BT_DEVICE_NAME_MAX` of at least 8)
+and call `bt_set_name(device_name)` in `ble_adv_device_name_update`, for the default "SP" + MAC
+name as well. The app side (device card and log file names from `device_name`, a hint in the
+Scan notice) shipped 2026-11-11. Verify on an iPhone: connect once, scan again and note the exact
+name Bluefy lists; after connecting, the device card shows the SP name. With the firmware fix:
+connect once, and the next scan lists the SP name.
+
 ## Join button, Actions export, Settings card (added 2026-10-19, hardware test pending)
 
 The join command is always offered: "Join LoRaWAN" (amber) while the status reports a join
@@ -220,6 +233,13 @@ collapsible Settings card. Verify on SP051307: with a join error the amber Join 
 Re-join button sends the same command; Export from Actions produces a JSON with app_key and
 device_eui and refuses while edits are pending; the pending chip and the Features card still
 jump to a panel field when the Settings card is collapsed.
+
+## Feature settings editable while the feature is off (2026-11-11, hardware test pending)
+
+Panels no longer grey out a feature's settings while its switch is off (see README, Guided
+settings). Verify on SP051307: with CMDQ off, set the searched MAC and the intervals, apply, read
+back, CMDQ still off; then switch CMDQ on and apply: it is written last. Same for the fence
+interval with fencing off, and the Iridium day and night schedule with satellite sending off.
 
 ## Recent stored messages in the Logs card (added 2026-10-20, hardware test pending)
 

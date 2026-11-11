@@ -400,7 +400,7 @@ async function scanPicker(tag) {
   if (ios) {
     check(`${tag} Scan on iOS: no name filter opens the picker for all devices, without manufacturer data`, pickers.length === 2 && pickers[0].acceptAllDevices === true && !pickers[0].filters && Array.isArray(pickers[0].optionalServices), pickers);
     check(`${tag} Scan on iOS: name prefixes become plain namePrefix filters`, pickers.length === 2 && !hasManufacturer(pickers[1]) && JSON.stringify(pickers[1].filters) === JSON.stringify([{ namePrefix: 'SP05' }, { namePrefix: 'SP06' }]), pickers);
-    check(`${tag} Scan card on iOS explains the picker`, !note.hidden && note.info && /nearby Bluetooth device/.test(note.text), note);
+    check(`${tag} Scan card on iOS explains the picker`, !note.hidden && note.info && /nearby Bluetooth device/.test(note.text) && /Zephyr/.test(note.text), note);
   } else {
     check(`${tag} Scan keeps the manufacturer-data filter`, pickers.length === 2 && hasManufacturer(pickers[0]) && hasManufacturer(pickers[1]) && pickers[1].filters.length === 2 && pickers[1].filters[0].namePrefix === 'SP05', pickers);
     check(`${tag} Scan card shows no browser note with Web Bluetooth present`, note.hidden, note);
@@ -429,6 +429,15 @@ async function featuresCard(tag) {
   check(`${tag} features: the row follows the panel switch and explains the behaviour`, row(motionOn, 'Motion-triggered GPS').enabled && /still|movement/.test(row(motionOn, 'Motion-triggered GPS').detail.join(' ')), row(motionOn, 'Motion-triggered GPS'));
   check(`${tag} features: schedule starts are shown in local time`, row(local, 'Ublox GPS').detail.some(d => d.startsWith(expectedLocal + '-')) && row(local, 'Ublox GPS').detail.some(d => /local time/.test(d)) && !row(local, 'Ublox GPS').detail.some(d => /UTC/.test(d)), { expectedLocal, detail: row(local, 'Ublox GPS').detail });
   check(`${tag} features: with the schedule off the motion row says it has no effect`, row(scheduleOff, 'Motion-triggered GPS').enabled && row(scheduleOff, 'Motion-triggered GPS').detail.some(d => /No effect while scheduled/.test(d)) && !row(scheduleOff, 'Ublox GPS').enabled, row(scheduleOff, 'Motion-triggered GPS'));
+  // iOS names a collar after the Zephyr GATT name it cached; the device card and log file
+  // names use the collar's device_name setting instead, and fall back to the browser's name.
+  const named = await evaluate(`(() => { const saved = device; device = { name: 'Zephyr' };
+    const id = settingsData.settings.device_name.id; const before = currentSettingValues.get(String(id));
+    updateSettingDisplay(id, 'SP051307\\u0000'); const shown = document.getElementById('sticky-status-name').textContent; const file = getCollarDisplayName();
+    updateSettingDisplay(id, ''); const fallback = getCollarDisplayName();
+    if (before !== undefined) updateSettingDisplay(id, before); else currentSettingValues.delete(String(id));
+    device = saved; return { shown, file, fallback }; })()`);
+  check(`${tag} device card: the collar's device_name replaces a Zephyr name from iOS`, named.shown === 'SP051307' && named.file === 'SP051307' && named.fallback === 'Zephyr', named);
 }
 // The built-in DFU list: newest first, the latest standard release in a "Recommended" group at
 // the top, AirQ builds in their own group at the bottom, and a hint when both are present.
@@ -504,7 +513,11 @@ async function lp0Offload(tag) {
   const stationId = '#panel-lp0 .panel-field[data-keys~="lp0_node_params"][data-byte="1"] input';
   const hidden = `document.getElementById('new-value-' + settingsData.settings.lp0_node_params.id).value`;
   const start = await evaluate(`({ role: ${q(role)}.value, hidden: ${hidden}, idDisabled: ${q(stationId)}.disabled, reason: ${q(stationId)}.closest('.panel-field').querySelector('.panel-field-reason').textContent })`);
-  check(`${tag} LP0: role reads byte 0, station ID is greyed out with a reason while off`, start.role === '0' && start.hidden === '00000A013C' && start.idDisabled && /offload station/.test(start.reason), start);
+  check(`${tag} LP0: role reads byte 0, station ID stays editable while the role is off (set up first, choose the role last)`, start.role === '0' && start.hidden === '00000A013C' && !start.idDisabled && start.reason === '', start);
+  await evaluate(`(() => { const s = ${q(role)}; s.value = '1'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
+  await sleep(60);
+  const tracker = await evaluate(`({ idDisabled: ${q(stationId)}.disabled, reason: ${q(stationId)}.closest('.panel-field').querySelector('.panel-field-reason').textContent })`);
+  check(`${tag} LP0: the tracker role greys out the station ID with a reason`, tracker.idDisabled && /offload station/.test(tracker.reason), tracker);
   await evaluate(`(() => { const s = ${q(role)}; s.value = '2'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
   await sleep(60);
   const station = await evaluate(`({ hidden: ${hidden}, idDisabled: ${q(stationId)}.disabled, draft: settingsDraft.size, summary: document.querySelector('#panel-lp0 .panel-summary').textContent,
@@ -546,7 +559,7 @@ async function lp0Offload(tag) {
   await evaluate(`(() => { const s = ${q(master)}; s.value = '0'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()`);
   await sleep(60);
   const rssiAfter = await evaluate(`({ disabled: ${q(checks)}.disabled, hidden: document.getElementById('new-value-' + settingsData.settings.lp0_signal_checks.id).value })`);
-  check(`${tag} LP0: the signal-check master switch gates the RSSI threshold (default 100 = -100 dBm, margin check off by default)`, rssiBefore.value === '100' && !rssiBefore.disabled && rssiAfter.disabled && rssiAfter.hidden === '000101640014', { rssiBefore, rssiAfter });
+  check(`${tag} LP0: the RSSI threshold stays editable with the signal-check master switch off (default 100 = -100 dBm, margin check off by default)`, rssiBefore.value === '100' && !rssiBefore.disabled && !rssiAfter.disabled && rssiAfter.hidden === '000101640014', { rssiBefore, rssiAfter });
 
   // The card: start sends 20 CF 03 <medium> <selection> <port>; the reply renders the job.
   await evaluate(FAKE_DEVICE);

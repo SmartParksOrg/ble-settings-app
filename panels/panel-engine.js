@@ -93,7 +93,7 @@
   function walkFields(fields, visit, context = {}) {
     (fields || []).forEach(field => {
       if (Array.isArray(field.fields)) {
-        walkFields(field.fields, visit, { group: field, inherited: mergeConditions(context.inherited, field.enabledWhen, field.visibleWhen) });
+        walkFields(field.fields, visit, { group: field, inherited: mergeConditions(context.inherited, field.enabledWhen, field.visibleWhen, field.dependsOn) });
         return;
       }
       visit(field, context);
@@ -111,8 +111,9 @@
     return field.key ? [field.key] : [];
   }
 
-  // For each setting key: the keys that gate it (from enabledWhen/visibleWhen, including
-  // enclosing groups) and the keys it must be written after.
+  // For each setting key: the keys that gate it (from enabledWhen/visibleWhen/dependsOn,
+  // including enclosing groups) and the keys it must be written after. dependsOn only orders
+  // writes; it never disables a field (a feature's settings can be prepared while it is off).
   function collectFieldRules(definitions) {
     const rules = new Map();
     const ensure = key => {
@@ -122,7 +123,7 @@
     const panels = Array.isArray(definitions) ? definitions : (definitions && definitions.panels) || [];
     panels.forEach(panel => {
       walkFields(panel.fields, (field, context) => {
-        const gating = conditionKeys(mergeConditions(context.inherited, field.enabledWhen, field.visibleWhen));
+        const gating = conditionKeys(mergeConditions(context.inherited, field.enabledWhen, field.visibleWhen, field.dependsOn));
         fieldKeys(field).forEach(key => {
           const rule = ensure(key);
           gating.forEach(gate => { if (gate !== key) rule.gates.add(gate); });

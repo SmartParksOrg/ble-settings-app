@@ -4,9 +4,14 @@
 // serves every bundled firmware version.
 //
 // Field shapes:
-//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, writeAfter,
+//   { key, label, help, control, unit, zeroMeansOff, enabledWhen, reason, visibleWhen, dependsOn, writeAfter,
 //     warnings: [{ when: <condition>, text }] }   (a warning shows while its condition holds)
 //   (`reason` is shown when enabledWhen is false; a group's reason applies to its fields)
+//   enabledWhen greys a field out. Use it only where the field has no meaning in the current
+//   choice (a night window with a fixed schedule, a data rate without the Custom profile), never
+//   for a feature's on/off switch: people set a feature up first and switch it on last. Mark a
+//   feature's settings with dependsOn: <the switch's on condition> instead; they stay editable
+//   while the feature is off, and Apply writes them before the switch turns on (after it turns off).
 //   { control: 'mode' | 'choice', label, keys: [...], options: [{ id, label, help, when, set, ensure }] }
 //   { control: 'switch', label, keys, on: <condition>, turnOff: { key: value }, turnOn: { ensure: {...} } }
 //   { control: 'text' | 'pin' | 'select' | 'hex' | 'ports', key, ... }   (hex: secret: true masks the value)
@@ -41,10 +46,8 @@
   const scheduleOn = { any: [{ key: 'ublox_send_interval', gt: 0 }, dayNightOn] };
   const motionOn = { key: 'enable_motion_trig_gps', truthy: true };
   const outdoorOn = { key: 'outdoor_detection_enabled', truthy: true };
-  const windowMode = { all: [motionOn, { key: 'gps_triggered_interval', gt: 0 }, { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', gt: 0 }] };
+  const windowMode = { all: [{ key: 'gps_triggered_interval', gt: 0 }, { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', gt: 0 }] };
   const dayNightReason = 'Only used with the day and night schedule.';
-  const motionReason = 'Turn on motion-triggered GPS first.';
-  const outdoorReason = 'Turn on outdoor detection first.';
   const windowReason = 'Only used with the "Fix after repeated movement" behaviour.';
 
   const positioning = {
@@ -106,14 +109,13 @@
         fields: [
           { key: 'enable_motion_trig_gps', label: 'Motion-triggered GPS', control: 'toggle',
             help: 'When the tracker is not moving, scheduled fixes are skipped.' },
-          { key: 'motion_ths', label: 'Motion sensitivity', enabledWhen: motionOn, reason: motionReason,
+          { key: 'motion_ths', label: 'Motion sensitivity', dependsOn: motionOn,
             help: 'Accelerometer threshold that counts as movement (see the LIS2DW12 datasheet).' },
           {
             control: 'choice',
             label: 'Behaviour',
             keys: ['gps_triggered_interval', 'gps_motion_triggered_min_num_of_triggers_per_interval'],
-            enabledWhen: motionOn,
-            reason: motionReason,
+            dependsOn: motionOn,
             options: [
               {
                 id: 'skip',
@@ -131,13 +133,13 @@
               },
             ],
           },
-          { key: 'gps_skipped_triggered_interval', label: 'Maximum skipped fixes', enabledWhen: motionOn, reason: motionReason,
+          { key: 'gps_skipped_triggered_interval', label: 'Maximum skipped fixes', dependsOn: motionOn,
             help: 'After this many skipped intervals a fix is taken even without movement. 0 fixes on every interval.' },
           { key: 'gps_triggered_interval', label: 'Movement window', control: 'duration', unit: 's',
-            enabledWhen: windowMode, reason: windowReason,
+            enabledWhen: windowMode, reason: windowReason, dependsOn: motionOn,
             help: 'Length of the window in which movements are counted.' },
           { key: 'gps_motion_triggered_min_num_of_triggers_per_interval', label: 'Movements needed in window',
-            enabledWhen: windowMode, reason: windowReason,
+            enabledWhen: windowMode, reason: windowReason, dependsOn: motionOn,
             help: 'Number of movements within the window that trigger a fix.' },
         ],
       },
@@ -148,9 +150,9 @@
         fields: [
           { key: 'outdoor_detection_enabled', label: 'Only fix when likely outdoors', control: 'toggle',
             help: 'Fixes are attempted when the tracker is probably outdoors instead of on every interval. Needs a fix schedule.' },
-          { key: 'outdoor_detection_tau', label: 'Outdoor probability threshold', enabledWhen: outdoorOn, reason: outdoorReason,
+          { key: 'outdoor_detection_tau', label: 'Outdoor probability threshold', dependsOn: outdoorOn,
             help: 'Probability required before a fix is attempted.' },
-          { key: 'outdoor_detection_parameters', label: 'Model weights', control: 'bytes', enabledWhen: outdoorOn, reason: outdoorReason, advanced: true },
+          { key: 'outdoor_detection_parameters', label: 'Model weights', control: 'bytes', dependsOn: outdoorOn, advanced: true },
         ],
       },
       {
@@ -187,7 +189,7 @@
                 onAlso: [{ key: 'ublox_min_satellites_timer', value: 30, when: { key: 'ublox_min_satellites_timer', lt: 5 } }],
                 help: 'Satellites needed to continue the attempt.' },
               { key: 'ublox_min_satellites_timer', label: 'Check after', control: 'duration', unit: 's',
-                enabledWhen: { key: 'ublox_min_satellites', gt: 0 }, reason: 'Turn on the satellite check first.',
+                dependsOn: { key: 'ublox_min_satellites', gt: 0 },
                 help: 'Seconds into an attempt at which the satellite count is checked. The firmware minimum is 5 seconds; the default is 30.',
                 warnings: [{ when: { key: 'ublox_min_satellites_timer', lt: 5 },
                   text: 'The device reports a value below the firmware minimum of 5 seconds (often 0 after an upgrade from older firmware). The check then runs every second and can stop fixes before satellites are found. Set it to 30 seconds.' }] },
@@ -359,13 +361,12 @@
     ],
   };
 
-  function scheduleTypeField(multipleKey, interval1Key, interval2Key, enabledWhen, reason) {
+  function scheduleTypeField(multipleKey, interval1Key, interval2Key, dependsOn) {
     return {
       control: 'choice',
       label: 'Schedule type',
       keys: [multipleKey],
-      enabledWhen,
-      reason,
+      dependsOn,
       options: [
         { id: 'fixed', label: 'Fixed interval', help: 'One interval, all day.',
           when: { key: multipleKey, truthy: false }, set: { [multipleKey]: false } },
@@ -378,7 +379,6 @@
 
   const satelliteOn = { key: 'satellite_enabled', truthy: true };
   const satelliteDayNight = { key: 'satellite_multiple_intervals', truthy: true };
-  const satelliteReason = 'Turn on the satellite modem first.';
   const satelliteDayNightReason = 'Only used with the day and night schedule.';
 
   const satellite = {
@@ -391,21 +391,21 @@
       start1Key: 'satellite_interval1_start', interval2Key: 'satellite_send_interval2', start2Key: 'satellite_send_interval2_start', verb: 'Send', subject: 'Satellite sending' },
     fields: [
       { key: 'satellite_enabled', label: 'Satellite sending', control: 'toggle', help: 'Send queued messages over the Iridium satellite modem.' },
-      scheduleTypeField('satellite_multiple_intervals', 'satellite_send_interval', 'satellite_send_interval2', satelliteOn, satelliteReason),
-      { key: 'satellite_send_interval', label: 'Send interval', control: 'duration', unit: 's', enabledWhen: satelliteOn, reason: satelliteReason,
+      scheduleTypeField('satellite_multiple_intervals', 'satellite_send_interval', 'satellite_send_interval2', satelliteOn),
+      { key: 'satellite_send_interval', label: 'Send interval', control: 'duration', unit: 's', dependsOn: satelliteOn,
         help: 'Time between satellite send attempts. With the day and night schedule this is the daytime interval.' },
-      { key: 'satellite_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+      { key: 'satellite_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: satelliteDayNight, reason: satelliteDayNightReason, dependsOn: satelliteOn,
         help: 'UTC hour when the daytime interval starts.' },
       { key: 'satellite_send_interval2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400, offLabel: 'No sending at night',
-        enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+        enabledWhen: satelliteDayNight, reason: satelliteDayNightReason, dependsOn: satelliteOn,
         help: 'Time between send attempts from the night start hour until the day start hour.' },
-      { key: 'satellite_send_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: { all: [satelliteOn, satelliteDayNight] }, reason: satelliteDayNightReason,
+      { key: 'satellite_send_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: satelliteDayNight, reason: satelliteDayNightReason, dependsOn: satelliteOn,
         help: 'UTC hour when the night interval starts.' },
       {
         group: 'Advanced',
         advanced: true,
         fields: [
-          { key: 'satellite_retry', label: 'Send retries', enabledWhen: satelliteOn, reason: satelliteReason, help: 'Send attempts per satellite session. The delay between retries is random: 1 to 5 s for the first 3, 5 to 20 s up to the 6th, 20 to 40 s after that.' },
+          { key: 'satellite_retry', label: 'Send retries', dependsOn: satelliteOn, help: 'Send attempts per satellite session. The delay between retries is random: 1 to 5 s for the first 3, 5 to 20 s up to the 6th, 20 to 40 s after that.' },
         ],
       },
     ],
@@ -413,7 +413,6 @@
 
   // S-Band is a LoRa link on a separate radio, not the Iridium modem, so it gets its own panel.
   const sBandOn = { key: 's_band_send_interval', gt: 0 };
-  const sBandReason = 'Turn on S-Band sending first.';
 
   const sBand = {
     id: 'sband',
@@ -423,9 +422,9 @@
     fields: [
       { key: 's_band_send_interval', label: 'S-Band sending', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, offLabel: 'S-Band sending off',
         help: 'How often the status and short position message is sent over S-Band. Off means no S-Band sending.' },
-      { key: 's_band_send_mode', label: 'Send mode', control: 'select', enabledWhen: sBandOn, reason: sBandReason,
+      { key: 's_band_send_mode', label: 'Send mode', control: 'select', dependsOn: sBandOn,
         help: 'Send without frequency hopping (FHSS), with it, or both.' },
-      { key: 's_band_rf_frequency_hz', label: 'Frequency', unit: 'Hz', enabledWhen: sBandOn, reason: sBandReason, help: 'Frequency on which S-Band LoRa operates.' },
+      { key: 's_band_rf_frequency_hz', label: 'Frequency', unit: 'Hz', dependsOn: sBandOn, help: 'Frequency on which S-Band LoRa operates.' },
       {
         group: 'Credentials',
         help: 'Keys used to encode S-Band messages. Credentials are only exported when the export option is ticked.',
@@ -440,7 +439,6 @@
 
   const vhfOn = { key: 'vhf_enabled', truthy: true };
   const vhfDayNight = { key: 'vhf_multiple_intervals', truthy: true };
-  const vhfReason = 'Turn on the VHF beacon first.';
   const vhfDayNightReason = 'Only used with the day and night schedule.';
 
   const vhf = {
@@ -452,15 +450,15 @@
       start1Key: 'vhf_interval1_start', interval2Key: 'vhf_interval2', start2Key: 'vhf_interval2_start', verb: 'Transmit', subject: 'The VHF beacon' },
     fields: [
       { key: 'vhf_enabled', label: 'VHF beacon', control: 'toggle', help: 'Transmit VHF beacon pulses on the schedule below.' },
-      scheduleTypeField('vhf_multiple_intervals', 'vhf_interval1', 'vhf_interval2', vhfOn, vhfReason),
-      { key: 'vhf_interval1', label: 'Transmit interval', control: 'duration', unit: 's', enabledWhen: vhfOn, reason: vhfReason,
+      scheduleTypeField('vhf_multiple_intervals', 'vhf_interval1', 'vhf_interval2', vhfOn),
+      { key: 'vhf_interval1', label: 'Transmit interval', control: 'duration', unit: 's', dependsOn: vhfOn,
         help: 'Time between beacon bursts. With the day and night schedule this is the daytime interval.' },
-      { key: 'vhf_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+      { key: 'vhf_interval1_start', label: 'Day window starts', control: 'utc-hour', enabledWhen: vhfDayNight, reason: vhfDayNightReason, dependsOn: vhfOn,
         help: 'UTC hour when the daytime interval starts.' },
       { key: 'vhf_interval2', label: 'Night interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, offLabel: 'No beacon at night',
-        enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+        enabledWhen: vhfDayNight, reason: vhfDayNightReason, dependsOn: vhfOn,
         help: 'Time between bursts from the night start hour until the day start hour.' },
-      { key: 'vhf_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: { all: [vhfOn, vhfDayNight] }, reason: vhfDayNightReason,
+      { key: 'vhf_interval2_start', label: 'Night window starts', control: 'utc-hour', enabledWhen: vhfDayNight, reason: vhfDayNightReason, dependsOn: vhfOn,
         help: 'UTC hour when the night interval starts.' },
       {
         group: 'Transmitter',
@@ -483,7 +481,6 @@
   };
 
   const wifiOn = { key: 'wifi_scan_interval', gt: 0 };
-  const wifiReason = 'Turn on WiFi scanning first.';
   const wifiScanning = {
     id: 'wifi-scanning',
     title: 'WiFi scanning',
@@ -492,14 +489,13 @@
     fields: [
       { key: 'wifi_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a WiFi scan runs.' },
       { key: 'wifi_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
-        enabledWhen: wifiOn, reason: wifiReason, help: 'How often aggregated WiFi scan results are produced.' },
-      { key: 'wifi_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: wifiOn, reason: wifiReason,
+        dependsOn: wifiOn, help: 'How often aggregated WiFi scan results are produced.' },
+      { key: 'wifi_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', dependsOn: wifiOn,
         help: 'Also send a result when no networks were found.' },
     ],
   };
 
   const bleOn = { key: 'ble_scan_interval', gt: 0 };
-  const bleReason = 'Turn on BLE scanning first.';
   const bleScanning = {
     id: 'ble-scanning',
     title: 'BLE scanning',
@@ -508,19 +504,18 @@
     fields: [
       { key: 'ble_scan_interval', label: 'Scan', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, help: 'How often a BLE scan runs.' },
       { key: 'ble_scan_aggregated_interval', label: 'Aggregated results', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 86400,
-        enabledWhen: bleOn, reason: bleReason, help: 'How often aggregated BLE scan results are produced.' },
-      { key: 'ble_scan_duration', label: 'Scan duration', unit: 'ms', enabledWhen: bleOn, reason: bleReason, help: 'Scan duration in milliseconds.' },
-      { key: 'ble_scan_filter', label: 'Filter', control: 'select', enabledWhen: bleOn, reason: bleReason,
+        dependsOn: bleOn, help: 'How often aggregated BLE scan results are produced.' },
+      { key: 'ble_scan_duration', label: 'Scan duration', unit: 'ms', dependsOn: bleOn, help: 'Scan duration in milliseconds.' },
+      { key: 'ble_scan_filter', label: 'Filter', control: 'select', dependsOn: bleOn,
         help: 'Filtering applied to scanned data before storing or sending. The options depend on the firmware version.' },
-      { key: 'ble_scan_manufacturer_id', label: 'Manufacturer ID', control: 'hex-number', enabledWhen: { key: 'ble_scan_filter', in: [1, 2, 4] }, reason: 'Only used with a manufacturer ID filter.',
+      { key: 'ble_scan_manufacturer_id', label: 'Manufacturer ID', control: 'hex-number', enabledWhen: { key: 'ble_scan_filter', in: [1, 2, 4] }, reason: 'Only used with a manufacturer ID filter.', dependsOn: bleOn,
         help: 'Bluetooth manufacturer ID, in hex (Smart Parks is 0x0A61).' },
-      { key: 'ble_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', enabledWhen: bleOn, reason: bleReason,
+      { key: 'ble_scan_report_zero_connections_found', label: 'Report empty scans', control: 'toggle', dependsOn: bleOn,
         help: 'Also send a result when no devices were found.' },
     ],
   };
 
   const cmdqOn = { key: 'cmdq_enabled', truthy: true };
-  const cmdqReason = 'Turn on CMDQ first.';
   const cmdq = {
     id: 'cmdq',
     title: 'CMDQ',
@@ -531,26 +526,25 @@
         help: 'Scan for the device below on the search interval and report detections.',
         warnings: [{ when: cmdqOn,
           text: 'While CMDQ is on, the device disconnects Bluetooth apps to scan. After enabling it, this app may not be able to reconnect until the scan is ready, which can take up to 5 minutes.' }] },
-      { key: 'cmdq_searched_mac_address', label: 'Device to search for', control: 'mac', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Bluetooth MAC address of the device to search for.' },
-      { key: 'cmdq_search_interval', label: 'Search interval', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+      { key: 'cmdq_searched_mac_address', label: 'Device to search for', control: 'mac', dependsOn: cmdqOn, help: 'Bluetooth MAC address of the device to search for.' },
+      { key: 'cmdq_search_interval', label: 'Search interval', control: 'duration', unit: 's', dependsOn: cmdqOn,
         help: 'Seconds between scans. For immediate and long scans this is the active scan duration; set it near the searched device\'s advertisement interval.' },
-      { key: 'cmdq_scan_duration', label: 'Short scan duration', unit: 'ms', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Milliseconds spent actively scanning during a short scan.' },
-      { key: 'cmdq_reporting_interval', label: 'Report detections every', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+      { key: 'cmdq_scan_duration', label: 'Short scan duration', unit: 'ms', dependsOn: cmdqOn, help: 'Milliseconds spent actively scanning during a short scan.' },
+      { key: 'cmdq_reporting_interval', label: 'Report detections every', control: 'duration', unit: 's', dependsOn: cmdqOn,
         help: 'Seconds between composing and sending detection reports.' },
-      { key: 'cmdq_on_no_detection_wait_duration', label: 'Wait after a failed long scan', control: 'duration', unit: 's', enabledWhen: cmdqOn, reason: cmdqReason,
+      { key: 'cmdq_on_no_detection_wait_duration', label: 'Wait after a failed long scan', control: 'duration', unit: 's', dependsOn: cmdqOn,
         help: 'Seconds to wait after a long scan finds nothing before trying again.' },
       {
         group: 'Advanced',
         advanced: true,
         fields: [
-          { key: 'cmdq_report_zero_messages_to_be_sent', label: 'Report when nothing was detected', control: 'toggle', enabledWhen: cmdqOn, reason: cmdqReason, help: 'Send an empty report when no detection was made between two reporting intervals.' },
+          { key: 'cmdq_report_zero_messages_to_be_sent', label: 'Report when nothing was detected', control: 'toggle', dependsOn: cmdqOn, help: 'Send an empty report when no detection was made between two reporting intervals.' },
         ],
       },
     ],
   };
 
   const fenceOn = { key: 'fence_enabled', truthy: true };
-  const fenceReason = 'Turn on fence monitoring first.';
   const fence = {
     id: 'fence',
     title: 'Fence monitor',
@@ -558,22 +552,21 @@
     description: 'Measure the voltage of an electric fence (requires supported hardware). Measurements and calibration are in the FenceEdge card.',
     fields: [
       { key: 'fence_enabled', label: 'Fence monitoring', control: 'toggle', help: 'Enable fence measurements (requires supported hardware).', warnings: [fenceAndSwitchWarning] },
-      { key: 'fence_interval', label: 'Measure', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, enabledWhen: fenceOn, reason: fenceReason,
+      { key: 'fence_interval', label: 'Measure', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 60, dependsOn: fenceOn,
         help: 'Seconds between fence measurements.' },
-      { key: 'fence_sampling_length', label: 'Measurement length', control: 'duration', unit: 's', enabledWhen: fenceOn, reason: fenceReason, help: 'Measurement length in seconds (1 to 60).' },
-      { key: 'fence_led_blink', label: 'Blink LED on measurement', control: 'toggle', enabledWhen: fenceOn, reason: fenceReason, help: 'Blink the LED during fence measurements.' },
+      { key: 'fence_sampling_length', label: 'Measurement length', control: 'duration', unit: 's', dependsOn: fenceOn, help: 'Measurement length in seconds (1 to 60).' },
+      { key: 'fence_led_blink', label: 'Blink LED on measurement', control: 'toggle', dependsOn: fenceOn, help: 'Blink the LED during fence measurements.' },
       {
         group: 'Advanced',
         advanced: true,
         fields: [
-          { key: 'fence_mv_scaling_factor', label: 'Voltage scaling factor', enabledWhen: fenceOn, reason: fenceReason, help: 'Scaling factor applied to the measured millivolts (1000 mV measured -> 10 kV at 10000).' },
+          { key: 'fence_mv_scaling_factor', label: 'Voltage scaling factor', dependsOn: fenceOn, help: 'Scaling factor applied to the measured millivolts (1000 mV measured -> 10 kV at 10000).' },
         ],
       },
     ],
   };
 
   const switchOn = { key: 'external_switch_detection_enabled', truthy: true };
-  const switchReason = 'Turn on switch detection first.';
   const externalSwitch = {
     id: 'switch',
     title: 'External switch',
@@ -581,25 +574,25 @@
     description: 'Detect activity on the external switch input, or count its pulses, and report it over LoRa.',
     fields: [
       { key: 'external_switch_detection_enabled', label: 'Switch detection', control: 'toggle', help: 'Turns on external switch detection.', warnings: [fenceAndSwitchWarning] },
-      { key: 'external_switch_counter_enabled', label: 'Count pulses instead of detecting activity', control: 'toggle', enabledWhen: switchOn, reason: switchReason,
+      { key: 'external_switch_counter_enabled', label: 'Count pulses instead of detecting activity', control: 'toggle', dependsOn: switchOn,
         help: 'When on, the device counts transitions from inactivity to activity (respecting the debounce) within the reporting interval.' },
-      { key: 'external_switch_detection_reporting_interval', label: 'Periodic report', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, enabledWhen: switchOn, reason: switchReason,
+      { key: 'external_switch_detection_reporting_interval', label: 'Periodic report', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, dependsOn: switchOn,
         help: 'Interval for periodic status reports over LoRa. Activity and inactivity transitions are still sent immediately.' },
       { key: 'external_switch_send_inactivity_report', label: 'Report inactivity too', control: 'toggle',
-        enabledWhen: { all: [switchOn, { key: 'external_switch_detection_reporting_interval', gt: 0 }] }, reason: 'Only used with a periodic report.',
+        enabledWhen: { key: 'external_switch_detection_reporting_interval', gt: 0 }, reason: 'Only used with a periodic report.', dependsOn: switchOn,
         help: 'Send an inactivity report when the reporting interval expires without activity.' },
       {
         group: 'Input wiring',
         advanced: true,
         help: 'How the AN (GPIO) input is read. Match these to the connected switch.',
         fields: [
-          { key: 'external_switch_detection_trigger_type', label: 'Active level', control: 'select', enabledWhen: switchOn, reason: switchReason, help: 'Which logic level counts as activity.' },
-          { key: 'external_switch_input_pull', label: 'Input pull', control: 'select', enabledWhen: switchOn, reason: switchReason,
+          { key: 'external_switch_detection_trigger_type', label: 'Active level', control: 'select', dependsOn: switchOn, help: 'Which logic level counts as activity.' },
+          { key: 'external_switch_input_pull', label: 'Input pull', control: 'select', dependsOn: switchOn,
             help: 'Pull of the input line. If the switch provides its own pull, a wrong setting can raise power use or cause undefined behaviour.' },
-          { key: 'external_switch_detection_gpio_pin_power_enabled', label: 'Power the switch from the GPIO pin', control: 'toggle', enabledWhen: switchOn, reason: switchReason, help: 'Use the GPIO output of the fence port to enable (power) the external switch.' },
-          { key: 'external_switch_detection_trigger_debounce_ms', label: 'Debounce', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
+          { key: 'external_switch_detection_gpio_pin_power_enabled', label: 'Power the switch from the GPIO pin', control: 'toggle', dependsOn: switchOn, help: 'Use the GPIO output of the fence port to enable (power) the external switch.' },
+          { key: 'external_switch_detection_trigger_debounce_ms', label: 'Debounce', unit: 'ms', dependsOn: switchOn,
             help: 'Time after a state change during which further changes are ignored; the input is then re-read to confirm. 0 disables debouncing (not recommended).' },
-          { key: 'external_switch_minimal_report_duration_ms', label: 'Minimum activity to report', unit: 'ms', enabledWhen: switchOn, reason: switchReason,
+          { key: 'external_switch_minimal_report_duration_ms', label: 'Minimum activity to report', unit: 'ms', dependsOn: switchOn,
             help: 'Minimum activity duration before a report is sent, to avoid flooding the LoRa queue with short detections.' },
         ],
       },
@@ -613,7 +606,7 @@
     description: 'The BME690 and BMV080 air quality sensors, only on rangeredge boards running the air quality firmware.',
     fields: [
       { key: 'air_quality_enabled', label: 'Air quality sensor', control: 'toggle', help: 'Enable the BME690 and BMV080 air quality sensors. Only available on rangeredge boards running the air quality firmware.' },
-      { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', enabledWhen: { key: 'air_quality_enabled', truthy: true }, reason: 'Turn on the air quality sensor first.',
+      { key: 'air_quality_interval', label: 'Measure', control: 'duration', unit: 's', dependsOn: { key: 'air_quality_enabled', truthy: true },
         help: 'How often the tracker checks for new air quality data and packs it into a message. The sensors sample on a fixed 5-minute duty cycle.' },
     ],
   };
@@ -628,8 +621,9 @@
   const lp0Station = { ...lp0Role, equals: 2 };
   const lp0Tracker = { ...lp0Role, equals: 1 };
   const lp0RoleOn = { ...lp0Role, in: [1, 2] };
+  const lp0NotTracker = { not: lp0Tracker };
+  const lp0NotStation = { not: lp0Station };
   const lp0ChecksOn = { key: 'lp0_signal_checks', byte: 0, equals: 1 };
-  const lp0ChecksReason = 'Turn on the signal checks first.';
   const onOff = [{ value: 0, label: 'Off' }, { value: 1, label: 'On' }];
   const lp0Offload = {
     id: 'lp0',
@@ -644,13 +638,13 @@
       { key: 'lp0_node_params', byte: 0, control: 'byte', label: 'Role',
         options: [{ value: 0, label: 'Off (no offloading)' }, { value: 1, label: 'Tracker (sends its saved records)' }, { value: 2, label: 'Offload station (stores records on its SD card)' }],
         help: 'Off still allows ordinary sending over LP0. The station role needs RangerEdge firmware with SD card support; air quality builds have no LP0 offloading.' },
-      { key: 'lp0_node_params', byte: 1, control: 'byte', label: 'Station ID', min: 0, max: 254, enabledWhen: lp0Station, reason: 'Only used by an offload station.',
+      { key: 'lp0_node_params', byte: 1, control: 'byte', label: 'Station ID', min: 0, max: 254, enabledWhen: lp0NotTracker, reason: 'Only used by an offload station.', dependsOn: lp0RoleOn,
         help: 'Response slot of this station: 0 up to the station count minus one. Nearby stations need different IDs or their replies collide. Trackers leave it at 0.' },
-      { key: 'lp0_node_params', byte: 2, control: 'byte', label: 'Station count', min: 1, max: 255, enabledWhen: lp0RoleOn, reason: 'Turn on a role first.',
+      { key: 'lp0_node_params', byte: 2, control: 'byte', label: 'Station count', min: 1, max: 255, dependsOn: lp0RoleOn,
         help: 'Number of discovery response slots for nearby stations, 10 by default. Every tracker and station in the cluster must use the same count; it is capacity for stations, not for trackers.' },
-      { key: 'lp0_node_params', byte: 4, control: 'byte', label: 'Discovery interval', unit: 's', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
+      { key: 'lp0_node_params', byte: 4, control: 'byte', label: 'Discovery interval', unit: 's', min: 0, max: 255, enabledWhen: lp0NotStation, reason: 'Only used by a tracker.', dependsOn: lp0RoleOn,
         help: 'How often a tracker looks for a station, 60 s by default. 0 means as soon as LP0 is idle. Scheduling, random delays and retry backoff make the real wait longer.' },
-      { key: 'lp0_discovery_retry_count', label: 'Discovery retries', unit: 'per interval', min: 0, max: 255, enabledWhen: lp0Tracker, reason: 'Only used by a tracker.',
+      { key: 'lp0_discovery_retry_count', label: 'Discovery retries', unit: 'per interval', min: 0, max: 255, enabledWhen: lp0NotStation, reason: 'Only used by a tracker.', dependsOn: lp0RoleOn,
         help: 'Extra attempts a tracker may make within one discovery interval after a failed attempt, 0 by default: one attempt per interval, then wait for the next. Retries follow a short randomised delay that doubles up to eight times the listen window. Added in the 2026-10-28 schema.' },
       { key: 'lp0_master_key', control: 'hex', secret: true, generate: true, copy: true, label: 'Cluster master key',
         help: 'One random 16-byte key shared by every tracker and station in the cluster. Generate it once, write the same key to every device and store it safely; a device with another key cannot join. Exported only when credentials are included.',
@@ -660,7 +654,7 @@
         help: 'When on, routine GPS fixes, scans and scheduled radio sends wait while an offload is prepared and running. Turn it on on both the tracker and the station for a dedicated offload session; the defaults are enough for ordinary use.' },
       { key: 'lp0_gps_before_start', control: 'toggle', label: 'GPS fix before offloading',
         help: 'Take a u-blox GPS fix before an offload session starts so the clock is set from the receiver. Meant for offload stations, which timestamp the records they store on the SD card; off by default.' },
-      { key: 'lp0_statistics_interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, label: 'Station statistics report', enabledWhen: lp0Station, reason: 'Only an offload station sends statistics.',
+      { key: 'lp0_statistics_interval', control: 'duration', unit: 's', zeroMeansOff: true, onDefault: 3600, label: 'Station statistics report', enabledWhen: lp0NotTracker, reason: 'Only an offload station sends statistics.', dependsOn: lp0RoleOn,
         help: 'How often the station reports its counters and SD card state on port 23, 1 hour by default. Tick port 23 under Data sending and storing to send or store the report; a device updated from 8.0 keeps its old masks.',
         warnings: [{ when: { all: [{ key: 'lp0_statistics_interval', gt: 0 }, { key: 'lp0_statistics_interval', lt: 60 }] }, text: 'The firmware rejects intervals under 60 seconds.' }] },
       {
@@ -692,16 +686,16 @@
         help: 'Radio checks a device runs before it takes part in an offload. A change applies to the next offload visit.',
         fields: [
           { key: 'lp0_signal_checks', byte: 0, control: 'byte', label: 'All signal checks', options: onOff, help: 'Off bypasses the three checks below but keeps their values.' },
-          { key: 'lp0_signal_checks', byte: 1, control: 'byte', label: 'Channel activity (CAD) veto', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason, help: 'Do not transmit while the channel is in use.' },
-          { key: 'lp0_signal_checks', byte: 2, control: 'byte', label: 'Minimum RSSI check', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason,
+          { key: 'lp0_signal_checks', byte: 1, control: 'byte', label: 'Channel activity (CAD) veto', options: onOff, dependsOn: lp0ChecksOn, help: 'Do not transmit while the channel is in use.' },
+          { key: 'lp0_signal_checks', byte: 2, control: 'byte', label: 'Minimum RSSI check', options: onOff, dependsOn: lp0ChecksOn,
             help: 'Ignore discovery packets weaker than the minimum below, and stop after three consecutive weak packets.' },
           { key: 'lp0_signal_checks', byte: 3, control: 'byte', label: 'Minimum RSSI', unit: 'dBm below zero', min: 0, max: 125,
-            enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 2, equals: 1 }] }, reason: 'Only used with the minimum RSSI check.',
+            dependsOn: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 2, equals: 1 }] },
             help: 'Entered as a positive number: 100 means -100 dBm. A larger number admits weaker packets; 0 is a real threshold of 0 dBm, not off.' },
-          { key: 'lp0_signal_checks', byte: 4, control: 'byte', label: 'Background margin check', options: onOff, enabledWhen: lp0ChecksOn, reason: lp0ChecksReason,
+          { key: 'lp0_signal_checks', byte: 4, control: 'byte', label: 'Background margin check', options: onOff, dependsOn: lp0ChecksOn,
             help: 'Require a packet to be stronger than the background noise by the margin below. Off by default since the 2026-11-03 schema; the threshold stays stored.' },
           { key: 'lp0_signal_checks', byte: 5, control: 'byte', label: 'Minimum margin', unit: 'dB', min: 0, max: 127,
-            enabledWhen: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 4, equals: 1 }] }, reason: 'Only used with the background margin check.',
+            dependsOn: { all: [lp0ChecksOn, { key: 'lp0_signal_checks', byte: 4, equals: 1 }] },
             help: 'Packet strength above the background, 20 dB by default.' },
         ],
       },
