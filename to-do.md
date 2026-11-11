@@ -212,7 +212,7 @@ agent, but nothing has run on a real iPhone yet. Verify in Bluefy on an iPhone a
 
 ### Collar listed as "Zephyr" on iPhone (reported 2026-11-11)
 
-Apple users see a long Zephyr name instead of the SP name in Bluefy's picker, not always. Cause:
+Apple users see a long Zephyr name instead of the SP name in Bluefy's picker, not always (firmware issue #773). Cause:
 iOS shows the GATT Device Name it cached at an earlier connection; the firmware advertises the
 SP name but leaves the Device Name characteristic at Zephyr's build default (no
 `CONFIG_BT_DEVICE_NAME`, no `bt_set_name` in `app/src/bt_module/bt_adv/bt_adv.c`). Ask the
