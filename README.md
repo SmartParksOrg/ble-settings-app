@@ -517,11 +517,44 @@ refuse to export while edits are pending, so the file matches what the device re
 "Send satellite buffer now" (2026-11-11) sends `cmd_send_sat_buffer` (`20 C6 00`): the collar
 sends the messages queued for satellite over Iridium at once, or a status message when the
 queue is empty (`satellite_handle_commands` in the firmware's `satellite.c`). The button is only
-shown while the collar reports `satellite_enabled` on; a pending edit that turns it on does not
-count, because the firmware drops the command while satellite sending is off. The firmware
-answers nothing over Bluetooth when it takes the command (a collar built without satellite
-support answers with an error), so the app shows a toast that the send started. The button
-stays disabled for 30 seconds after a tap, so a double tap does not pay for a second send.
+shown while the collar reports `satellite_enabled` on and its modem detected (see "Satellite
+modem" below); a pending edit that turns satellite on does not count, because the firmware drops
+the command while satellite sending is off. With sending on and no modem found, the card offers
+"Test satellite modem" in its place. The firmware answers nothing over Bluetooth when it takes
+the send command, so the app shows a toast that the send started. The button stays disabled for
+30 seconds after a tap, so a double tap does not pay for a second send.
+
+## Satellite modem
+
+Every status message says whether the collar found its RockBLOCK: bit 0 of the features byte
+(status byte 15) is set once the modem answered a ping, and the high nibble is the number of
+attempts the last satellite send took (`satellite_resend_try`: n means it got through on attempt
+n, and a value equal to `satellite_retry` means every attempt was used, without saying whether
+the last one got through). The firmware only tests the modem in two cases: at boot while
+`satellite_enabled` is on, and when `satellite_enabled` is written while the modem has not been
+detected (the test powers the modem, waits 5 s and pings it up to five times: about 8 s when it
+answers, up to about 40 s when it does not). With satellite off the bit is therefore 0 even with
+a working modem, and once set it stays set until the collar restarts.
+
+The Smart Parks Connect Android app only opens its satellite screen when this bit is set or the
+collar is a Ranger, so on a FreeEdge with satellite off it says "This feature is not available
+for this device" and offers no way to switch satellite on. This app never hides the switch.
+Only rangeredge (type 5, the AirQ builds included) and freeedge (type 9) firmware is built with
+`CONFIG_SATELLITE` (`SATELLITE_HW_TYPES` in `index.html`).
+
+- The Status card shows "Satellite modem: detected / testing… / not found / not tested" on those
+  collar types (and on any collar that reports a modem), the Features card's Satellite row names
+  the same state, and the Iridium panel has a "Satellite modem" line that explains it, including
+  the attempts of the last send. "Not tested" means satellite is off; "not found" means it is on
+  and the modem did not answer. Other collar types get a panel line saying they have no modem
+  port. The line is a `status` field in the panel definitions, filled by the host's `getStatus`;
+  the composer has no device and does not show it.
+- When the collar reports `satellite_enabled` switching from off to on (after Apply or an import)
+  and has no modem yet, the app asks for the status after 12, 25 and 45 seconds and stops at the
+  first one with the bit set: a toast says "Satellite modem detected", or after the last poll
+  that the modem did not answer. "Test satellite modem" in the Actions card writes
+  `satellite_enabled = true` again, which makes the firmware run the test once more, and polls
+  the same way.
 
 ## Device time and location
 

@@ -1085,6 +1085,14 @@
     let satelliteSendCooldownUntil = 0;
     let satelliteSendCooldownTimer = null;
     const SATELLITE_SEND_COOLDOWN_MS = 30000;
+    // Hardware types the firmware builds with CONFIG_SATELLITE (RockBLOCK UART and power pin):
+    // rangeredge (5, the AirQ variant included) and freeedge (9).
+    const SATELLITE_HW_TYPES = new Set([5, 9]);
+    // After satellite is switched on the collar powers the modem, waits 5 s and pings it up to
+    // five times (5 s timeout each): about 8 s when it answers, up to about 40 s when it does not.
+    let SATELLITE_MODEM_CHECK_DELAYS_MS = [12000, 25000, 45000];
+    const SATELLITE_MODEM_CHECK_GRACE_MS = 4000;
+    const satelliteModem = { reported: false, detected: false, tries: 0, hwType: null, checking: false, notFound: false, timers: [] };
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
     const currentSettingValues = new Map();
@@ -4345,6 +4353,7 @@
         `;
       } else {
         hasLrJoinError = Boolean(statusMessage.err_lr_join);
+        updateSatelliteModemFromStatus(statusMessage);
         const errors = Object.entries(statusMessage)
           .filter(([key, hasError]) => key.startsWith('err_') && hasError)
           .map(([key]) => key.slice(4).toUpperCase())
@@ -4367,6 +4376,9 @@
           `<div class="status-item"><span class="icon ublox-location"></span><span id="ublox-location">fetching location...</span></div>`,
           `<div class="status-item"><span class="icon errors"></span>${errors}</div>`
         );
+        if (satelliteModemApplies()) {
+          statusItems.push(`<div class="status-item"><span class="icon square-caret-up"></span>Satellite modem: <span id="satellite-modem-status">${getSatelliteModemShortLabel()}</span></div>`);
+        }
       }
 
       stickyStatus.setStatus({
@@ -6932,6 +6944,7 @@
         },
         firmwareSupports: min => firmwareAtLeast(min.major, min.minor),
         notify: message => showToast(message),
+        getStatus: id => (id === 'satellite-modem' ? getSatelliteModemStatus() : null),
       });
       // The older feature cards keep their actions and results; their settings blocks
       // are now edited in the panels.
@@ -7415,12 +7428,17 @@
         const disableSatelliteButton = satelliteState && satelliteState.enabled
           ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableSatellite()"${satelliteDisableInProgress ? ' disabled' : ''}>Disable Satellite</button>`
           : '';
-        // Only offered while the collar itself reports Iridium sending on: the firmware drops
-        // the command otherwise (satellite_handle_commands), so a pending edit does not count.
+        // Only offered while the collar itself reports Iridium sending on (the firmware drops the
+        // command otherwise, so a pending edit does not count) and reports its modem detected;
+        // with sending on and no modem found, the modem test is offered instead.
         const satelliteSendCoolingDown = Date.now() < satelliteSendCooldownUntil;
-        const sendSatelliteButton = settingsData.commands.cmd_send_sat_buffer && isSatelliteEnabledOnDevice()
-          ? `<button id="send-satellite-buffer-button" class="hidden-when-no-status" onclick="sendSatelliteBuffer()"${satelliteSendCoolingDown ? ' disabled' : ''} title="Sends the messages queued for satellite over Iridium now, or a status message when the queue is empty. Each send uses satellite credit.">Send satellite buffer now</button>`
-          : '';
+        const satelliteOnDevice = isSatelliteEnabledOnDevice();
+        let sendSatelliteButton = '';
+        if (satelliteOnDevice && satelliteModem.detected && settingsData.commands.cmd_send_sat_buffer) {
+          sendSatelliteButton = `<button id="send-satellite-buffer-button" class="hidden-when-no-status" onclick="sendSatelliteBuffer()"${satelliteSendCoolingDown ? ' disabled' : ''} title="Sends the messages queued for satellite over Iridium now, or a status message when the queue is empty. Each send uses satellite credit.">Send satellite buffer now</button>`;
+        } else if (satelliteOnDevice && satelliteModem.reported && !satelliteModem.detected && isSatelliteHardware()) {
+          sendSatelliteButton = `<button id="test-satellite-modem-button" class="hidden-when-no-status" onclick="testSatelliteModem()"${satelliteModem.checking ? ' disabled' : ''} title="Makes the collar power the RockBLOCK and ping it again; the result shows in the Status card and the Iridium panel.">${satelliteModem.checking ? 'Testing satellite modem…' : 'Test satellite modem'}</button>`;
+        }
         mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
@@ -7692,7 +7710,10 @@
           name: 'Satellite',
           state: satellite,
           settingKey: satelliteSettingKey,
-          detail: formatMultipleIntervalDetail(satellite.schedule)
+          detail: [
+            formatMultipleIntervalDetail(satellite.schedule),
+            satelliteModemApplies() ? `modem ${getSatelliteModemShortLabel()}` : ''
+          ].filter(Boolean).join(' · ')
         },
         (() => {
           const state = getBooleanFeatureState(['cmdq_enabled']);
@@ -7843,6 +7864,166 @@
       return parseBoolSettingValue(currentSettingValues.get(String(setting.id)));
     }
 
+    // ---- Satellite modem (RockBLOCK) as the collar reports it ----
+    // Status byte 15 bit 0 is set once the modem answered a ping; the high nibble is the number of
+    // attempts the last satellite send took (satellite_resend_try). The firmware only tests the
+    // modem at boot with satellite_enabled on and when satellite_enabled is written while the
+    // modem has not been detected (satellite.c); a 0 with satellite off therefore means "not
+    // tested", and once set the bit stays set until the collar restarts.
+    function updateSatelliteModemFromStatus(statusMessage) {
+      satelliteModem.reported = true;
+      satelliteModem.detected = Boolean(statusMessage.sat_support);
+      satelliteModem.tries = Number(statusMessage.sat_try) || 0;
+      satelliteModem.hwType = Number(statusMessage.ver_hw_type);
+      if (satelliteModem.detected) {
+        satelliteModem.notFound = false;
+        if (satelliteModem.checking) {
+          finishSatelliteModemCheck(true);
+          return;
+        }
+      }
+      renderSatelliteModemViews();
+    }
+
+    function resetSatelliteModem() {
+      satelliteModem.timers.forEach(timer => clearTimeout(timer));
+      Object.assign(satelliteModem, { reported: false, detected: false, tries: 0, hwType: null, checking: false, notFound: false, timers: [] });
+    }
+
+    function isSatelliteHardware() {
+      return SATELLITE_HW_TYPES.has(satelliteModem.hwType);
+    }
+
+    // Worth showing: a satellite-capable collar type, or any collar that reports a modem.
+    function satelliteModemApplies() {
+      return satelliteModem.reported && Boolean(settingsData && settingsData.settings && settingsData.settings.satellite_enabled)
+        && (isSatelliteHardware() || satelliteModem.detected);
+    }
+
+    function getSatelliteModemShortLabel() {
+      if (satelliteModem.detected) return 'detected';
+      if (satelliteModem.checking) return 'testing…';
+      if (isSatelliteEnabledOnDevice() || satelliteModem.notFound) return 'not found';
+      return 'not tested';
+    }
+
+    // The Iridium panel's "Satellite modem" line.
+    function getSatelliteModemStatus() {
+      if (!satelliteModem.reported || !settingsData || !settingsData.settings || !settingsData.settings.satellite_enabled) {
+        return null;
+      }
+      if (satelliteModem.detected) {
+        let text = 'Detected: the RockBLOCK answered.';
+        const retries = parseNumberSettingValue(currentSettingValues.get(String(settingsData.settings.satellite_retry?.id)));
+        if (satelliteModem.tries > 0 && Number.isFinite(retries) && satelliteModem.tries >= retries) {
+          text += ` The last send used all ${satelliteModem.tries} attempts; the collar does not report whether the last one got through.`;
+        } else if (satelliteModem.tries > 0) {
+          text += ` The last send got through on attempt ${satelliteModem.tries}.`;
+        } else {
+          text += ' No satellite send reported yet.';
+        }
+        return { text, tone: 'ok' };
+      }
+      if (!isSatelliteHardware()) {
+        return {
+          text: `This collar type (${decodeHwFwType(satelliteModem.hwType)}) has no satellite modem port; only RangerEdge and FreeEdge collars can carry a RockBLOCK.`,
+          tone: isSatelliteEnabledOnDevice() ? 'warn' : 'neutral'
+        };
+      }
+      if (satelliteModem.checking) {
+        return { text: 'Testing: the collar is powering the modem and pinging it. This takes up to about 40 seconds.', tone: 'neutral' };
+      }
+      if (isSatelliteEnabledOnDevice() || satelliteModem.notFound) {
+        return {
+          text: 'Not found: the modem did not answer when satellite sending was switched on or at the last restart. Check the RockBLOCK cable and power, then use "Test satellite modem" in Actions.',
+          tone: 'warn'
+        };
+      }
+      return {
+        text: 'Not tested: the collar only checks the modem when satellite sending is switched on, and at startup while it is on. Switch it on and apply to test the modem.',
+        tone: 'neutral'
+      };
+    }
+
+    function renderSatelliteModemViews() {
+      const item = document.getElementById('satellite-modem-status');
+      if (item) item.textContent = getSatelliteModemShortLabel();
+      renderFeatures();
+      displayMainCommands();
+      refreshSettingsPanels();
+    }
+
+    // Ask for fresh status messages while the collar tests the modem; the bit flips as soon as it answers.
+    function startSatelliteModemCheck() {
+      satelliteModem.timers.forEach(timer => clearTimeout(timer));
+      satelliteModem.timers = [];
+      satelliteModem.checking = true;
+      satelliteModem.notFound = false;
+      log('Satellite switched on: waiting for the collar to test the satellite modem.');
+      const lastIndex = SATELLITE_MODEM_CHECK_DELAYS_MS.length - 1;
+      SATELLITE_MODEM_CHECK_DELAYS_MS.forEach((delay, index) => {
+        satelliteModem.timers.push(setTimeout(() => {
+          if (!satelliteModem.checking || !document.body.classList.contains('connected')) return;
+          requestStatusMessage();
+          if (index === lastIndex) {
+            satelliteModem.timers.push(setTimeout(() => {
+              if (satelliteModem.checking) finishSatelliteModemCheck(satelliteModem.detected);
+            }, SATELLITE_MODEM_CHECK_GRACE_MS));
+          }
+        }, delay));
+      });
+      renderSatelliteModemViews();
+    }
+
+    function finishSatelliteModemCheck(found) {
+      satelliteModem.timers.forEach(timer => clearTimeout(timer));
+      satelliteModem.timers = [];
+      satelliteModem.checking = false;
+      satelliteModem.notFound = !found;
+      log(found ? 'Satellite modem detected.' : 'Satellite modem did not answer.', !found);
+      showToast(found
+        ? 'Satellite modem detected.'
+        : 'The satellite modem did not answer. Check the RockBLOCK cable and power, then test again.');
+      renderSatelliteModemViews();
+    }
+
+    // Satellite sending switched from off to on by the device's own report (after Apply, an
+    // import, or a "Test satellite modem" tap): the collar is now testing the modem.
+    function onSatelliteEnabledReported(previous, value) {
+      const wasOn = previous !== undefined && parseBoolSettingValue(previous);
+      const isOn = parseBoolSettingValue(value);
+      if (previous !== undefined && !wasOn && isOn && satelliteModem.reported && !satelliteModem.detected && isSatelliteHardware()) {
+        startSatelliteModemCheck();
+        return;
+      }
+      if (!isOn && satelliteModem.checking) {
+        satelliteModem.timers.forEach(timer => clearTimeout(timer));
+        satelliteModem.timers = [];
+        satelliteModem.checking = false;
+      }
+      renderSatelliteModemViews();
+    }
+
+    // Writing satellite_enabled = true again makes a collar that has not detected its modem run
+    // the test once more (settings_interface.c forwards the write to the satellite thread).
+    async function testSatelliteModem() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const setting = settingsData && settingsData.settings ? settingsData.settings.satellite_enabled : null;
+      if (!setting || !isSatelliteEnabledOnDevice() || satelliteModem.detected || satelliteModem.checking) {
+        return;
+      }
+      try {
+        await updateBleSetting(setting.id, 'true');
+        startSatelliteModemCheck();
+        showToast('Testing the satellite modem; this takes up to about 40 seconds.');
+      } catch (error) {
+        showToast(`Failed to start the modem test: ${error.message}`);
+      }
+    }
+
     // cmd_send_sat_buffer (20 C6 00): the collar sends its satellite queue over Iridium at once,
     // or a status message when the queue is empty. It answers nothing over Bluetooth when it takes
     // the command; a collar built without satellite support answers with an error. The button
@@ -7859,6 +8040,10 @@
       }
       if (!isSatelliteEnabledOnDevice()) {
         showToast('Satellite sending is off on the device, so it would ignore the command.');
+        return;
+      }
+      if (!satelliteModem.detected) {
+        showToast('The collar reports no satellite modem; test the modem first.');
         return;
       }
       if (Date.now() < satelliteSendCooldownUntil) {
@@ -7961,6 +8146,7 @@
       }
       settingsDraft.reset();
       currentSettingValues.clear(); // the next collar must not inherit this one's values
+      resetSatelliteModem();
       setBleReconnectOverlayVisible(false);
       const wasUserRequestedDisconnect = userRequestedDisconnect;
       if (flashLogState.active) {
@@ -9714,6 +9900,7 @@
     }
 
     function updateSettingDisplay(settingId, value) {
+      const previousDeviceValue = currentSettingValues.get(String(settingId));
       currentSettingValues.set(String(settingId), value);
       setInputValue(settingId, value);
       const [key, settingMeta] = getById(settingId);
@@ -9752,6 +9939,9 @@
         'satellite_send_interval2', 'satellite_interval1_start', 'satellite_send_interval2_start'
       ].includes(key)) {
         displayMainCommands();
+      }
+      if (key === 'satellite_enabled') {
+        onSatelliteEnabledReported(previousDeviceValue, value);
       }
       if (isFeatureDisplaySettingKey(key)) {
         renderFeatures();

@@ -23,6 +23,8 @@
 //   Panel: { requires: [keys] } renders only when the schema has every key; { beta: true } tags the
 //   title; { minFirmware: { major, minor } } lets the host hide it on older firmware.
 //   { control: 'matrix', columns: [{ key, label, summaryLabel }] }  (rows are the schema's message ports)
+//   { control: 'status', status: <id>, label }   (read-only line from host.getStatus(id), e.g. what the
+//     device reports about its hardware; hidden while the host returns null, and in the composer)
 //   Panel: { id, title, icon, description, summary, fields }   (every panel renders folded)
 //   summary is an id ('positioning', 'data', 'network', 'device') or { type: 'schedule', ...keys }
 //   zeroMeansOff fields may carry onAlso: [{ key, value, when }] applied when switched on.
@@ -391,6 +393,9 @@
       start1Key: 'satellite_interval1_start', interval2Key: 'satellite_send_interval2', start2Key: 'satellite_send_interval2_start', verb: 'Send', subject: 'Satellite sending' },
     fields: [
       { key: 'satellite_enabled', label: 'Satellite sending', control: 'toggle', help: 'Send queued messages over the Iridium satellite modem.' },
+      // What the device reports about its RockBLOCK modem (status message, features bit 0). The
+      // firmware only tests the modem at boot with satellite on and when satellite is switched on.
+      { control: 'status', status: 'satellite-modem', label: 'Satellite modem' },
       scheduleTypeField('satellite_multiple_intervals', 'satellite_send_interval', 'satellite_send_interval2', satelliteOn),
       { key: 'satellite_send_interval', label: 'Send interval', control: 'duration', unit: 's', dependsOn: satelliteOn,
         help: 'Time between satellite send attempts. With the day and night schedule this is the daytime interval.' },

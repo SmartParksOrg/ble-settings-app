@@ -341,10 +341,12 @@ async function autoLocationTime(tag) {
 }
 
 // The Actions card offers "Send satellite buffer now" only while the collar reports Iridium
-// sending on (a pending edit does not count: the firmware drops the command while it is off),
-// sends 20 C6 00, and ignores a second tap while the first send is still cooling down.
+// sending on (a pending edit does not count: the firmware drops the command while it is off)
+// and its modem detected, sends 20 C6 00, and ignores a second tap while the first send is
+// still cooling down. The modem is set to detected directly here; satelliteModemCheck covers it.
 async function satelliteSend(tag) {
   await evaluate(FAKE_DEVICE);
+  await evaluate(`(() => { resetSatelliteModem(); updateSatelliteModemFromStatus({ sat_support: 1, sat_try: 0, ver_hw_type: 9 }); return true; })()`);
   const state = () => evaluate(`(() => { const b = document.getElementById('send-satellite-buffer-button');
     return { shown: Boolean(b), disabled: b ? b.disabled : null, sends: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xC6) }; })()`);
   const id = await evaluate(`settingsData.settings.satellite_enabled.id`);
@@ -365,6 +367,57 @@ async function satelliteSend(tag) {
   check(`${tag} actions: no satellite send button while the collar reports satellite off, also with the switch turned on as a pending edit`, !off.shown && !pending.shown, { off, pending });
   check(`${tag} actions: the satellite send button appears once the collar reports satellite on, sends 20 C6 00 and says so`, on.shown && !on.disabled && sent.sends.length === 1 && JSON.stringify(sent.sends[0]) === JSON.stringify([0x20, 0xC6, 0]) && sent.disabled && /Satellite send started/.test(sent.toast), { on, sent });
   check(`${tag} actions: a second tap during the cooldown sends nothing, and the button goes when satellite is off again`, again.sends.length === 1 && !offAgain.shown, { again, offAgain });
+  await evaluate(`(() => { resetSatelliteModem(); renderSatelliteModemViews(); return true; })()`);
+}
+
+// The satellite modem as a FreeEdge reports it (status byte 15 bit 0): "not tested" while
+// satellite is off, a modem test with status polls once the collar reports satellite switched
+// on, "detected" when a poll shows the bit (the send button replaces the test button), "not
+// found" when no poll does, a re-test from Actions, and no modem claims on a CollarEdge.
+async function satelliteModemCheck(tag) {
+  await evaluate(FAKE_DEVICE);
+  const id = await evaluate(`settingsData.settings.satellite_enabled.id`);
+  const status = (hwFwType, features) => `(() => { handleNotifications({ target: { value: new DataView(new Uint8Array([4, 0, 0, 0, 0, 100, 0, 128, 3, 128, 128, 128, 0x18, 0x80, ${hwFwType}, 3, ${features}]).buffer) } }); return true; })()`;
+  const view = () => evaluate(`(() => { const line = document.querySelector('#panel-satellite .panel-field-status');
+    return { panelShown: Boolean(line) && !line.classList.contains('hidden'), panel: line ? line.querySelector('.panel-status-text').textContent : '', tone: line ? line.querySelector('.panel-status-text').dataset.tone : '',
+      card: (document.getElementById('satellite-modem-status') || {}).textContent || null,
+      test: (document.getElementById('test-satellite-modem-button') || {}).textContent || null, testDisabled: Boolean(document.getElementById('test-satellite-modem-button')?.disabled),
+      send: Boolean(document.getElementById('send-satellite-buffer-button')), checking: satelliteModem.checking,
+      statusRequests: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xA4).length, toast: document.getElementById('toast').innerText }; })()`);
+  await evaluate(`(() => { resetSatelliteModem(); SATELLITE_MODEM_CHECK_DELAYS_MS = [150, 300, 450]; updateSettingDisplay(${J(id)}, false); return true; })()`);
+  await evaluate(status('0x99', 0));
+  await sleep(100);
+  const untested = await view();
+  // The device reports satellite on (as after Apply): the modem test starts and the app polls the status.
+  await evaluate(`(() => { window.__writes.length = 0; updateSettingDisplay(${J(id)}, true); return true; })()`);
+  const testing = await view();
+  await sleep(200);
+  await evaluate(status('0x99', 0x21)); // modem answered; the last send took 2 attempts
+  await sleep(100);
+  const detected = await view();
+  // Not found: satellite off and on again with a collar whose modem never answers.
+  await evaluate(`(() => { resetSatelliteModem(); window.__writes.length = 0; updateSettingDisplay(${J(id)}, false); return true; })()`);
+  await evaluate(status('0x99', 0));
+  await evaluate(`(() => { updateSettingDisplay(${J(id)}, true); return true; })()`);
+  await sleep(450 + 4000 + 300);
+  const notFound = await view();
+  await evaluate(`(() => { window.__writes.length = 0; document.getElementById('test-satellite-modem-button').click(); return true; })()`);
+  await sleep(100);
+  const retest = { ...(await view()), rewrite: await evaluate(`window.__writes.some(w => w[0] === 0x03 && w[w.length - 1] === 1)`) };
+  // A collar type without a satellite port.
+  await evaluate(`(() => { resetSatelliteModem(); return true; })()`);
+  await evaluate(status('0x88', 0));
+  await sleep(100);
+  const collaredge = await view();
+  await evaluate(`(() => { resetSatelliteModem(); SATELLITE_MODEM_CHECK_DELAYS_MS = [12000, 25000, 45000]; updateSettingDisplay(${J(id)}, false); return true; })()`);
+  await evaluate(status('0x55', 0)); // back to the status the other scenarios start from
+  await evaluate(`(() => { resetSatelliteModem(); renderSatelliteModemViews(); return true; })()`);
+  check(`${tag} satellite modem: with satellite off a FreeEdge reads "not tested", in the panel and the Status card, with no send or test button`, untested.panelShown && /^Not tested/.test(untested.panel) && untested.card === 'not tested' && !untested.send && !untested.test, untested);
+  check(`${tag} satellite modem: the device reporting satellite switched on starts the modem test`, testing.checking && /^Testing/.test(testing.panel) && testing.card === 'testing…' && testing.testDisabled, testing);
+  check(`${tag} satellite modem: a status poll with the modem bit ends the test as detected, names the attempts, and offers the send button`, detected.statusRequests >= 1 && !detected.checking && /^Detected/.test(detected.panel) && /attempt 2/.test(detected.panel) && detected.tone === 'ok' && detected.card === 'detected' && detected.send && !detected.test && /Satellite modem detected/.test(detected.toast), detected);
+  check(`${tag} satellite modem: without the bit after every poll it reads "not found" and offers a re-test instead of the send button`, notFound.statusRequests === 3 && !notFound.checking && /^Not found/.test(notFound.panel) && notFound.tone === 'warn' && notFound.card === 'not found' && !notFound.send && notFound.test === 'Test satellite modem' && /did not answer/.test(notFound.toast), notFound);
+  check(`${tag} satellite modem: "Test satellite modem" writes satellite_enabled again and starts a new test`, retest.rewrite && retest.checking && retest.testDisabled, retest);
+  check(`${tag} satellite modem: a CollarEdge gets no modem line in the Status card and the panel says it has no satellite port`, collaredge.card === null && /no satellite modem port/.test(collaredge.panel) && !collaredge.test && !collaredge.send, collaredge);
 }
 
 async function listInterval(tag, page) {
@@ -893,7 +946,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

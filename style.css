@@ -4364,6 +4364,29 @@ body.has-pending-changes {
     font-weight: 600;
 }
 
+/* Read-only device status line in a panel (panel-renderer.js renderStatusField). */
+.panel-status-text {
+    padding: 8px 10px;
+    border-radius: var(--radius-md);
+    border-left: 3px solid rgba(31, 42, 35, 0.35);
+    background: rgba(31, 42, 35, 0.05);
+    color: #1f2a23;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.panel-status-text[data-tone="ok"] {
+    border-left-color: var(--sp-forest);
+    background: rgba(82, 115, 94, 0.12);
+    color: var(--sp-forest-dark);
+}
+
+.panel-status-text[data-tone="warn"] {
+    border-left-color: #d97706;
+    background: rgba(217, 119, 6, 0.12);
+    color: #7c2d12;
+}
+
 .panel-field-disabled {
     opacity: 0.55;
 }

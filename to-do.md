@@ -234,14 +234,24 @@ Re-join button sends the same command; Export from Actions produces a JSON with 
 device_eui and refuses while edits are pending; the pending chip and the Features card still
 jump to a panel field when the Settings card is collapsed.
 
-## Send satellite buffer from the Actions card (2026-11-11, hardware test pending)
+## Satellite modem state and send buffer (2026-11-11, hardware test pending)
 
 "Send satellite buffer now" sends `20 C6 00` and is shown only while the collar reports
-`satellite_enabled` on. Verify on a collar with an Iridium modem: with satellite sending off
-the button is absent; switch it on and apply, the button appears; tap it: the toast says the send
-started, the Debug log shows `Sending command 20 C6 00`, the button is disabled for 30 s, and the
-messages (or a status message with an empty queue) arrive in the satellite backend. Note how long
-the send takes. On a collar without a modem, note what the app shows for the error reply.
+`satellite_enabled` on and its modem detected. Verify on a FreeEdge with a RockBLOCK (the Connect
+app says "not available" on it while satellite is off):
+
+1. Satellite off: the Status card and the Iridium panel say "not tested", Actions shows neither
+   satellite button.
+2. Switch Satellite sending on and apply: the modem line says "testing…", and within about 15 s
+   the toast "Satellite modem detected" appears (Debug log: status requests `20 A4 00`, the last
+   byte of the status line has bit 0 set). Note how long the collar takes; the polls run at 12,
+   25 and 45 s (`SATELLITE_MODEM_CHECK_DELAYS_MS`).
+3. Tap "Send satellite buffer now": the toast says the send started, the button is disabled for
+   30 s, and the messages (or a status message with an empty queue) arrive in the satellite
+   backend. Afterwards the panel names the attempts of the last send. Note how long the send takes.
+4. Unplug the RockBLOCK, restart the collar with satellite on: "not found" and "Test satellite
+   modem"; plug it back in and tap the test: "detected".
+5. On a CollarEdge: no modem line in the Status card, the panel says the type has no modem port.
 
 ## Feature settings editable while the feature is off (2026-11-11, hardware test pending)
 

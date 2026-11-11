@@ -816,7 +816,29 @@
 
   // ---- fields -----------------------------------------------------------------------
 
+  // A read-only line the host fills in (host.getStatus(id) -> { text, tone } or null), such as
+  // what the device reports about its hardware. Hidden while the host has nothing to say, and
+  // always on hosts without getStatus (the composer, which has no device).
+  function renderStatusField(field, host, state) {
+    const row = el('div', 'panel-field panel-field-status hidden');
+    row.dataset.status = field.status;
+    const head = el('div', 'panel-field-head');
+    head.appendChild(el('span', 'panel-field-label', field.label || ''));
+    row.appendChild(head);
+    const text = el('div', 'panel-status-text', '');
+    row.appendChild(text);
+    state.updaters.push(() => {
+      const status = host.getStatus ? host.getStatus(field.status) : null;
+      row.classList.toggle('hidden', !status);
+      if (!status) return;
+      text.textContent = status.text || '';
+      text.dataset.tone = status.tone || 'neutral';
+    });
+    return row;
+  }
+
   function renderField(field, panel, host, inherited, state, inheritedReason) {
+    if (field.control === 'status') return renderStatusField(field, host, state);
     let keys = engine.fieldKeys(field);
     if (field.control === 'matrix') {
       field.__columns = (field.columns || []).filter(column => host.getSetting(column.key));
