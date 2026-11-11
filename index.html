@@ -1082,6 +1082,9 @@
     let ubloxBusyStatus = false;
     let ubloxDisableInProgress = false;
     let satelliteDisableInProgress = false;
+    let satelliteSendCooldownUntil = 0;
+    let satelliteSendCooldownTimer = null;
+    const SATELLITE_SEND_COOLDOWN_MS = 30000;
     let ubloxFixMapInstance = null;
     let ubloxFixMapMarker = null;
     const currentSettingValues = new Map();
@@ -7412,10 +7415,17 @@
         const disableSatelliteButton = satelliteState && satelliteState.enabled
           ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableSatellite()"${satelliteDisableInProgress ? ' disabled' : ''}>Disable Satellite</button>`
           : '';
+        // Only offered while the collar itself reports Iridium sending on: the firmware drops
+        // the command otherwise (satellite_handle_commands), so a pending edit does not count.
+        const satelliteSendCoolingDown = Date.now() < satelliteSendCooldownUntil;
+        const sendSatelliteButton = settingsData.commands.cmd_send_sat_buffer && isSatelliteEnabledOnDevice()
+          ? `<button id="send-satellite-buffer-button" class="hidden-when-no-status" onclick="sendSatelliteBuffer()"${satelliteSendCoolingDown ? ' disabled' : ''} title="Sends the messages queued for satellite over Iridium now, or a status message when the queue is empty. Each send uses satellite credit.">Send satellite buffer now</button>`
+          : '';
         mainCommandsElement.innerHTML = `
           <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
           <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
           <button class="hidden-when-no-status" onclick="exportToJson({ includeCredentials: true })" title="Saves every setting the device reported, including the LoRaWAN credentials, as a JSON file.">Export settings</button>
+          ${sendSatelliteButton}
           ${disableUbloxButton}
           ${disableSatelliteButton}
         ` + mainCommandsElement.innerHTML;
@@ -7822,6 +7832,48 @@
         renderFeatures();
         displayMainCommands();
       }
+    }
+
+    // What the collar reported for satellite_enabled, not the input (which carries a pending edit).
+    function isSatelliteEnabledOnDevice() {
+      const setting = settingsData && settingsData.settings ? settingsData.settings.satellite_enabled : null;
+      if (!setting) {
+        return false;
+      }
+      return parseBoolSettingValue(currentSettingValues.get(String(setting.id)));
+    }
+
+    // cmd_send_sat_buffer (20 C6 00): the collar sends its satellite queue over Iridium at once,
+    // or a status message when the queue is empty. It answers nothing over Bluetooth when it takes
+    // the command; a collar built without satellite support answers with an error. The button
+    // stays disabled for a while so a double tap does not pay for a second send.
+    async function sendSatelliteBuffer() {
+      if (!document.body.classList.contains('connected') || !rxCharacteristic) {
+        showToast('Connect to a device first.');
+        return;
+      }
+      const command = settingsData && settingsData.commands ? settingsData.commands.cmd_send_sat_buffer : null;
+      if (!command) {
+        showToast('This firmware has no satellite send command.');
+        return;
+      }
+      if (!isSatelliteEnabledOnDevice()) {
+        showToast('Satellite sending is off on the device, so it would ignore the command.');
+        return;
+      }
+      if (Date.now() < satelliteSendCooldownUntil) {
+        return;
+      }
+      satelliteSendCooldownUntil = Date.now() + SATELLITE_SEND_COOLDOWN_MS;
+      clearTimeout(satelliteSendCooldownTimer);
+      satelliteSendCooldownTimer = setTimeout(() => {
+        satelliteSendCooldownUntil = 0;
+        displayMainCommands();
+      }, SATELLITE_SEND_COOLDOWN_MS);
+      displayMainCommands();
+      log('Asking the device to send its satellite buffer now.');
+      await executeBleCommand([0x20, parseInt(command.id, 16), 0x00]);
+      showToast('Satellite send started. The collar sends its queue (or a status message) over Iridium; with retries this can take a few minutes.');
     }
 
     async function disableSatellite() {

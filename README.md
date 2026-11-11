@@ -514,6 +514,15 @@ in the Actions card saves the full profile, device credentials included, without
 All settings card; the export in the All settings card still follows its credentials checkbox. Both
 refuse to export while edits are pending, so the file matches what the device reported.
 
+"Send satellite buffer now" (2026-11-11) sends `cmd_send_sat_buffer` (`20 C6 00`): the collar
+sends the messages queued for satellite over Iridium at once, or a status message when the
+queue is empty (`satellite_handle_commands` in the firmware's `satellite.c`). The button is only
+shown while the collar reports `satellite_enabled` on; a pending edit that turns it on does not
+count, because the firmware drops the command while satellite sending is off. The firmware
+answers nothing over Bluetooth when it takes the command (a collar built without satellite
+support answers with an error), so the app shows a toast that the send started. The button
+stays disabled for 30 seconds after a tap, so a double tap does not pay for a second send.
+
 ## Device time and location
 
 The Status, Logs and Messenger cards have no refresh buttons: the status is requested on

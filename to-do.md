@@ -234,6 +234,15 @@ Re-join button sends the same command; Export from Actions produces a JSON with 
 device_eui and refuses while edits are pending; the pending chip and the Features card still
 jump to a panel field when the Settings card is collapsed.
 
+## Send satellite buffer from the Actions card (2026-11-11, hardware test pending)
+
+"Send satellite buffer now" sends `20 C6 00` and is shown only while the collar reports
+`satellite_enabled` on. Verify on a collar with an Iridium modem: with satellite sending off
+the button is absent; switch it on and apply, the button appears; tap it: the toast says the send
+started, the Debug log shows `Sending command 20 C6 00`, the button is disabled for 30 s, and the
+messages (or a status message with an empty queue) arrive in the satellite backend. Note how long
+the send takes. On a collar without a modem, note what the app shows for the error reply.
+
 ## Feature settings editable while the feature is off (2026-11-11, hardware test pending)
 
 Panels no longer grey out a feature's settings while its switch is off (see README, Guided

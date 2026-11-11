@@ -340,6 +340,33 @@ async function autoLocationTime(tag) {
   check(`${tag} the status card shows the charger voltage while charging`, again.charge.trim() === 'charging 5.3 V', again);
 }
 
+// The Actions card offers "Send satellite buffer now" only while the collar reports Iridium
+// sending on (a pending edit does not count: the firmware drops the command while it is off),
+// sends 20 C6 00, and ignores a second tap while the first send is still cooling down.
+async function satelliteSend(tag) {
+  await evaluate(FAKE_DEVICE);
+  const state = () => evaluate(`(() => { const b = document.getElementById('send-satellite-buffer-button');
+    return { shown: Boolean(b), disabled: b ? b.disabled : null, sends: window.__writes.filter(w => w[0] === 0x20 && w[1] === 0xC6) }; })()`);
+  const id = await evaluate(`settingsData.settings.satellite_enabled.id`);
+  await evaluate(`(() => { updateSettingDisplay(${J(id)}, false); return true; })()`);
+  const off = await state();
+  await evaluate(`(() => { settingsDraft.set('satellite_enabled', { id: ${J(id)}, value: true, valid: true, deviceValue: false }); setInputValue(${J(id)}, true); displayMainCommands(); return true; })()`);
+  const pending = await state();
+  await evaluate(`(() => { updateSettingDisplay(${J(id)}, true); return true; })()`);
+  const on = await state();
+  await evaluate(`(() => { document.getElementById('toast').innerText = ''; document.getElementById('send-satellite-buffer-button').click(); return true; })()`);
+  await sleep(100);
+  const sent = { ...(await state()), toast: await evaluate(`document.getElementById('toast').innerText`) };
+  await evaluate(`(() => { sendSatelliteBuffer(); return true; })()`);
+  await sleep(100);
+  const again = await state();
+  await evaluate(`(() => { clearTimeout(satelliteSendCooldownTimer); satelliteSendCooldownUntil = 0; updateSettingDisplay(${J(id)}, false); return true; })()`);
+  const offAgain = await state();
+  check(`${tag} actions: no satellite send button while the collar reports satellite off, also with the switch turned on as a pending edit`, !off.shown && !pending.shown, { off, pending });
+  check(`${tag} actions: the satellite send button appears once the collar reports satellite on, sends 20 C6 00 and says so`, on.shown && !on.disabled && sent.sends.length === 1 && JSON.stringify(sent.sends[0]) === JSON.stringify([0x20, 0xC6, 0]) && sent.disabled && /Satellite send started/.test(sent.toast), { on, sent });
+  check(`${tag} actions: a second tap during the cooldown sends nothing, and the button goes when satellite is off again`, again.sends.length === 1 && !offAgain.shown, { again, offAgain });
+}
+
 async function listInterval(tag, page) {
   const id = await evaluate(`settingsData.settings.ublox_send_interval.id`);
   if (page !== '/index.html') await evaluate(`(() => { const s = settingsData.settings.ublox_send_interval; includeSetting(s); setInputValue(s.id, '300'); __onInputChanged(s.id); return true; })()`);
@@ -866,7 +893,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }
