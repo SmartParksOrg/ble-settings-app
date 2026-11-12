@@ -463,6 +463,12 @@ settings blocks are hidden because the panels edit those settings now.
   the animal when it reports one, the hardware type otherwise (rhino, elephant, wisent, cat,
   ranger; rhinopuck and rhinopuck35 show the rhino, collaredge and freeedge the cat), and an
   unknown type shows a plain collar outline.
+- The Features card starts with a LoRaWAN row (2026-11-12): region and data rate on the first
+  line ("EU 868 · DR5 = SF7 / 125 kHz", the same RP002 translation as the Network panel; with an
+  ADR profile other than Custom the profile is named, since the data rate is not fixed then),
+  and "Status every 1 h · rejoin every 1 h" on the second. The status interval is shown only
+  while the status port is in `lr_send_flag`; otherwise the line says "Status not sent". The row
+  counts as enabled unless the 8.2 `lr_enabled` switch is off, and a tap opens the Network panel.
 - The Features card (the at-a-glance list above the panels) has a "Motion-triggered GPS" row
   of its own, since that switch is easy to leave on by accident and the GPS row only reflects
   the schedule. Its detail follows the Positioning panel's wording and says when the switch has
@@ -513,6 +519,14 @@ is considered joined and the same command is offered as "Re-join LoRaWAN". "Expo
 in the Actions card saves the full profile, device credentials included, without opening the
 All settings card; the export in the All settings card still follows its credentials checkbox. Both
 refuse to export while edits are pending, so the file matches what the device reported.
+"Import settings" (2026-11-12) sits next to it and opens the same file picker as the Import
+button in the All settings card, so it runs the same preview and verified apply. It follows that
+card's "include credentials" checkbox (off by default): a profile exported from another collar
+never overwrites this collar's LoRaWAN keys unless someone ticks the box, and the preview says
+when credentials are skipped. Every Actions button carries a small white icon before its label
+(`mainCommandIcons` in `index.html` for the firmware commands; the six icons the stylesheet did not
+have yet, satellite, satellite dish, ban, crosshairs, broadcast tower and paper plane, are Font
+Awesome Free 6.7.2 like the others).
 
 "Send satellite buffer now" (2026-11-11) sends `cmd_send_sat_buffer` (`20 C6 00`): the collar
 sends the messages queued for satellite over Iridium at once, or a status message when the
@@ -642,6 +656,17 @@ image state over SMP, checks that slot 0 carries the uploaded hash, and returns 
 device screen. The firmware confirms its own image on boot, so the SMP confirm step is a
 safety net rather than a requirement. A screen wake lock is held during upload and
 reboot. If automatic reconnect fails, the overlay offers a retry and a manual scan.
+
+Chrome on macOS (2026-11-12): the automatic reconnect never came back there. CoreBluetooth has no
+connect timeout, so a `gatt.connect()` issued while the collar is still swapping can wait
+forever; the loop sat on its first attempt and never reached its three-minute deadline. Each
+attempt is now cut off after 20 s (`AUTO_RECONNECT_ATTEMPT_TIMEOUT_MS` in `dfu/dfu.js`),
+cancelled with `gatt.disconnect()`, and started again. After a minute of trying the overlay
+also shows "Scan for device" while the attempts go on; a collar picked there replaces the
+running attempt instead of being ignored, and closing the chooser keeps the session. That
+chooser lists every Smart Parks collar (manufacturer filter only, every device on iOS): the
+exact-name filter it used before matches nothing when macOS or iOS knows the collar by the
+cached "Zephyr" GATT name (see the iPhone section).
 The firmware version named in the completion toast, the overlay and the "already installed"
 notice comes from the selected file's name (`...-v8.0.3.bin`), not from the MCUboot image
 header: OpenCollar builds leave the header version at 0.0.0, and the hash check already

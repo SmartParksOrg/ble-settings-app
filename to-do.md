@@ -253,6 +253,25 @@ app says "not available" on it while satellite is off):
    modem"; plug it back in and tap the test: "detected".
 5. On a CollarEdge: no modem line in the Status card, the panel says the type has no modem port.
 
+## DFU reconnect on Chrome for macOS, Actions import, LoRaWAN feature row (2026-11-12, hardware test pending)
+
+Tim reported that the automatic reconnect after a DFU does not work in Chrome on a Mac. Likely
+cause, not yet confirmed on a Mac: `gatt.connect()` without a timeout (see README, DFU flow).
+Each attempt is now cut off after 20 s and retried, and "Scan for device" appears after a minute.
+Verify on a Mac with Chrome against SP051307:
+
+1. DFU to the next release and watch the overlay: the attempt counter keeps going up (Debug
+   log: "Auto reconnect attempt n failed: no answer within 20 s" while the collar swaps), and
+   the collar reconnects by itself once it advertises again. Note after how many seconds.
+2. If it still does not reconnect: after a minute tap "Scan for device", pick the collar (it may
+   be listed as "Zephyr..."), and the verify step runs. Send the Debug log either way, so we
+   can see whether the attempts fail fast, time out, or connect but fail on the SMP service
+   (a cached GATT table on macOS would show as a service error after a connect).
+3. Actions card: Import settings opens the file picker and the preview; with the credentials
+   box under All settings unticked, the preview says credentials are skipped.
+4. Features card: the LoRaWAN row shows the collar's region, data rate (Custom ADR) or ADR
+   profile, status and rejoin intervals; it changes with an edit in the Network panel.
+
 ## Feature settings editable while the feature is off (2026-11-11, hardware test pending)
 
 Panels no longer grey out a feature's settings while its switch is off (see README, Guided

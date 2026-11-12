@@ -977,6 +977,15 @@
       'cmd_get_ublox_fix': 'Perform GPS fix now',
       'cmd_reset': 'Reboot device',
     };
+    // Icon class (style.css) shown before each Actions button label.
+    const mainCommandIcons = {
+      'cmd_join': 'tower-broadcast',
+      'cmd_send_status_lr': 'paper-plane',
+      'cmd_send_position': 'ublox-location',
+      'cmd_get_ublox_fix': 'location-crosshairs',
+      'cmd_reset': 'power-off',
+    };
+    const actionIcon = name => `<span class="icon ${name}" aria-hidden="true"></span>`;
     const CMDQ_SETTING_ORDER = [
       'cmdq_enabled',
       'cmdq_searched_mac_address',
@@ -7414,19 +7423,19 @@
             : 'The device reports no join error, so it is considered joined. Starts the join procedure again.';
         }
         const titleAttr = title ? ` title="${title}"` : '';
-        const classAttr = isReset ? ' class="reboot-button"' : (isJoin && hasLrJoinError ? ' class="join-needed-button"' : '');
+        const classAttr = ` class="icon-button${isReset ? ' reboot-button' : (isJoin && hasLrJoinError ? ' join-needed-button' : '')}"`;
         const onclickAttr = isReset ? ' onclick="requestRebootConfirm()"' : ` onclick="executeCommand('${command.id}')"`;
-        return `<button id="command-button-${command.id}"${classAttr}${onclickAttr}${disabledAttr}${titleAttr}>${label}</button>`;
+        return `<button id="command-button-${command.id}"${classAttr}${onclickAttr}${disabledAttr}${titleAttr}>${mainCommandIcons[key] ? actionIcon(mainCommandIcons[key]) : ''}${label}</button>`;
       }).join('');
 
       if (!lrUpdateMode) {
         const ubloxState = getUbloxGpsState();
         const disableUbloxButton = ubloxState && ubloxState.enabled
-          ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableUbloxGps()"${ubloxDisableInProgress ? ' disabled' : ''}>Disable Ublox GPS</button>`
+          ? `<button class="hidden-when-no-status ublox-disable-button icon-button" onclick="disableUbloxGps()"${ubloxDisableInProgress ? ' disabled' : ''}>${actionIcon('ban')}Disable Ublox GPS</button>`
           : '';
         const satelliteState = getSatelliteState();
         const disableSatelliteButton = satelliteState && satelliteState.enabled
-          ? `<button class="hidden-when-no-status ublox-disable-button" onclick="disableSatellite()"${satelliteDisableInProgress ? ' disabled' : ''}>Disable Satellite</button>`
+          ? `<button class="hidden-when-no-status ublox-disable-button icon-button" onclick="disableSatellite()"${satelliteDisableInProgress ? ' disabled' : ''}>${actionIcon('ban')}Disable Satellite</button>`
           : '';
         // Only offered while the collar itself reports Iridium sending on (the firmware drops the
         // command otherwise, so a pending edit does not count) and reports its modem detected;
@@ -7435,14 +7444,15 @@
         const satelliteOnDevice = isSatelliteEnabledOnDevice();
         let sendSatelliteButton = '';
         if (satelliteOnDevice && satelliteModem.detected && settingsData.commands.cmd_send_sat_buffer) {
-          sendSatelliteButton = `<button id="send-satellite-buffer-button" class="hidden-when-no-status" onclick="sendSatelliteBuffer()"${satelliteSendCoolingDown ? ' disabled' : ''} title="Sends the messages queued for satellite over Iridium now, or a status message when the queue is empty. Each send uses satellite credit.">Send satellite buffer now</button>`;
+          sendSatelliteButton = `<button id="send-satellite-buffer-button" class="hidden-when-no-status icon-button" onclick="sendSatelliteBuffer()"${satelliteSendCoolingDown ? ' disabled' : ''} title="Sends the messages queued for satellite over Iridium now, or a status message when the queue is empty. Each send uses satellite credit.">${actionIcon('satellite')}Send satellite buffer now</button>`;
         } else if (satelliteOnDevice && satelliteModem.reported && !satelliteModem.detected && isSatelliteHardware()) {
-          sendSatelliteButton = `<button id="test-satellite-modem-button" class="hidden-when-no-status" onclick="testSatelliteModem()"${satelliteModem.checking ? ' disabled' : ''} title="Makes the collar power the RockBLOCK and ping it again; the result shows in the Status card and the Iridium panel.">${satelliteModem.checking ? 'Testing satellite modem…' : 'Test satellite modem'}</button>`;
+          sendSatelliteButton = `<button id="test-satellite-modem-button" class="hidden-when-no-status icon-button" onclick="testSatelliteModem()"${satelliteModem.checking ? ' disabled' : ''} title="Makes the collar power the RockBLOCK and ping it again; the result shows in the Status card and the Iridium panel.">${actionIcon('satellite-dish')}${satelliteModem.checking ? 'Testing satellite modem…' : 'Test satellite modem'}</button>`;
         }
         mainCommandsElement.innerHTML = `
-          <button class="hidden-when-no-status" onclick="setLocationAndTime()">Set location & time</button>
-          <button class="hidden-when-no-status" onclick="copyDeviceInfo()">Copy device info</button>
-          <button class="hidden-when-no-status" onclick="exportToJson({ includeCredentials: true })" title="Saves every setting the device reported, including the LoRaWAN credentials, as a JSON file.">Export settings</button>
+          <button class="hidden-when-no-status icon-button" onclick="setLocationAndTime()">${actionIcon('location-dot')}Set location & time</button>
+          <button class="hidden-when-no-status icon-button" onclick="copyDeviceInfo()">${actionIcon('copy')}Copy device info</button>
+          <button class="hidden-when-no-status icon-button" onclick="document.getElementById('import-file').click()" title="Loads a settings JSON file and shows what would change before anything is written. LoRaWAN credentials in the file are only imported with the credentials box ticked under All settings, Import / export.">${actionIcon('file-arrow-up')}Import settings</button>
+          <button class="hidden-when-no-status icon-button" onclick="exportToJson({ includeCredentials: true })" title="Saves every setting the device reported, including the LoRaWAN credentials, as a JSON file.">${actionIcon('file-arrow-down')}Export settings</button>
           ${sendSatelliteButton}
           ${disableUbloxButton}
           ${disableSatelliteButton}
@@ -7673,7 +7683,9 @@
         'fence_enabled', 'fence_interval',
         'outdoor_detection_enabled',
         'switch_detection_enable', 'switch_detection_enabled', 'external_switch_detection_enabled',
-        'lp0_node_params'
+        'lp0_node_params',
+        'lr_enabled', 'lr_region', 'lr_adr_profile', 'lr_adr', 'lr_send_flag',
+        'status_send_interval', 'rejoin_interval'
       ].includes(String(key || ''));
     }
 
@@ -7690,12 +7702,67 @@
       return { enabled: role === 1 || role === 2, settingKey: 'lp0_node_params', detail };
     }
 
+    // LoRaWAN row: region and data rate on one line, status and rejoin intervals on the next.
+    // LoRaWAN has no switch before firmware 8.2 (lr_enabled), so it counts as on there. The
+    // status interval is only named while the status port is in lr_send_flag; otherwise the
+    // status message does not go out over LoRaWAN. A data rate is only fixed with the Custom ADR
+    // profile; the other profiles let the network or the device choose, so the profile is named.
+    function getLoraWanFeatureState() {
+      const regionKey = getFirstAvailableSettingKey(['lr_region']);
+      if (!regionKey) {
+        return null;
+      }
+      const has = key => Boolean(getFirstAvailableSettingKey([key]));
+      const enabledState = getBooleanFeatureState(['lr_enabled']);
+      const enabled = enabledState ? enabledState.enabled : true;
+      const region = parseNumberSettingValue(getSettingValueByKey(regionKey));
+      const regionOption = (getSettingOptions(regionKey) || []).find(option => Number(option.value) === region);
+      const regionLabel = regionOption ? regionOption.label : `region ${region}`;
+
+      let dataRateLabel = '';
+      const profile = has('lr_adr_profile') ? parseNumberSettingValue(getSettingValueByKey('lr_adr_profile')) : null;
+      if ((profile === null || profile === 3) && has('lr_adr')) {
+        const dr = parseNumberSettingValue(getSettingValueByKey('lr_adr'));
+        const sf = window.PanelEngine ? PanelEngine.describeDataRate(region, dr) : null;
+        dataRateLabel = sf ? `DR${dr} = ${sf}` : `DR${dr} (not defined for this region)`;
+      } else if (profile !== null) {
+        const profileOption = (getSettingOptions('lr_adr_profile') || []).find(option => Number(option.value) === profile);
+        dataRateLabel = `ADR ${profileOption ? profileOption.label.toLowerCase() : profile}`;
+      }
+
+      let statusLabel = '';
+      if (has('status_send_interval')) {
+        const statusPort = settingsData && settingsData.ports ? Number(settingsData.ports.port_status) : NaN;
+        const statusSent = !has('lr_send_flag') || !Number.isInteger(statusPort) || !window.PanelEngine
+          || PanelEngine.isPortSet(getSettingValueByKey('lr_send_flag'), statusPort);
+        statusLabel = statusSent
+          ? `Status every ${formatUbloxInterval(getSettingValueByKey('status_send_interval'))}`
+          : 'Status not sent';
+      }
+      const rejoinLabel = has('rejoin_interval')
+        ? `rejoin every ${formatUbloxInterval(getSettingValueByKey('rejoin_interval'))}`
+        : '';
+      const lines = [
+        [regionLabel, dataRateLabel].filter(Boolean).join(' · '),
+        [statusLabel, rejoinLabel].filter(Boolean).join(' · ')
+      ].filter(Boolean);
+      return {
+        enabled,
+        settingKey: enabledState ? enabledState.settingKey : regionKey,
+        detail: lines.map(line => `<span>${escapeHtml(line.charAt(0).toUpperCase() + line.slice(1))}</span>`).join('')
+      };
+    }
+
     function getFeatureDefinitions() {
       const ublox = getUbloxGpsState();
       const satellite = getSatelliteState();
       const ubloxSettingKey = getFirstAvailableSettingKey(['ublox_send_interval']);
       const satelliteSettingKey = getFirstAvailableSettingKey(['satellite_enabled']);
       return [
+        (() => {
+          const state = getLoraWanFeatureState();
+          return state && { name: 'LoRaWAN', state, settingKey: state.settingKey, detail: state.detail };
+        })(),
         ublox && ubloxSettingKey && {
           name: 'Ublox GPS',
           state: ublox,

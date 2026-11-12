@@ -518,6 +518,79 @@ async function featuresCard(tag) {
     if (before !== undefined) updateSettingDisplay(id, before); else currentSettingValues.delete(String(id));
     device = saved; return { shown, file, fallback }; })()`);
   check(`${tag} device card: the collar's device_name replaces a Zephyr name from iOS`, named.shown === 'SP051307' && named.file === 'SP051307' && named.fallback === 'Zephyr', named);
+
+  // LoRaWAN row: first in the card, region and data rate (SF format with the Custom profile, the
+  // profile otherwise), status interval only while the status port is in lr_send_flag, rejoin.
+  const setValue = (k, v) => `(() => { const s = settingsData.settings[${J(k)}]; setInputValue(s.id, ${J(String(v))}); return true; })()`;
+  await evaluate(setValue('lr_region', 1));
+  await evaluate(setValue('lr_adr_profile', 3));
+  await evaluate(setValue('lr_adr', 5));
+  await evaluate(setValue('status_send_interval', 3600));
+  await evaluate(setValue('rejoin_interval', 7200));
+  await evaluate(setValue('lr_send_flag', 0xFFFFFFFF));
+  const lora = await card();
+  await evaluate(setValue('lr_region', 3));
+  await evaluate(setValue('lr_adr', 0));
+  const loraUs = await card();
+  await evaluate(setValue('lr_adr_profile', 1));
+  await evaluate(`(() => { const s = settingsData.settings.lr_send_flag; setInputValue(s.id, String((0xFFFFFFFF & ~(1 << (settingsData.ports.port_status - 1))) >>> 0)); return true; })()`);
+  const loraProfile = await card();
+  check(`${tag} features: LoRaWAN row comes first and reads region, DR as SF, status and rejoin intervals`, lora[0].name === 'LoRaWAN' && lora[0].enabled
+    && lora[0].detail.length === 2 && lora[0].detail[0] === 'EU 868 · DR5 = SF7 / 125 kHz' && lora[0].detail[1] === 'Status every 1 h · rejoin every 2 h', lora[0]);
+  check(`${tag} features: LoRaWAN data rate follows the region`, row(loraUs, 'LoRaWAN').detail[0] === 'US 915 · DR0 = SF10 / 125 kHz', row(loraUs, 'LoRaWAN'));
+  check(`${tag} features: LoRaWAN names a non-custom ADR profile and says when status is not sent`, /^US 915 · ADR mobile, long range$/.test(row(loraProfile, 'LoRaWAN').detail[0]) && row(loraProfile, 'LoRaWAN').detail[1] === 'Status not sent · rejoin every 2 h', row(loraProfile, 'LoRaWAN'));
+}
+// Actions card: every button has an icon; Import settings sits next to Export settings; Import opens
+// the same file picker as the All settings card (and so the same preview).
+async function actionsImport(tag) {
+  await evaluate(`(() => { document.body.classList.add('has-status'); displayMainCommands(); window.__importClicks = 0;
+    document.getElementById('import-file').click = () => { window.__importClicks += 1; }; return true; })()`);
+  const buttons = await evaluate(`Array.from(document.querySelectorAll('#main-commands button')).map(b => ({ text: b.textContent.trim(), icon: (b.querySelector('.icon') || {}).className || '' }))`);
+  await focus('#main-commands button[onclick*="import-file"]');
+  await sleep(60);
+  const clicks = await evaluate(`window.__importClicks`);
+  const imp = buttons.find(b => b.text === 'Import settings');
+  const exp = buttons.find(b => b.text === 'Export settings');
+  check(`${tag} Actions: Import settings sits before Export settings, each with its file icon`, imp && exp && /file-arrow-up/.test(imp.icon) && /file-arrow-down/.test(exp.icon)
+    && buttons.indexOf(imp) + 1 === buttons.indexOf(exp), buttons);
+  check(`${tag} Actions: Import settings opens the settings file picker`, clicks === 1, { clicks });
+  check(`${tag} Actions: every button carries an icon`, buttons.length > 0 && buttons.every(b => /\bicon\b/.test(b.icon)), buttons);
+}
+// Post-DFU reconnect (Chrome on macOS can wait on gatt.connect() forever): an attempt is cut off
+// and cancelled, the overlay offers "Scan for device" after a minute of trying, and a device picked
+// there replaces the hanging attempt instead of being ignored.
+async function dfuReconnect(tag) {
+  await evaluate(`loadDfuScriptsIfNeeded().then(() => { DfuApp.init(); return true; })`);
+  const unit = await evaluate(`(async () => { const t = DfuApp._reconnectTest; let cancelled = 0;
+    const dev = { id: 'old', gatt: { connected: false, disconnect: () => { cancelled += 1; } } };
+    const saved = t.state.mcumgr; t.state.mcumgr = { attachDevice: () => new Promise(() => {}) };
+    const start = Date.now(); let message = '';
+    try { await t.attachWithTimeout(dev, 300); } catch (error) { message = error.message; }
+    t.state.mcumgr = saved; return { message, cancelled, ms: Date.now() - start }; })()`);
+  check(`${tag} DFU reconnect: a hanging connect is cut off and cancelled`, /no answer/.test(unit.message) && unit.cancelled === 1 && unit.ms < 2000, unit);
+
+  await evaluate(`(() => { const t = DfuApp._reconnectTest; window.__attached = []; window.__oldCancelled = 0;
+    let rejectOld = null;
+    window.__oldDevice = { id: 'old', name: 'Zephyr', gatt: { connected: false, disconnect: () => { window.__oldCancelled += 1; if (rejectOld) rejectOld(new Error('aborted')); } } };
+    window.__newDevice = { id: 'new', name: 'SP051307', gatt: { connected: false, disconnect: () => {} } };
+    t.state.mcumgr = { attachDevice: device => { window.__attached.push(device.id);
+      return device.id === 'old' ? new Promise((_, reject) => { rejectOld = reject; }) : Promise.resolve(true); } };
+    t.state.awaitingReboot = true; t.state.reconnectStart = Date.now() - 61000; t.state.reconnectAttempts = 0;
+    window.__pickers = [];
+    navigator.bluetooth = { requestDevice: async options => { window.__pickers.push(JSON.parse(JSON.stringify(options))); return window.__newDevice; } };
+    t.startAutoReconnect({ device: window.__oldDevice, immediate: true }); return true; })()`);
+  await sleep(150);
+  const offered = await evaluate(`(() => { const b = document.getElementById('dfu-waiting-scan'); return { visible: !b.classList.contains('hidden'), disabled: b.disabled,
+    text: document.getElementById('dfu-waiting-text').textContent, attached: window.__attached.slice() }; })()`);
+  check(`${tag} DFU reconnect: after a minute the overlay offers Scan for device while attempts go on`, offered.visible && !offered.disabled && /Scan for device/.test(offered.text) && offered.attached.join() === 'old', offered);
+  await evaluate(`(() => { document.getElementById('dfu-waiting-scan').click(); return true; })()`);
+  await sleep(300);
+  const picked = await evaluate(`({ attached: window.__attached.slice(), oldCancelled: window.__oldCancelled, active: DfuApp._reconnectTest.state.autoReconnectActive,
+    existing: DfuApp._reconnectTest.state.existingDevice && DfuApp._reconnectTest.state.existingDevice.id, pickers: window.__pickers })`);
+  const filters = picked.pickers[0] && picked.pickers[0].filters;
+  check(`${tag} DFU reconnect: a device picked in the chooser replaces the hanging attempt`, picked.attached.join() === 'old,new' && picked.oldCancelled >= 1 && !picked.active && picked.existing === 'new', picked);
+  check(`${tag} DFU reconnect: the chooser lists collars by manufacturer, not by an exact name a Mac may not know`,
+    ios ? picked.pickers[0].acceptAllDevices === true : (Array.isArray(filters) && filters.length === 1 && filters[0].manufacturerData && !filters[0].name), picked.pickers);
 }
 // The built-in DFU list: newest first, the latest standard release in a "Recommended" group at
 // the top, AirQ builds in their own group at the bottom, and a hint when both are present.
@@ -946,7 +1019,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

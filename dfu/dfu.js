@@ -119,6 +119,7 @@ const dfuState = {
   reconnectStart: null,
   reconnectAttempts: 0,
   autoReconnectActive: false,
+  reconnectGeneration: 0,
   rebootWatchdog: null,
   rebootResends: 0,
   wakeLock: null,
@@ -155,9 +156,15 @@ let handlersAttached = false;
 
 const DFU_PENDING_KEY = 'dfuPending';
 // After a reset the device is silent while MCUboot swaps the image. Reconnect
-// attempts are sequential: each one waits for the platform's own connect timeout.
+// attempts are sequential. Chrome on Windows and Android gives up on a connect after its
+// own timeout, but Chrome on macOS (CoreBluetooth) can wait on gatt.connect() forever when
+// the device is not advertising at that moment, so each attempt is cut off after
+// AUTO_RECONNECT_ATTEMPT_TIMEOUT_MS and started again. After AUTO_RECONNECT_SCAN_OFFER_MS the
+// overlay also offers "Scan for device" while the attempts go on.
 const AUTO_RECONNECT_INITIAL_DELAY_MS = 3000;
 const AUTO_RECONNECT_RETRY_DELAY_MS = 2000;
+const AUTO_RECONNECT_ATTEMPT_TIMEOUT_MS = 20000;
+const AUTO_RECONNECT_SCAN_OFFER_MS = 60000;
 const AUTO_RECONNECT_TOTAL_MS = 180000;
 const REBOOT_WATCHDOG_MS = 15000;
 
@@ -989,7 +996,9 @@ function updateUploadButtons() {
     elements.reconnectButton.disabled = dfuState.connected || dfuState.connecting;
   }
   if (elements.waitingScanButton) {
-    elements.waitingScanButton.disabled = dfuState.connecting || dfuState.autoReconnectActive;
+    // While the device reboots the scan stays usable next to the automatic attempts.
+    elements.waitingScanButton.disabled = dfuState.connecting
+      || (dfuState.autoReconnectActive && !dfuState.awaitingReboot);
   }
   if (elements.waitingRetryButton) {
     elements.waitingRetryButton.disabled = dfuState.connecting || dfuState.autoReconnectActive;
@@ -1209,9 +1218,64 @@ async function getReconnectCandidate() {
   return null;
 }
 
+// One reconnect attempt, cut off after `ms`. A timed-out attempt is cancelled with
+// gatt.disconnect(), which also aborts a connect that is still pending.
+async function attachWithTimeout(target, ms) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      try {
+        if (target.gatt) target.gatt.disconnect();
+      } catch (error) {
+        // Nothing to cancel.
+      }
+      dfuState.connecting = false;
+      reject(new Error(`no answer within ${Math.round(ms / 1000)} s`));
+    }, ms);
+  });
+  try {
+    return await Promise.race([dfuState.mcumgr.attachDevice(target), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function offerScanWhileReconnecting() {
+  setWaitingOverlayState({
+    message: 'The device is restarting with the new firmware. Still trying to reconnect... '
+      + 'If the device has restarted and the app does not find it (this happens with Chrome on a Mac), '
+      + 'tap "Scan for device" and pick it again.',
+    showSpinner: true,
+    showCountdown: true,
+    showReconnect: true,
+    showRetry: false,
+    showContinue: false,
+  });
+  startReconnectElapsedTimer();
+}
+
+// Stop the running reconnect loop, for instance because the person picked the device in
+// the chooser. The loop notices the new generation and ends without touching the overlay.
+function stopAutoReconnectLoop() {
+  dfuState.reconnectGeneration = (dfuState.reconnectGeneration || 0) + 1;
+  dfuState.autoReconnectActive = false;
+  const target = dfuState.existingDevice;
+  if (target && target.gatt && !target.gatt.connected) {
+    try {
+      target.gatt.disconnect();
+    } catch (error) {
+      // Nothing pending.
+    }
+  }
+}
+
 async function startAutoReconnect({ device = null, immediate = false } = {}) {
   if (dfuState.autoReconnectActive || !dfuState.awaitingReboot || !dfuState.mcumgr) return;
   dfuState.autoReconnectActive = true;
+  const generation = (dfuState.reconnectGeneration || 0) + 1;
+  dfuState.reconnectGeneration = generation;
+  const isCurrent = () => dfuState.reconnectGeneration === generation;
+  let scanOffered = false;
   if (!dfuState.reconnectStart || Date.now() >= dfuState.reconnectStart + AUTO_RECONNECT_TOTAL_MS) {
     dfuState.reconnectStart = Date.now();
     dfuState.reconnectAttempts = 0;
@@ -1241,26 +1305,35 @@ async function startAutoReconnect({ device = null, immediate = false } = {}) {
     if (!immediate) {
       await delay(AUTO_RECONNECT_INITIAL_DELAY_MS);
     }
-    while (dfuState.awaitingReboot && dfuState.autoReconnectActive && Date.now() < deadline) {
+    while (isCurrent() && dfuState.awaitingReboot && Date.now() < deadline) {
+      if (!scanOffered && Date.now() - dfuState.reconnectStart >= AUTO_RECONNECT_SCAN_OFFER_MS) {
+        scanOffered = true;
+        offerScanWhileReconnecting();
+      }
       dfuState.reconnectAttempts += 1;
       const attempt = dfuState.reconnectAttempts;
       try {
         logDfu(`Auto reconnect attempt ${attempt}...`);
-        await dfuState.mcumgr.attachDevice(target);
+        const remaining = Math.max(1000, deadline - Date.now());
+        await attachWithTimeout(target, Math.min(AUTO_RECONNECT_ATTEMPT_TIMEOUT_MS, remaining));
+        if (!isCurrent()) return;
         const elapsedSec = Math.round((Date.now() - dfuState.reconnectStart) / 1000);
         logDfu(`Auto reconnect succeeded on attempt ${attempt} after ${elapsedSec}s.`);
         return;
       } catch (error) {
+        if (!isCurrent()) return;
         logDfu(`Auto reconnect attempt ${attempt} failed: ${error.message || error}`);
         await delay(AUTO_RECONNECT_RETRY_DELAY_MS);
       }
     }
-    if (dfuState.awaitingReboot) {
+    if (isCurrent() && dfuState.awaitingReboot) {
       showManualReconnect('Automatic reconnect timed out.');
     }
   } finally {
-    dfuState.autoReconnectActive = false;
-    updateUploadButtons();
+    if (isCurrent()) {
+      dfuState.autoReconnectActive = false;
+      updateUploadButtons();
+    }
   }
 }
 
@@ -2896,25 +2969,37 @@ function attachHandlers() {
           showToast('Bluetooth scan not supported in this browser.');
           return;
         }
-        const nameFilters = dfuState.deviceInfo?.deviceName ? [{ name: dfuState.deviceInfo.deviceName }] : [];
-        const manufacturerFilter = { manufacturerData: [{ companyIdentifier: 0x0A61 }] };
-        const filters = nameFilters.length
-          ? nameFilters.map(nameFilter => ({ ...manufacturerFilter, ...nameFilter }))
-          : [manufacturerFilter];
-        const selected = await navigator.bluetooth.requestDevice({
-          filters,
-          optionalServices: [
-            '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-            '8d53dc1d-1db7-4cd3-868b-8a527460aa84',
-          ],
-        });
-        dfuState.existingDevice = selected;
-        setMainBleRefs(selected, null, null, null);
+        // No exact name filter: macOS and iOS can list a collar under the GATT Device Name
+        // they cached ("Zephyr..."), and an exact SP name then matches nothing. The
+        // manufacturer filter lists the Smart Parks collars nearby; Bluefy ignores
+        // manufacturer filters, so iOS gets every device.
+        const optionalServices = [
+          '6e400001-b5a3-f393-e0a9-e50e24dcca9e',
+          '8d53dc1d-1db7-4cd3-868b-8a527460aa84',
+        ];
+        const ios = typeof isIosWebKit === 'function' && isIosWebKit();
+        const scanOptions = ios
+          ? { acceptAllDevices: true, optionalServices }
+          : { filters: [{ manufacturerData: [{ companyIdentifier: 0x0A61 }] }], optionalServices };
+        let selected;
+        try {
+          selected = await navigator.bluetooth.requestDevice(scanOptions);
+        } catch (error) {
+          if (!error || error.name !== 'TypeError') throw error;
+          selected = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
+        }
         if (dfuState.awaitingReboot) {
-          // The chooser gave us a fresh device object; run the same verify flow.
+          // The chooser gave us a fresh device object: stop the attempts on the old one
+          // and run the same verify flow on the new one.
+          stopAutoReconnectLoop();
+          dfuState.existingDevice = selected;
+          setMainBleRefs(selected, null, null, null);
+          logDfu(`Device picked in the chooser (${selected.name || selected.id}); reconnecting.`);
           await startAutoReconnect({ device: selected, immediate: true });
           return;
         }
+        dfuState.existingDevice = selected;
+        setMainBleRefs(selected, null, null, null);
         if (typeof window.connectToDevice !== 'function') {
           showToast('Main connection handler unavailable.');
           return;
@@ -2938,6 +3023,12 @@ function attachHandlers() {
           showContinue: true,
         });
       } catch (error) {
+        if (error && error.name === 'NotFoundError' && dfuState.awaitingReboot) {
+          // Chooser closed while the device reboots: keep the session; the automatic
+          // attempts (or the Retry button) carry on.
+          logDfu('Device chooser closed without a pick.');
+          return;
+        }
         if (error && error.name === 'NotFoundError') {
           resetDfuSession();
           setWaitingOverlay(false);
@@ -3055,5 +3146,7 @@ window.DfuApp = {
   // Pure helpers, exposed for tests/browser-input-check.mjs.
   firmwareVersionFromFileName,
   meaningfulVersion,
+  // Reconnect internals, exposed for the harness's post-DFU reconnect scenario only.
+  _reconnectTest: { state: dfuState, attachWithTimeout, startAutoReconnect },
 };
 }());
