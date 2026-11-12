@@ -422,7 +422,12 @@ settings blocks are hidden because the panels edit those settings now.
   opens a dialog with the outcome per setting. "Review" opens the before/after list first for
   people who want to check a larger edit. The per-setting Update buttons still work and clear
   their draft entry.
-- Import uses the same ordered, verified apply path, always with the preview first. Export and
+- Import uses the same ordered, verified apply path, always with the preview first. In the
+  import preview every change carries a checkbox, ticked by default (2026-11-12): an unticked
+  change is marked "skipped" and is not written, the Import button counts what is left ("Import
+  3 of 4") and is disabled with nothing left, and "Select all changes" next to "Show changed
+  only" ticks or clears them all. The rest keeps its dependency write order, and the Debug log
+  names the changes left out. The Review dialog for pending edits has no checkboxes. Export and
   import refuse to run while edits are pending, so a profile always matches what the device
   reported. The export writes only settings the device has actually sent (a toast says how
   many were left out when values are still arriving) and converts them with

@@ -3504,6 +3504,40 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     color: #b42318;
 }
 
+/* Import preview: a checkbox per change, so single changes can be left out. */
+.import-preview-pick {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.import-preview-pick input {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin: 1px 0 0;
+    accent-color: var(--sp-forest);
+}
+
+.import-preview-skipped td {
+    color: rgba(31, 42, 35, 0.5);
+}
+
+.import-preview-change-tag.skipped {
+    background: rgba(123, 135, 151, 0.18);
+    color: #697484;
+}
+
+.import-preview-toggle:not(:last-of-type) {
+    margin-right: 16px;
+}
+
+.import-preview-footer button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 #main-commands button {
     margin: 0;
 }

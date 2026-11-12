@@ -271,6 +271,9 @@ Verify on a Mac with Chrome against SP051307:
    box under All settings unticked, the preview says credentials are skipped.
 4. Features card: the LoRaWAN row shows the collar's region, data rate (Custom ADR) or ADR
    profile, status and rejoin intervals; it changes with an edit in the Network panel.
+5. Import preview checkboxes: import a profile with several changes, untick one, Import: the
+   progress lists only the ticked ones, and afterwards the unticked setting still has its old
+   value on the device (All settings list).
 
 ## Feature settings editable while the feature is off (2026-11-11, hardware test pending)
 

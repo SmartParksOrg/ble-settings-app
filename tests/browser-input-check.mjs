@@ -312,6 +312,44 @@ async function applyMismatch(tag) {
   check(`${tag} apply with a stubborn device: after Close the kept edit stays pending`, closed.dialogHidden && !closed.hidden && closed.draft === 1 && /1 pending change/.test(closed.text), closed);
 }
 
+// Import preview: every change has a checkbox; an unticked change is left out of the write, the
+// Import button counts what is left, and "Select all changes" clears or restores the selection.
+async function importSelect(tag) {
+  await evaluate(FAKE_DEVICE);
+  await evaluate(`(() => { discardPendingChanges(); const file = new File([JSON.stringify({ status_send_interval: 7200, rejoin_interval: 7200, lr_adr: 5 })], 'profile.json', { type: 'application/json' });
+    const dt = new DataTransfer(); dt.items.add(file); const input = document.getElementById('import-file'); input.files = dt.files; importFromJson(); return true; })()`);
+  await waitFor(`!document.getElementById('import-preview-overlay').classList.contains('hidden') && document.querySelector('#import-preview-rows input[data-key]')`);
+  const read = () => evaluate(`({ boxes: Array.from(document.querySelectorAll('#import-preview-rows input[data-key]')).map(b => b.dataset.key + ':' + b.checked),
+    tags: Array.from(document.querySelectorAll('#import-preview-rows .import-preview-change-tag')).map(t => t.textContent),
+    confirm: document.getElementById('import-preview-confirm').textContent, disabled: document.getElementById('import-preview-confirm').disabled,
+    selectAllShown: !document.getElementById('import-preview-select-all-label').classList.contains('hidden'), all: document.getElementById('import-preview-select-all').checked })`);
+  const initial = await read();
+  await focus('#import-preview-rows input[data-key="rejoin_interval"]');
+  await sleep(60);
+  const one = await read();
+  const oneIndeterminate = await evaluate(`document.getElementById('import-preview-select-all').indeterminate`);
+  await focus('#import-preview-select-all'); // partly ticked: a tap selects every change
+  await sleep(60);
+  const all = await read();
+  await focus('#import-preview-select-all'); // all ticked: a tap clears them
+  await sleep(60);
+  const none = await read();
+  await focus('#import-preview-select-all');
+  await sleep(60);
+  await focus('#import-preview-rows input[data-key="rejoin_interval"]');
+  await sleep(60);
+  await focus('#import-preview-confirm');
+  const addr = k => `parseInt(settingsData.settings.${k}.id, 16)`;
+  await waitFor(`window.__writes.filter(w => w[0] === 0x03).length >= 2 && /complete|confirmed/i.test(document.getElementById('import-preview-progress-text').textContent + document.getElementById('toast').innerText)`, 15000).catch(() => null);
+  await sleep(300);
+  const written = await evaluate(`(() => { const a = window.__writes.filter(w => w[0] === 0x03).map(w => (w[1] << 8) | w[2]);
+    return { status: a.includes(${addr('status_send_interval')}), rejoin: a.includes(${addr('rejoin_interval')}), adr: a.includes(${addr('lr_adr')}), count: a.length }; })()`);
+  check(`${tag} import preview: every change is ticked by default and Import names no count`, initial.boxes.length === 3 && initial.boxes.every(b => b.endsWith(':true')) && initial.confirm === 'Import' && !initial.disabled && initial.selectAllShown && initial.all, initial);
+  check(`${tag} import preview: unticking a change marks it skipped and Import counts the rest`, one.boxes.includes('rejoin_interval:false') && one.tags.filter(t => t === 'skipped').length === 1 && one.confirm === 'Import 2 of 3' && !one.all && oneIndeterminate, { one, oneIndeterminate });
+  check(`${tag} import preview: Select all changes selects every change from a partial pick, then clears them`, none.boxes.every(b => b.endsWith(':false')) && none.disabled && all.boxes.every(b => b.endsWith(':true')) && all.confirm === 'Import' && !all.disabled, { none, all });
+  check(`${tag} import preview: an unticked change is not written, the others are`, written.status && written.adr && !written.rejoin && written.count === 2, written);
+}
+
 // Connecting must set the collar's time and location without a button press: the first status
 // frame of a connection triggers a geolocation lookup and a 0xAF command, the confirmation
 // shows a toast and refreshes the status, and the manual button stays in the Actions card.
@@ -1019,7 +1057,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, importSelect, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

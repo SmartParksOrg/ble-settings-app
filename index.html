@@ -633,6 +633,10 @@
           <input type="checkbox" id="import-preview-changed-only" checked>
           Show changed only
         </label>
+        <label id="import-preview-select-all-label" class="import-preview-toggle hidden">
+          <input type="checkbox" id="import-preview-select-all" checked>
+          Select all changes
+        </label>
         <div id="import-preview-progress" class="import-preview-progress hidden">
           <div id="import-preview-progress-text" class="import-preview-progress-text"></div>
           <div class="import-preview-progress-bar">
@@ -3811,7 +3815,9 @@
       saveTextFileCompat(`${deviceName}_${timestamp}.json`, json, 'application/json', { gesture: true });
     }
 
-    function showImportPreviewModal({ title, subtitle, rows, note, confirmLabel = 'Import' }) {
+    // selectable: every changed row gets a checkbox (ticked) so single changes can be left out;
+    // the promise then resolves to { excludedKeys: Set } instead of true. Used by the import.
+    function showImportPreviewModal({ title, subtitle, rows, note, confirmLabel = 'Import', selectable = false }) {
       return new Promise((resolve) => {
         const overlay = document.getElementById('import-preview-overlay');
         const titleEl = document.getElementById('import-preview-title');
@@ -3822,6 +3828,10 @@
         const changedOnlyToggle = document.getElementById('import-preview-changed-only');
         const cancelBtn = document.getElementById('import-preview-cancel');
         const confirmBtn = document.getElementById('import-preview-confirm');
+        const selectAllLabel = document.getElementById('import-preview-select-all-label');
+        const selectAll = document.getElementById('import-preview-select-all');
+        const changedRows = rows.filter(row => !row.unchanged);
+        const excludedKeys = new Set();
 
         titleEl.textContent = title;
         subtitleEl.textContent = subtitle;
@@ -3835,37 +3845,83 @@
         if (confirmBtn) {
           confirmBtn.classList.remove('hidden');
           confirmBtn.textContent = confirmLabel;
+          confirmBtn.disabled = false;
         }
         if (cancelBtn) {
           cancelBtn.textContent = 'Cancel';
           cancelBtn.onclick = null;
         }
+        if (selectAllLabel) {
+          selectAllLabel.classList.toggle('hidden', !selectable || changedRows.length < 2);
+        }
+        // The Import button names how many changes it will write, and is off with none left.
+        function syncSelection() {
+          if (!selectable) return;
+          const included = changedRows.length - excludedKeys.size;
+          if (confirmBtn) {
+            confirmBtn.textContent = included === changedRows.length
+              ? confirmLabel
+              : `${confirmLabel} ${included} of ${changedRows.length}`;
+            confirmBtn.disabled = included === 0;
+          }
+          if (selectAll) {
+            selectAll.checked = excludedKeys.size === 0;
+            selectAll.indeterminate = excludedKeys.size > 0 && included > 0;
+          }
+        }
         function renderRows() {
           const changedOnly = changedOnlyToggle ? changedOnlyToggle.checked : false;
-          rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => `
-          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}" data-setting-id="${row.id}">
+          rowsEl.innerHTML = rows.filter(row => !changedOnly || !row.unchanged).map((row) => {
+            const pickable = selectable && !row.unchanged;
+            const skipped = pickable && excludedKeys.has(row.key);
+            const name = pickable
+              ? `<label class="import-preview-pick"><input type="checkbox" data-key="${escapeHtml(row.key)}"${skipped ? '' : ' checked'} aria-label="Import ${escapeHtml(row.name)}"><span class="import-preview-setting">${row.name}</span></label>`
+              : `<div class="import-preview-setting">${row.name}</div>`;
+            const tag = row.unchanged
+              ? '<div class="import-preview-unchanged-tag">unchanged</div>'
+              : (skipped ? '<div class="import-preview-change-tag skipped">skipped</div>' : '<div class="import-preview-change-tag">change</div>');
+            return `
+          <tr class="${row.unchanged ? 'import-preview-unchanged' : ''}${skipped ? ' import-preview-skipped' : ''}" data-setting-id="${row.id}">
             <td>
-              <div class="import-preview-setting">${row.name}</div>
+              ${name}
               <div class="import-preview-meta">${row.key} (${row.id})</div>
               ${row.description ? `<div class="import-preview-desc">${row.description}</div>` : ''}
             </td>
             <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">${row.current}</td>
             <td class="${row.unchanged ? 'import-preview-cell-unchanged' : ''}">
               ${row.next}
-              ${row.unchanged ? '<div class="import-preview-unchanged-tag">unchanged</div>' : '<div class="import-preview-change-tag">change</div>'}
+              ${tag}
             </td>
           </tr>
-          `).join('');
+          `;
+          }).join('');
+          syncSelection();
         }
         renderRows();
         if (changedOnlyToggle) {
           changedOnlyToggle.onchange = renderRows;
+        }
+        rowsEl.onchange = selectable ? (event) => {
+          const box = event.target.closest('input[type="checkbox"][data-key]');
+          if (!box) return;
+          if (box.checked) excludedKeys.delete(box.dataset.key); else excludedKeys.add(box.dataset.key);
+          renderRows();
+        } : null;
+        if (selectAll) {
+          selectAll.onchange = selectable ? () => {
+            excludedKeys.clear();
+            if (!selectAll.checked) changedRows.forEach(row => excludedKeys.add(row.key));
+            renderRows();
+          } : null;
         }
 
         function cleanup(result) {
           overlay.classList.add('hidden');
           cancelBtn.removeEventListener('click', onCancel);
           confirmBtn.removeEventListener('click', onConfirm);
+          rowsEl.onchange = null;
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (selectAllLabel) selectAllLabel.classList.add('hidden');
           resolve(result);
         }
 
@@ -3874,7 +3930,7 @@
         }
 
         function onConfirm() {
-          cleanup(true);
+          cleanup(selectable ? { excludedKeys: new Set(excludedKeys) } : true);
         }
 
         cancelBtn.addEventListener('click', onCancel);
@@ -4047,19 +4103,31 @@
             subtitle: `File: ${file.name}`,
             rows: orderedRows,
             note: includeCredentials ? '' : 'Device credentials will be skipped.',
-            confirmLabel: 'Import'
+            confirmLabel: 'Import',
+            selectable: true
           });
           if (!ok) {
             showToast('Import cancelled');
             return;
+          }
+          // Changes unticked in the preview are left out; the rest keeps its write order.
+          const excluded = ok.excludedKeys || new Set();
+          const selected = ordered.filter(item => !excluded.has(item.key));
+          const selectedRows = orderedRows.filter(row => !row.unchanged && !excluded.has(row.key));
+          if (!selected.length) {
+            showToast('No changes selected; nothing was imported.');
+            return;
+          }
+          if (excluded.size) {
+            log(`Import: ${excluded.size} change${excluded.size === 1 ? '' : 's'} left out: ${Array.from(excluded).join(', ')}`);
           }
 
           search.classList.add('hidden');
           settingsSection.classList.add('hidden');
           commandsSection.classList.add('hidden');
 
-          await applyOrderedSettingChanges(ordered, orderedRows.filter(row => !row.unchanged), {
-            title: `Importing ${ordered.length} setting${ordered.length === 1 ? '' : 's'}`,
+          await applyOrderedSettingChanges(selected, selectedRows, {
+            title: `Importing ${selected.length} setting${selected.length === 1 ? '' : 's'}`,
             subtitle: `File: ${file.name}`,
             noun: 'setting'
           });
