@@ -2506,13 +2506,25 @@ body.dfu-active .bottom-nav .dfu-only-nav {
 .dfu-waiting-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1200;
+    z-index: 1250; /* above the pending-changes bar (1200), which covered the buttons at the bottom of a tall card */
     display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 24px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     background: rgba(15, 24, 19, 0.45);
     backdrop-filter: blur(2px);
+    /* A card taller than the screen (log download results on a phone) must scroll, or its
+       buttons end up off screen and the overlay cannot be closed. */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Auto margins centre the card but, unlike align-items: center, never push its top
+   above the scrollable area when it is taller than the screen. */
+.dfu-waiting-overlay > * {
+    margin: auto;
+    flex: none;
+    max-width: 100%;
 }
 
 .dfu-waiting-card {
@@ -3212,15 +3224,24 @@ body.dfu-active .bottom-nav .dfu-only-nav {
     position: fixed;
     inset: 0;
     background: rgba(15, 24, 19, 0.5);
-    display: grid;
-    place-items: center;
+    display: flex;
     padding: 24px 16px;
+    padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     z-index: 1250; /* above the pending-changes bar (1200): on phones the bar covered the dialog footer */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .import-preview-dialog {
+    margin: auto;
+    flex: none;
     width: min(960px, 100%);
     max-height: 88vh;
+    /* dvh is the visible height on phones (vh includes the area behind the browser bars);
+       min-height keeps header, a bit of the list and the footer usable in landscape. */
+    max-height: 88dvh;
+    min-height: min(320px, 100%);
     background: #fff;
     border-radius: var(--radius-lg);
     border: 1px solid rgba(82, 115, 94, 0.25);

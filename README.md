@@ -377,6 +377,13 @@ with the third argument `ios`) and checks that every kind of panel input
 stays editable while a value is retyped, that the settings-list interval never turns an empty field
 into 0, and that the one-tap Apply flow writes, reads back and reports correctly against a fake
 device. It needs a local server and a Chromium binary (`CHROME=...`), see the header of the file.
+`SCENARIO=overlayScroll` (comma-separated names) runs only the named scenarios.
+
+Every overlay (log download results, GPS fix, confirmations, DFU wait, connection lost, the
+import preview) scrolls when its card is taller than the screen: the overlay itself has
+`overflow-y: auto` and the card is centred with `margin: auto` rather than `align-items: center`,
+which would push the top and the buttons out of reach on a phone. The `overlayScroll` scenario
+shrinks the viewport, swipes a long log result up with a real finger drag and taps OK.
 
 ## Guided settings (in progress)
 

@@ -19,7 +19,7 @@
 // notification handler and checks that connecting sets the device time and location by itself.
 //
 // CHROME defaults to the Playwright Chromium under ~/.cache/ms-playwright. ONLY=index or
-// ONLY=composer limits the run to one page; VERBOSE=1 prints where a failed tap landed.
+// ONLY=composer limits the run to one page; SCENARIO=name[,name] runs only those scenarios; VERBOSE=1 prints where a failed tap landed.
 // Screenshots of the outcome dialog are written to the current directory. Exit code 1 = a
 // check failed. The LP0 scenario reloads the main page with the 8.2.0 beta schema and a status
 // that says firmware 8.1, and checks the panel, the card, the job reply, the state refresh and the
@@ -348,6 +348,84 @@ async function importSelect(tag) {
   check(`${tag} import preview: unticking a change marks it skipped and Import counts the rest`, one.boxes.includes('rejoin_interval:false') && one.tags.filter(t => t === 'skipped').length === 1 && one.confirm === 'Import 2 of 3' && !one.all && oneIndeterminate, { one, oneIndeterminate });
   check(`${tag} import preview: Select all changes selects every change from a partial pick, then clears them`, none.boxes.every(b => b.endsWith(':false')) && none.disabled && all.boxes.every(b => b.endsWith(':true')) && all.confirm === 'Import' && !all.disabled, { none, all });
   check(`${tag} import preview: an unticked change is not written, the others are`, written.status && written.adr && !written.rejoin && written.count === 2, written);
+}
+
+// A card taller than the screen (log download results on a phone, a long import list on a short
+// landscape screen) must scroll inside its overlay: the top of the card stays reachable, a swipe
+// brings the buttons into view, and a tap on them closes the overlay.
+async function overlayScroll(tag) {
+  const width = mobile ? 390 : 1280, height = 520;
+  await cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: mobile ? 3 : 1, mobile });
+  const tapAt = async (x, y) => {
+    if (mobile) {
+      await cmd('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+      await cmd('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    } else {
+      await cmd('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+      await cmd('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    }
+    await sleep(80);
+  };
+  // A finger dragged up the screen on a phone, the mouse wheel on desktop.
+  const swipeUp = async () => {
+    for (let n = 0; n < 4; n += 1) {
+      if (mobile) {
+        const x = width / 2;
+        await cmd('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: height - 60 }] });
+        for (let y = height - 80; y >= 60; y -= 20) await cmd('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+        await cmd('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      } else {
+        await cmd('Input.dispatchMouseEvent', { type: 'mouseWheel', x: width / 2, y: height / 2, deltaX: 0, deltaY: 400 });
+      }
+      await sleep(120);
+    }
+  };
+  const rectOf = sel => evaluate(`(() => { const r = ${q(sel)}.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, x: r.left + r.width / 2, y: r.top + r.height / 2, innerHeight }; })()`);
+  try {
+    // Log download results with a long message.
+    await evaluate(`(() => { showFlashLogSuccess('SP05TEST_logs.bin'); const m = document.getElementById('flash-log-overlay-message');
+      m.innerHTML += Array.from({ length: 30 }, (_, i) => '<br>Record block ' + (i + 1) + ': confirmed').join(''); return true; })()`);
+    await sleep(100);
+    const opened = await evaluate(`(() => { const o = document.getElementById('flash-log-overlay'); const card = o.querySelector('.dfu-waiting-card');
+      return { hidden: o.classList.contains('hidden'), scrollable: o.scrollHeight > o.clientHeight + 20, cardTop: card.getBoundingClientRect().top, titleTop: document.getElementById('flash-log-overlay-title').getBoundingClientRect().top }; })()`);
+    await shot('overlay-long-top');
+    await swipeUp();
+    await sleep(300);
+    const ok = await rectOf('#flash-log-ok');
+    if (process.env.VERBOSE) console.log('  (after swipe scrollTop', await evaluate(`document.getElementById('flash-log-overlay').scrollTop`), ')');
+    await shot('overlay-long-bottom');
+    await tapAt(ok.x, ok.y);
+    const closed = await evaluate(`document.getElementById('flash-log-overlay').classList.contains('hidden')`);
+    check(`${tag} overlay taller than the screen: it scrolls and the top of the card is reachable`, !opened.hidden && opened.scrollable && opened.cardTop >= 0 && opened.titleTop >= 0, opened);
+    check(`${tag} overlay taller than the screen: a swipe brings OK into view and a tap on it closes the overlay`, ok.top >= 0 && ok.bottom <= ok.innerHeight && closed, { ok, closed });
+
+    // A confirm card shows its buttons when the screen is tall enough: nothing to scroll.
+    await evaluate(`(() => { setRebootConfirmVisible(true); return true; })()`);
+    await sleep(80);
+    const reboot = await evaluate(`(() => { const o = document.getElementById('reboot-confirm-overlay'); const r = document.getElementById('reboot-cancel').getBoundingClientRect();
+      const card = o.querySelector('.dfu-waiting-card').getBoundingClientRect();
+      return { scrollable: o.scrollHeight > o.clientHeight, inView: r.top >= 0 && r.bottom <= innerHeight, centred: Math.abs((card.top + card.bottom) / 2 - innerHeight / 2) < 30 }; })()`);
+    await evaluate(`(() => { setRebootConfirmVisible(false); return true; })()`);
+    check(`${tag} a short overlay card stays centred and needs no scrolling`, !reboot.scrollable && reboot.inView && reboot.centred, reboot);
+
+    // Import preview with many changes on a short screen: the footer stays on screen.
+    await evaluate(FAKE_DEVICE);
+    await evaluate(`(() => { discardPendingChanges(); const keys = ['status_send_interval', 'rejoin_interval', 'lr_adr', 'ublox_send_interval', 'ublox_fix_timeout'].filter(k => settingsData.settings[k]);
+      const data = {}; keys.forEach(k => { const s = settingsData.settings[k]; data[k] = s.conversion === 'bool' ? !s.default : (Number(s.default) || 0) + 60; });
+      const file = new File([JSON.stringify(data)], 'profile.json', { type: 'application/json' });
+      const dt = new DataTransfer(); dt.items.add(file); const input = document.getElementById('import-file'); input.files = dt.files; importFromJson(); return true; })()`);
+    await waitFor(`!document.getElementById('import-preview-overlay').classList.contains('hidden') && document.querySelector('#import-preview-rows input[data-key]')`);
+    await sleep(100);
+    let cancel = await rectOf('#import-preview-cancel');
+    if (cancel.bottom > cancel.innerHeight) { await swipeUp(); await sleep(300); cancel = await rectOf('#import-preview-cancel'); }
+    await shot('overlay-import-short');
+    if (process.env.VERBOSE) console.log('  (at cancel:', await evaluate(`(() => { const e = document.elementFromPoint(${cancel.x}, ${cancel.y}); return e && (e.id || e.className || e.tagName); })()`), ')');
+    await tapAt(cancel.x, cancel.y);
+    const importClosed = await evaluate(`document.getElementById('import-preview-overlay').classList.contains('hidden')`);
+    check(`${tag} import preview on a short screen: Cancel is reachable and closes the dialog`, cancel.top >= 0 && cancel.bottom <= cancel.innerHeight && importClosed, { cancel, importClosed });
+  } finally {
+    await cmd('Emulation.setDeviceMetricsOverride', mobile ? { width: 390, height: 844, deviceScaleFactor: 3, mobile: true } : { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
+  }
 }
 
 // Connecting must set the collar's time and location without a button press: the first status
@@ -1057,8 +1135,8 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, importSelect, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
-    for (const scenario of scenarios) {
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, importSelect, overlayScroll, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    for (const scenario of scenarios.filter(f => !process.env.SCENARIO || process.env.SCENARIO.split(',').includes(f.name))) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }
     }
