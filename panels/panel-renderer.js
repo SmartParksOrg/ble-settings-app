@@ -912,7 +912,9 @@
         control.update();
       }
       const activeWarning = (field.warnings || []).find(item => engine.evaluateCondition(item.when, host.getValue));
-      warning.textContent = activeWarning ? activeWarning.text : '';
+      // A warning's text may be a function of the current values (e.g. a duration it quotes).
+      warning.textContent = !activeWarning ? ''
+        : typeof activeWarning.text === 'function' ? activeWarning.text(host.getValue, engine) : activeWarning.text;
       badge.classList.toggle('visible', keys.some(key => host.isPending(key)));
     };
     state.updaters.push(updater);

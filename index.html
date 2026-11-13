@@ -688,7 +688,7 @@
   </div>
   <div id="ble-reconnect-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card">
-      <div class="dfu-waiting-text">Connection lost</div>
+      <div id="ble-reconnect-title" class="dfu-waiting-text">Connection lost</div>
       <div id="ble-reconnect-text" class="dfu-waiting-countdown">
         The device disconnected unexpectedly. Reconnect or reset the app.
       </div>
@@ -786,10 +786,11 @@
 
   <div id="cmdq-enable-confirm-overlay" class="dfu-waiting-overlay hidden" role="dialog" aria-modal="true">
     <div class="dfu-waiting-card">
-      <div class="dfu-waiting-text">Warning: enabling CMDQ will disconnect this app from the device. After the device starts scanning for the CMDQ device, this app will not be able to reconnect until the CMDQ scan is ready. This can take up to 5 minutes.</div>
+      <div class="dfu-waiting-text">Switching CMDQ on disconnects this app</div>
+      <div id="cmdq-enable-confirm-text" class="flash-log-overlay-message">The collar drops the Bluetooth connection as soon as CMDQ is on and cannot be reached until its first CMDQ scan ends.</div>
       <div class="dfu-confirmation-actions">
         <button id="cmdq-enable-cancel" class="secondary" type="button">Cancel</button>
-        <button id="cmdq-enable-confirm" type="button">Continue</button>
+        <button id="cmdq-enable-confirm" type="button">Switch on and disconnect</button>
       </div>
     </div>
   </div>
@@ -1110,6 +1111,9 @@
     let ubloxFixMapMarker = null;
     const currentSettingValues = new Map();
     let cmdqEnableConfirmResolver = null;
+    // Set while CMDQ is being switched on: the collar drops the connection for its first scan,
+    // so the disconnect that follows is expected. { name, until (ms), seconds }.
+    let cmdqDisconnectExpected = null;
     let reloadOnDisconnect = false;
     let lastConnectedDeviceName = null;
     let mapTrackState = {
@@ -1253,21 +1257,75 @@
       setCmdqEnableConfirmVisible(false);
     }
 
-    function requestCmdqEnableConfirm() {
+    // How long the collar stays out of reach after CMDQ is switched on: its first scan
+    // (SCAN_IMMEDIATE in the firmware's bt_cmdq.c) lasts the search interval, with Bluetooth
+    // advertising off. A search interval written in the same batch counts.
+    function getCmdqFirstScanSeconds(ordered = []) {
+      const pending = ordered.find(item => item.key === 'cmdq_search_interval');
+      const raw = pending ? pending.value : getEffectiveSettingValue('cmdq_search_interval');
+      const seconds = Math.round(Number(raw));
+      return Number.isFinite(seconds) && seconds > 0 ? seconds : 300;
+    }
+
+    function formatClockTime(date) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function requestCmdqEnableConfirm({ seconds = getCmdqFirstScanSeconds(), otherChanges = 0 } = {}) {
+      const textEl = document.getElementById('cmdq-enable-confirm-text');
+      if (textEl) {
+        const name = lastConnectedDeviceName || 'The collar';
+        const duration = PanelEngine.formatDurationWords(seconds);
+        const until = formatClockTime(new Date(Date.now() + seconds * 1000));
+        const others = otherChanges > 0
+          ? ` Your other ${otherChanges} change${otherChanges === 1 ? ' is' : 's are'} written first.`
+          : '';
+        textEl.textContent = `${name} drops this Bluetooth connection as soon as CMDQ is on. Its first CMDQ scan then takes up to ${duration} (the search interval), and until it ends the collar cannot be reached: reconnect after about ${until}. Later CMDQ scans drop the connection again.${others}`;
+      }
       return new Promise((resolve) => {
         cmdqEnableConfirmResolver = resolve;
         setCmdqEnableConfirmVisible(true);
       });
     }
 
-    function shouldConfirmCmdqEnable(settingId, newValue) {
-      const [settingKey] = getById(settingId);
-      const normalizedValue = String(newValue ?? '').trim().toLowerCase();
-      if (settingKey !== 'cmdq_enabled' || normalizedValue !== 'true') {
+    function isTrueSettingValue(value) {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      return normalized === 'true' || normalized === '1';
+    }
+
+    // True when this write switches CMDQ on for a connected collar where it is off now.
+    function isCmdqSwitchOn(key, value) {
+      if (key !== 'cmdq_enabled' || !isTrueSettingValue(value) || !document.body.classList.contains('connected')) {
         return false;
       }
-      const currentValue = String(currentSettingValues.get(String(settingId)) ?? '').trim().toLowerCase();
-      return currentValue !== 'true' && document.body.classList.contains('connected');
+      const setting = getByKey('cmdq_enabled');
+      return Boolean(setting) && !isTrueSettingValue(currentSettingValues.get(String(setting.id)));
+    }
+
+    function shouldConfirmCmdqEnable(settingId, newValue) {
+      const [settingKey] = getById(settingId);
+      return isCmdqSwitchOn(settingKey, newValue);
+    }
+
+    function expectCmdqDisconnect(seconds) {
+      cmdqDisconnectExpected = { name: lastConnectedDeviceName, seconds, until: Date.now() + seconds * 1000 };
+      log(`CMDQ switched on: expecting the collar to disconnect for its first scan (up to ${seconds} s)`);
+    }
+
+    // The message for the reconnect overlay after CMDQ was switched on; null when not expected.
+    function takeCmdqDisconnectMessage() {
+      const expected = cmdqDisconnectExpected;
+      cmdqDisconnectExpected = null;
+      // Long after the first scan a disconnect is no longer this one (the collar never dropped it).
+      if (!expected || Date.now() > expected.until + 60000) {
+        return null;
+      }
+      const name = expected.name || 'The collar';
+      const remaining = Math.max(0, Math.ceil((expected.until - Date.now()) / 1000));
+      if (remaining <= 0) {
+        return `${name} disconnected for a CMDQ scan. Its first scan should be over by now; reconnect when it shows up in the scan.`;
+      }
+      return `CMDQ is on: ${name} disconnected for its first CMDQ scan and cannot be reached for up to ${PanelEngine.formatDurationWords(remaining)}. Reconnect after about ${formatClockTime(new Date(expected.until))}.`;
     }
 
     function restoreSettingValue(settingId) {
@@ -6888,6 +6946,23 @@
     // Import. With `inline`, progress goes to the pending bar instead of the dialog, and the
     // dialog only opens when the outcome needs attention.
     async function applyOrderedSettingChanges(ordered, rows, { title, noun = 'change', subtitle = 'Writing and confirming...', inline = false }) {
+      // Switching CMDQ on makes the collar drop the connection at once: warn first, and write it
+      // last so every other change is written and confirmed before the link goes.
+      const cmdqItem = ordered.find(item => isCmdqSwitchOn(item.key, item.value));
+      let cmdqSeconds = 0;
+      if (cmdqItem) {
+        cmdqSeconds = getCmdqFirstScanSeconds(ordered);
+        const confirmed = await requestCmdqEnableConfirm({ seconds: cmdqSeconds, otherChanges: ordered.length - 1 });
+        if (!confirmed) {
+          log('Switching CMDQ on cancelled; nothing was written.');
+          showToast('Nothing was written. The changes are still pending.');
+          return null;
+        }
+        ordered = [...ordered.filter(item => item !== cmdqItem), cmdqItem];
+        rows = [...rows.filter(row => row.key !== cmdqItem.key), ...rows.filter(row => row.key === cmdqItem.key)];
+      }
+      // The settings are looked up once: after the CMDQ write the disconnect clears settingsData.
+      const settingsByKey = new Map(ordered.map(item => [item.key, getByKey(item.key)]));
       const plural = rows.length === 1 ? '' : 's';
       const reported = [];
       if (!inline) {
@@ -6897,21 +6972,37 @@
       const summary = await PanelEngine.runApply({
         items: ordered,
         write: async item => {
-          const setting = getByKey(item.key);
+          const setting = settingsByKey.get(item.key);
+          if (item === cmdqItem) {
+            expectCmdqDisconnect(cmdqSeconds);
+          }
           await updateBleSetting(setting.id, item.value);
         },
         read: async item => {
-          const setting = getByKey(item.key);
+          const setting = settingsByKey.get(item.key);
+          if (item === cmdqItem) {
+            // The collar may already be gone; a read that cannot be answered is "not confirmed".
+            try {
+              const pending = awaitSettingRead(setting.id, 2000);
+              await requestBleValue(setting.id, CMD_SINGLE_SETTING);
+              return await pending;
+            } catch (error) {
+              return null;
+            }
+          }
           const pending = awaitSettingRead(setting.id, 3000);
           await requestBleValue(setting.id, CMD_SINGLE_SETTING);
           return pending;
         },
         isEqual: (item, readValue) => {
-          const setting = getByKey(item.key);
+          const setting = settingsByKey.get(item.key);
           return isSettingValueEqual(item.key, setting, readValue, item.value);
         },
         onItem: ({ index, item, status, error }) => {
-          const setting = getByKey(item.key);
+          const setting = settingsByKey.get(item.key);
+          if (item === cmdqItem && status === 'failed') {
+            cmdqDisconnectExpected = null; // the write itself failed: a disconnect now is not CMDQ
+          }
           const statusMap = { verified: 'success', mismatch: 'error', failed: 'error', unverified: 'warning' };
           const labelMap = { verified: 'confirmed', mismatch: 'device kept old value', failed: 'write failed', unverified: 'not confirmed' };
           const report = { index: index + 1, total: rows.length, status: statusMap[status], label: labelMap[status], settingId: setting.id };
@@ -6930,20 +7021,29 @@
         settleMs: 150
       });
       const problems = summary.mismatch + summary.failed;
-      const message = problems === 0 && summary.unverified === 0
-        ? `All ${rows.length} ${noun}${plural} confirmed by the device.`
-        : `${summary.verified} confirmed, ${problems} not applied, ${summary.unverified} not confirmed.`;
+      // CMDQ written and the collar gone before it could confirm: that is the expected outcome,
+      // not a problem to report (the reconnect overlay says when the collar is back).
+      const cmdqResult = cmdqItem ? summary.results.find(result => result.item === cmdqItem) : null;
+      const cmdqSent = Boolean(cmdqResult) && cmdqResult.status !== 'failed' && cmdqResult.status !== 'mismatch';
+      const connectedNow = document.body.classList.contains('connected');
+      const unverified = summary.unverified - (cmdqSent && cmdqResult.status === 'unverified' ? 1 : 0);
+      const cmdqNote = cmdqSent ? ' CMDQ is on; the collar disconnects for its first CMDQ scan.' : '';
+      const message = (problems === 0 && unverified === 0
+        ? `All ${rows.length} ${noun}${plural} ${cmdqSent && cmdqResult.status === 'unverified' ? 'sent' : 'confirmed by the device'}.`
+        : `${summary.verified} confirmed, ${problems} not applied, ${unverified} not confirmed.`) + cmdqNote;
       if (!inline) {
         finishImportProgress({ total: rows.length, success: problems === 0, message });
-      } else if (problems === 0 && summary.unverified === 0) {
-        showToast(message);
+      } else if (problems === 0 && unverified === 0) {
+        if (!(cmdqSent && !connectedNow)) {
+          showToast(message); // once CMDQ took the collar away, the reconnect overlay says it all
+        }
       } else {
         showImportProgress({ total: rows.length, title, subtitle: 'What the device reported for each setting.', items: rows });
         reported.forEach(updateImportProgress);
         finishImportProgress({ total: rows.length, success: problems === 0, message });
       }
       log(message, problems > 0);
-      if (summary.unverified > 0) {
+      if (unverified > 0 && connectedNow) {
         // Unconfirmed writes may still have landed; refresh so the list shows device truth.
         fetchAllSettings();
       }
@@ -8276,7 +8376,8 @@
 
     function onDisconnected() {
       log('Disconnected from device');
-      if (settingsDraft.size > 0) {
+      const cmdqDisconnectMessage = takeCmdqDisconnectMessage();
+      if (settingsDraft.size > 0 && !cmdqDisconnectMessage) {
         showToast('Connection lost; pending setting changes were discarded.');
       }
       settingsDraft.reset();
@@ -8349,7 +8450,11 @@
       }
       if (!wasUserRequestedDisconnect && !inDfuMode) {
         const nameLabel = lastConnectedDeviceName ? ` ${lastConnectedDeviceName}` : ' the device';
-        setBleReconnectOverlayVisible(true, `Lost connection to${nameLabel}. Reconnect or reset the app.`);
+        setBleReconnectOverlayVisible(true, cmdqDisconnectMessage || `Lost connection to${nameLabel}. Reconnect or reset the app.`);
+        const reconnectTitle = document.getElementById('ble-reconnect-title');
+        if (reconnectTitle) {
+          reconnectTitle.textContent = cmdqDisconnectMessage ? 'Disconnected for a CMDQ scan' : 'Connection lost';
+        }
       }
       mapDetailsUserToggled = false;
       lastPositionMessage = null;
@@ -10461,12 +10566,14 @@
     async function updateSetting(settingId) {
       const rowElement = document.getElementById(`setting-${settingId}`);
       const newValue = getInputValue(settingId);
-      if (shouldConfirmCmdqEnable(settingId, newValue)) {
+      const cmdqSwitchOn = shouldConfirmCmdqEnable(settingId, newValue);
+      if (cmdqSwitchOn) {
         const confirmed = await requestCmdqEnableConfirm();
         if (!confirmed) {
           restoreSettingValue(settingId);
           return;
         }
+        expectCmdqDisconnect(getCmdqFirstScanSeconds());
       }
       try {
         rowElement.classList.add('disabled');

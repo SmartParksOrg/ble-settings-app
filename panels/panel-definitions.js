@@ -530,7 +530,9 @@
       { key: 'cmdq_enabled', label: 'CMDQ', control: 'toggle',
         help: 'Scan for the device below on the search interval and report detections.',
         warnings: [{ when: cmdqOn,
-          text: 'While CMDQ is on, the device disconnects Bluetooth apps to scan. After enabling it, this app may not be able to reconnect until the scan is ready, which can take up to 5 minutes.' }] },
+          // The firmware's first scan after switching on lasts the search interval (bt_cmdq.c,
+          // SCAN_IMMEDIATE); Bluetooth advertising is off and the app is disconnected meanwhile.
+          text: (getValue, engine) => `Switching CMDQ on disconnects this app at once: the collar then scans for up to ${engine.formatDurationWords(getValue('cmdq_search_interval') || 300)} (the search interval) and cannot be reached over Bluetooth until that scan ends. Later scans drop the connection too.` }] },
       { key: 'cmdq_searched_mac_address', label: 'Device to search for', control: 'mac', dependsOn: cmdqOn, help: 'Bluetooth MAC address of the device to search for.' },
       { key: 'cmdq_search_interval', label: 'Search interval', control: 'duration', unit: 's', dependsOn: cmdqOn,
         help: 'Seconds between scans. For immediate and long scans this is the active scan duration; set it near the searched device\'s advertisement interval.' },

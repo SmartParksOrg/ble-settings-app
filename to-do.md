@@ -253,6 +253,17 @@ app says "not available" on it while satellite is off):
    modem"; plug it back in and tap the test: "detected".
 5. On a CollarEdge: no modem line in the Status card, the panel says the type has no modem port.
 
+## CMDQ switch-on warning, scrolling overlays (2026-11-13, hardware test pending)
+
+1. On a collar with CMDQ off, set a search interval (e.g. 3 min), switch CMDQ on in the panel
+   and tap Apply: the warning names the collar, the search interval and a reconnect time, and
+   nothing is written until "Switch on and disconnect". Cancel keeps the changes pending.
+2. Confirm: the other changes are written first, the collar disconnects, and the overlay says
+   "Disconnected for a CMDQ scan" with the time. Check that the collar really advertises again
+   at about that time (firmware: first scan = search interval) and that Reconnect then works.
+3. On a phone, download all logs: the result overlay scrolls and OK can be tapped; check the
+   GPS fix result and the import preview on a short (landscape) screen as well.
+
 ## DFU reconnect on Chrome for macOS, Actions import, LoRaWAN feature row (2026-11-12, hardware test pending)
 
 Tim reported that the automatic reconnect after a DFU does not work in Chrome on a Mac. Likely

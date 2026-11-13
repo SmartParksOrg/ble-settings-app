@@ -350,6 +350,50 @@ async function importSelect(tag) {
   check(`${tag} import preview: an unticked change is not written, the others are`, written.status && written.adr && !written.rejoin && written.count === 2, written);
 }
 
+// Switching CMDQ on makes the collar drop the connection for its first scan (as long as the
+// search interval). Apply asks first and writes nothing on Cancel; on confirm the other changes
+// are written first and CMDQ last, and the disconnect that follows opens a CMDQ-specific
+// overlay that says when the collar can be reached again instead of "Connection lost".
+async function cmdqEnable(tag) {
+  await evaluate(FAKE_DEVICE);
+  await evaluate(`(() => { discardPendingChanges(); lastConnectedDeviceName = 'SP05TEST'; window.__cmdqAddr = parseInt(settingsData.settings.cmdq_enabled.id, 16);
+    const original = rxCharacteristic.writeValueWithResponse; let gone = false;
+    rxCharacteristic.writeValueWithResponse = async buffer => { if (gone) throw new Error('GATT Server is disconnected');
+      const bytes = new Uint8Array(buffer); await original(buffer);
+      if (bytes[0] === 0x03 && ((bytes[1] << 8) | bytes[2]) === window.__cmdqAddr) { gone = true; setTimeout(() => onDisconnected(), 40); } };
+    const set = (k, v) => { const s = settingsData.settings[k]; setInputValue(s.id, v); __onInputChanged(s.id); };
+    set('cmdq_enabled', 'true'); set('cmdq_search_interval', '180'); set('status_send_interval', '7200'); return true; })()`);
+  await sleep(100);
+  const warning = await evaluate(`(document.querySelector('.panel-field[data-keys~="cmdq_enabled"] .panel-field-warning') || {}).textContent || ''`);
+  const writes03 = () => evaluate(`window.__writes.filter(w => w[0] === 0x03).map(w => (w[1] << 8) | w[2])`);
+  await focus('#pending-changes-apply');
+  await waitFor(`!document.getElementById('cmdq-enable-confirm-overlay').classList.contains('hidden')`);
+  const asked = await evaluate(`({ text: document.getElementById('cmdq-enable-confirm-text').textContent, confirm: document.getElementById('cmdq-enable-confirm').textContent, writes: window.__writes.filter(w => w[0] === 0x03).length })`);
+  await shot('cmdq-confirm');
+  await focus('#cmdq-enable-cancel');
+  await sleep(150);
+  const cancelled = await evaluate(`({ hidden: document.getElementById('cmdq-enable-confirm-overlay').classList.contains('hidden'), writes: window.__writes.filter(w => w[0] === 0x03).length, draft: settingsDraft.size, toast: document.getElementById('toast').innerText })`);
+  check(`${tag} CMDQ on: the panel warning quotes the search interval`, /up to 3 minutes/.test(warning) && /disconnects this app/.test(warning), { warning });
+  check(`${tag} CMDQ on: Apply asks first, quoting the search interval and the other changes, before any write`, asked.writes === 0 && /SP05TEST drops this Bluetooth connection/.test(asked.text) && /up to 3 minutes/.test(asked.text) && /reconnect after about \d/.test(asked.text) && /other 2 changes are written first/.test(asked.text) && asked.confirm === 'Switch on and disconnect', asked);
+  check(`${tag} CMDQ on: Cancel writes nothing and keeps the changes pending`, cancelled.hidden && cancelled.writes === 0 && cancelled.draft === 3 && /Nothing was written/.test(cancelled.toast), cancelled);
+  await evaluate(`(() => { document.getElementById('toast').innerText = ''; return true; })()`);
+  await focus('#pending-changes-apply');
+  await waitFor(`!document.getElementById('cmdq-enable-confirm-overlay').classList.contains('hidden')`);
+  await focus('#cmdq-enable-confirm');
+  await waitFor(`!document.getElementById('ble-reconnect-overlay').classList.contains('hidden')`, 15000);
+  await sleep(300);
+  const order = await writes03();
+  const after = await evaluate(`({ title: document.getElementById('ble-reconnect-title').textContent, text: document.getElementById('ble-reconnect-text').textContent,
+    outcomeHidden: document.getElementById('import-preview-overlay').classList.contains('hidden'), toast: document.getElementById('toast').innerText, connected: document.body.classList.contains('connected') })`);
+  await shot('cmdq-disconnected');
+  check(`${tag} CMDQ on: the other changes are written first and CMDQ last`, order.length === 3 && order[2] === await evaluate(`window.__cmdqAddr`), order);
+  check(`${tag} CMDQ on: the disconnect opens a CMDQ overlay that says when to reconnect, not an error`, !after.connected && after.title === 'Disconnected for a CMDQ scan' && /up to 3 minutes/.test(after.text) && /Reconnect after about \d/.test(after.text) && after.outcomeHidden && !/discarded|sent/.test(after.toast), after);
+  // A later, unrelated disconnect gets the usual overlay again.
+  await evaluate(`(() => { setBleReconnectOverlayVisible(false); document.body.classList.add('connected'); onDisconnected(); return true; })()`);
+  const later = await evaluate(`({ title: document.getElementById('ble-reconnect-title').textContent, text: document.getElementById('ble-reconnect-text').textContent })`);
+  check(`${tag} CMDQ on: the next disconnect is reported as a lost connection again`, later.title === 'Connection lost' && /Lost connection to SP05TEST/.test(later.text), later);
+}
+
 // A card taller than the screen (log download results on a phone, a long import list on a short
 // landscape screen) must scroll inside its overlay: the top of the card stays reachable, a swipe
 // brings the buttons into view, and a tap on them closes the overlay.
@@ -1135,7 +1179,7 @@ try {
   for (const page of (process.env.ONLY ? [`/${process.env.ONLY}.html`] : ['/composer.html', '/index.html'])) {
     const tag = `[${page.slice(1, -5)} ${ios ? 'ios' : mobile ? 'mobile' : 'desktop'}]`;
     const scenarios = [fixInterval, nightInterval, minSatellites, coordinate, utcHour, listInterval, exportPath];
-    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, importSelect, overlayScroll, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
+    if (page === '/index.html') scenarios.push(applyFlow, applyMismatch, importSelect, overlayScroll, cmdqEnable, autoLocationTime, satelliteSend, satelliteModemCheck, scanPicker, noBluetoothNote, featuresCard, actionsImport, dfuReconnect, dfuList, dfuVersion, lp0Offload, newLogsDownload, dfuPage, offlineCache);
     for (const scenario of scenarios.filter(f => !process.env.SCENARIO || process.env.SCENARIO.split(',').includes(f.name))) {
       await loadPage(page);
       try { await scenario(tag, page); } catch (error) { check(`${tag} ${scenario.name}`, false, { error: error.message }); }

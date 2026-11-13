@@ -452,6 +452,14 @@ settings blocks are hidden because the panels edit those settings now.
   manufacturer filter, the movement window with "Skip fixes while still", the inactivity report
   without a periodic report, and LP0 fields of the other role (open while the role is Off). The
   GPS fix interval stays gated because that interval is itself the scheduled-fixes switch.
+- Switching CMDQ on asks first (`requestCmdqEnableConfirm`), from Apply, Review and Import
+  alike: the firmware drops the Bluetooth connection and stops advertising for its first scan,
+  which lasts `cmdq_search_interval` seconds (`SCAN_IMMEDIATE` in `bt_cmdq.c`). The dialog quotes
+  that interval (a value written in the same batch counts) and the clock time to reconnect after.
+  Cancel writes nothing and keeps the changes pending. On confirm `cmdq_enabled` is written last,
+  so every other change is confirmed before the link goes; its read-back may go unanswered and
+  is not reported as a problem. The disconnect that follows opens "Disconnected for a CMDQ scan"
+  with the time left instead of "Connection lost". The CMDQ panel warning quotes the interval too.
 - Panel inputs never commit an empty or partial entry (a backspaced field, "5." on a number
   input) as 0: doing so flipped switches and gate conditions and disabled the field under the
   person's finger. The field is brought back in line with the draft when focus leaves it.
